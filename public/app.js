@@ -1,0 +1,297 @@
+// --- Tab switching ---
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+    if (tab.dataset.tab === 'weak-spots') loadWeakSpots();
+  });
+});
+
+// --- Element refs ---
+const $ = id => document.getElementById(id);
+const messagesEl = $('messages');
+const hintLevelText = $('hintLevelText');
+const hintDots = document.querySelectorAll('.dot');
+
+const LEVEL_LABELS = ['Vague nudge', 'More specific', 'Near-answer', 'Final scaffold'];
+
+let currentLevel = 1;
+
+function setLevel(level) {
+  currentLevel = level;
+  hintDots.forEach(d => {
+    d.classList.toggle('active', Number(d.dataset.level) <= level);
+  });
+  hintLevelText.textContent = LEVEL_LABELS[level - 1] || LEVEL_LABELS[0];
+}
+
+function appendMessage({ kind, text, pattern, level, reason }) {
+  if (messagesEl.querySelector('.empty-state')) messagesEl.innerHTML = '';
+  const div = document.createElement('div');
+  div.className = 'msg ' + kind + (kind === 'tutor' && reason ? ' fallback' : '');
+  let header = '';
+  if (kind === 'tutor') {
+    header = '<div class="msg-header">';
+    if (reason) header += '<span>Tutor offline — general nudge</span>';
+    else header += '<span>Hint level ' + level + '</span>';
+    if (pattern) header += ' <span class="msg-pattern">' + pattern + '</span>';
+    header += '</div>';
+  } else if (kind === 'system') {
+    header = '<div class="msg-header">Tutor</div>';
+  } else if (kind === 'student') {
+    header = '<div class="msg-header">Your hypothesis</div>';
+  }
+  div.innerHTML = header + '<div>' + escapeHtml(text) + '</div>';
+  messagesEl.appendChild(div);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+
+// --- Ask for a hint (with hypothesis gate) ---
+
+async function callHintApi(hypothesis) {
+  const payload = {
+    studentId: $('studentId').value.trim() || 'test-student',
+    exerciseId: $('exerciseId').value.trim() || 'ex-1',
+    code: $('code').value,
+    language: $('language').value,
+    errorOutput: $('errorOutput').value,
+    exerciseContext: {
+      title: 'Sum an array',
+      description: 'Iterate over an array and sum its elements.',
+      learningObjectives: ['loops', 'array indexing'],
+      expectedConcepts: ['for loop', 'array.length'],
+    },
+    passed: false,
+  };
+  if (hypothesis) payload.hypothesis = hypothesis;
+
+  const res = await fetch('/api/debug-tutor/hint', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return res.json();
+}
+
+function renderHypothesisPrompt(prompt, level) {
+  if (messagesEl.querySelector('.empty-state')) messagesEl.innerHTML = '';
+  const div = document.createElement('div');
+  div.className = 'msg hypothesis-gate';
+  div.innerHTML = `
+    <div class="msg-header">Write your hypothesis first</div>
+    <div class="hypothesis-prompt">${escapeHtml(prompt)}</div>
+    <textarea class="hypothesis-input" placeholder="I think the bug is because..." rows="3"></textarea>
+    <button class="hypothesis-submit primary small">Submit hypothesis</button>
+  `;
+  messagesEl.appendChild(div);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+
+  const input = div.querySelector('.hypothesis-input');
+  const btn = div.querySelector('.hypothesis-submit');
+  input.focus();
+
+  btn.addEventListener('click', async () => {
+    const text = input.value.trim();
+    if (text.length < 10) {
+      input.classList.add('shake');
+      setTimeout(() => input.classList.remove('shake'), 400);
+      return;
+    }
+    // Replace the form with the student's submission (so it shows in history)
+    div.outerHTML = '';
+    appendMessage({ kind: 'student', text });
+
+    btn.disabled = true;
+    try {
+      const data = await callHintApi(text);
+      handleHintResponse(data);
+    } catch (err) {
+      appendMessage({ kind: 'system', text: 'Request failed: ' + err.message });
+    }
+  });
+}
+
+function handleHintResponse(data) {
+  if (data.resolved) {
+    appendMessage({ kind: 'system', text: data.message });
+    return;
+  }
+  if (data.requiresHypothesis) {
+    setLevel(data.hintLevel);
+    renderHypothesisPrompt(data.prompt, data.hintLevel);
+    return;
+  }
+  setLevel(data.hintLevel);
+  appendMessage({
+    kind: 'tutor',
+    text: data.message,
+    pattern: data.detectedPattern,
+    level: data.hintLevel,
+    reason: data.isFallback ? data.reason : null,
+  });
+}
+
+$('askBtn').addEventListener('click', async () => {
+  const btn = $('askBtn');
+  btn.disabled = true;
+  btn.textContent = 'Thinking...';
+  try {
+    const data = await callHintApi();
+    handleHintResponse(data);
+  } catch (err) {
+    appendMessage({ kind: 'system', text: 'Request failed: ' + err.message });
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Ask the Tutor for a Hint';
+  }
+});
+
+$('resetBtn').addEventListener('click', async () => {
+  const sid = $('studentId').value.trim() || 'test-student';
+  const eid = $('exerciseId').value.trim() || 'ex-1';
+  await fetch('/api/debug-tutor/hint', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      studentId: sid, exerciseId: eid,
+      code: '', language: 'javascript', errorOutput: '',
+      exerciseContext: { title: '', description: '', learningObjectives: [], expectedConcepts: [] },
+      passed: true,
+    }),
+  });
+  setLevel(1);
+  messagesEl.innerHTML = '<p class="empty-state">Ladder reset. Ask for a fresh hint.</p>';
+});
+
+// --- Weak spots ---
+async function loadWeakSpots() {
+  const sid = $('studentId').value.trim() || 'test-student';
+  const list = $('weakSpotsList');
+  list.innerHTML = '<p class="empty-state">Loading...</p>';
+  try {
+    const res = await fetch('/api/debug-tutor/weak-spots/' + encodeURIComponent(sid));
+    const spots = await res.json();
+    if (!spots.length) {
+      list.innerHTML = '<p class="empty-state">No patterns logged yet. Ask the tutor for hints and we\'ll start building your map.</p>';
+      return;
+    }
+    list.innerHTML = spots.map(s => `
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">${escapeHtml(s.label)}</div>
+          <div class="card-count">
+            ${s.count} occurrence${s.count === 1 ? '' : 's'} ·
+            <span class="trend ${s.recentTrend}">${s.recentTrend}</span>
+          </div>
+        </div>
+        <div class="card-bar"><div class="card-bar-fill" style="width:${s.percentage}%"></div></div>
+        <div class="card-tip">${escapeHtml(s.tip)}</div>
+      </div>
+    `).join('');
+  } catch (err) {
+    list.innerHTML = '<p class="empty-state">Failed to load: ' + escapeHtml(err.message) + '</p>';
+  }
+}
+
+// --- Health ---
+$('refreshHealth').addEventListener('click', async () => {
+  const key = $('adminKey').value.trim();
+  const body = $('healthBody');
+  body.innerHTML = '<p class="empty-state">Loading...</p>';
+  try {
+    const res = await fetch('/api/admin/health/debug-tutor?hours=24', {
+      headers: { 'x-admin-key': key },
+    });
+    if (!res.ok) {
+      body.innerHTML = '<p class="empty-state">Request failed: HTTP ' + res.status + '</p>';
+      return;
+    }
+    const h = await res.json();
+    const pct = (h.hints.fallbackRate * 100).toFixed(1);
+    const fbClass = h.hints.fallbackRate > 0.1 ? 'warn' : 'good';
+
+    body.innerHTML = `
+      ${h.anomalies.length ? `
+        <div class="anomalies">
+          <h3>Anomalies</h3>
+          <ul>${h.anomalies.map(a => '<li>' + escapeHtml(a) + '</li>').join('')}</ul>
+        </div>
+      ` : ''}
+
+      <div class="stat-grid">
+        <div class="stat">
+          <div class="stat-label">Total hints</div>
+          <div class="stat-value">${h.hints.total}</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Fallback rate</div>
+          <div class="stat-value ${fbClass}">${pct}%</div>
+          <div class="stat-sub">${h.hints.fromFallback} of ${h.hints.total}</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Avg latency</div>
+          <div class="stat-value">${h.hints.avgLatencyMs ?? '—'}${h.hints.avgLatencyMs ? 'ms' : ''}</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Circuit breaker</div>
+          <div class="stat-value ${h.circuitBreaker.state === 'open' ? 'bad' : 'good'}">${h.circuitBreaker.state}</div>
+        </div>
+      </div>
+
+      <div class="section-card">
+        <h2>Fallback reasons</h2>
+        ${Object.keys(h.fallbackBreakdown).length
+          ? Object.entries(h.fallbackBreakdown).map(([k, v]) =>
+              '<div class="pattern-row"><span class="name">' + escapeHtml(k) + '</span><span class="count">' + v + '</span></div>'
+            ).join('')
+          : '<p class="empty-state">No fallbacks in this window.</p>'}
+      </div>
+
+      <div class="section-card">
+        <h2>Top mistake patterns</h2>
+        ${h.patterns.top.length
+          ? h.patterns.top.map(p =>
+              '<div class="pattern-row"><span class="name">' + escapeHtml(p.pattern) + '</span><span class="count">' +
+              p.count + ' · ' + (p.pct * 100).toFixed(0) + '%</span></div>'
+            ).join('')
+          : '<p class="empty-state">No patterns logged in this window.</p>'}
+      </div>
+    `;
+  } catch (err) {
+    body.innerHTML = '<p class="empty-state">Failed: ' + escapeHtml(err.message) + '</p>';
+  }
+});
+
+// --- Init ---
+setLevel(1);
+// --- Welcome modal (first-visit only) ---
+(function initWelcome() {
+  const modal = $('welcomeModal');
+  const accept = $('welcomeAccept');
+  if (!modal || !accept) return;
+
+  const KEY = 'codeteach.welcomed.v1';
+  let seen = false;
+  try {
+    seen = localStorage.getItem(KEY) === '1';
+  } catch (e) {
+    // localStorage may be blocked — treat as not-seen so the modal shows
+  }
+
+  if (!seen) {
+    modal.hidden = false;
+  }
+
+  accept.addEventListener('click', () => {
+    try { localStorage.setItem(KEY, '1'); } catch (e) {}
+    modal.hidden = true;
+  });
+})();

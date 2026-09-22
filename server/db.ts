@@ -1,0 +1,248 @@
+import Database from 'better-sqlite3';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+import { randomUUID } from 'node:crypto';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+const DB_PATH = process.env.DB_PATH ?? join(__dirname, '..', 'codeteach.db');
+
+export const sqlite = new Database(DB_PATH);
+sqlite.pragma('journal_mode = WAL');
+sqlite.pragma('foreign_keys = ON');
+
+const schema = readFileSync(join(__dirname, 'db', 'schema.sql'), 'utf8');
+sqlite.exec(schema);
+
+// One-time migration: add hypothesis_pending column if it doesn't exist
+const sessionColumns = sqlite.prepare(
+  "PRAGMA table_info(hint_sessions)"
+).all() as Array<{ name: string }>;
+const hasHypothesisPending = sessionColumns.some(
+  (c) => c.name === 'hypothesis_pending'
+);
+if (!hasHypothesisPending) {
+  sqlite.exec(
+    'ALTER TABLE hint_sessions ADD COLUMN hypothesis_pending INTEGER NOT NULL DEFAULT 1'
+  );
+  console.log('[db] migrated: added hint_sessions.hypothesis_pending');
+}
+
+
+interface HintSession {
+  id: string;
+  studentId: string;
+  exerciseId: string;
+  currentLevel: number;
+  attemptsAtLevel: number;
+  totalAttempts: number;
+  resolved: boolean;
+  hypothesisPending: boolean;
+}
+
+interface MistakePatternRecord {
+  studentId: string;
+  exerciseId: string;
+  pattern: string;
+  confidence?: 'high' | 'medium' | 'low';
+  source: 'llm' | 'classifier';
+  timestamp: Date;
+}
+
+interface TelemetryEvent {
+  type: string;
+  studentId?: string;
+  exerciseId?: string;
+  reason?: string;
+  latencyMs?: number;
+  state?: string;
+  failures?: number;
+  openedAt?: string | null;
+  timestamp: Date;
+}
+
+function rowToSession(row: any): HintSession {
+  return {
+    id: row.id,
+    studentId: row.student_id,
+    exerciseId: row.exercise_id,
+    currentLevel: row.current_level,
+    attemptsAtLevel: row.attempts_at_level,
+    totalAttempts: row.total_attempts,
+    resolved: row.resolved === 1,
+    hypothesisPending: row.hypothesis_pending === 1,
+  };
+}
+
+function rowToPattern(row: any) {
+  return {
+    studentId: row.student_id,
+    exerciseId: row.exercise_id,
+    pattern: row.pattern,
+    confidence: row.confidence ?? undefined,
+    source: row.source,
+    timestamp: new Date(row.recorded_at),
+  };
+}
+
+function rowToTelemetry(row: any): TelemetryEvent {
+  return {
+    type: row.type,
+    studentId: row.student_id ?? undefined,
+    exerciseId: row.exercise_id ?? undefined,
+    reason: row.reason ?? undefined,
+    latencyMs: row.latency_ms ?? undefined,
+    state: row.state ?? undefined,
+    failures: row.failures ?? undefined,
+    openedAt: row.opened_at ?? undefined,
+    timestamp: new Date(row.recorded_at),
+  };
+}
+
+const stmt = {
+  findSession: sqlite.prepare('SELECT * FROM hint_sessions WHERE student_id = ? AND exercise_id = ?'),
+  findSessionById: sqlite.prepare('SELECT * FROM hint_sessions WHERE id = ?'),
+  insertSession: sqlite.prepare(
+    'INSERT INTO hint_sessions (id, student_id, exercise_id, current_level, attempts_at_level, total_attempts, resolved, hypothesis_pending) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ),
+  updateSession: sqlite.prepare(
+    "UPDATE hint_sessions SET current_level = ?, attempts_at_level = ?, total_attempts = ?, resolved = ?, hypothesis_pending = ?, updated_at = datetime('now') WHERE id = ?"
+  ),
+  insertPattern: sqlite.prepare(
+    'INSERT INTO mistake_patterns (student_id, exercise_id, pattern, confidence, source) VALUES (?, ?, ?, ?, ?)'
+  ),
+  patternsByStudent: sqlite.prepare(
+    'SELECT * FROM mistake_patterns WHERE student_id = ? ORDER BY recorded_at DESC LIMIT ?'
+  ),
+  allPatternsByStudent: sqlite.prepare(
+    'SELECT * FROM mistake_patterns WHERE student_id = ? ORDER BY recorded_at ASC'
+  ),
+  patternsSince: sqlite.prepare(
+    'SELECT * FROM mistake_patterns WHERE recorded_at >= ? ORDER BY recorded_at DESC'
+  ),
+  insertTelemetry: sqlite.prepare(
+    'INSERT INTO telemetry (type, student_id, exercise_id, reason, latency_ms, state, failures, opened_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ),
+  countTelemetryByType: sqlite.prepare(
+    'SELECT COUNT(*) as n FROM telemetry WHERE type = ? AND recorded_at >= ?'
+  ),
+  telemetryByType: sqlite.prepare(
+    'SELECT * FROM telemetry WHERE type = ? AND recorded_at >= ? ORDER BY recorded_at DESC'
+  ),
+  latestTelemetryByType: sqlite.prepare(
+    'SELECT * FROM telemetry WHERE type = ? ORDER BY recorded_at DESC LIMIT 1'
+  ),
+  insertHypothesis: sqlite.prepare(
+    'INSERT INTO hypotheses (student_id, exercise_id, hint_level, text) VALUES (?, ?, ?, ?)'
+  ),
+  hypothesesByExercise: sqlite.prepare(
+    'SELECT * FROM hypotheses WHERE student_id = ? AND exercise_id = ? ORDER BY recorded_at DESC LIMIT ?'
+  ),
+};
+
+export const db = {
+  hintSessions: {
+    async find(studentId: string, exerciseId: string): Promise<HintSession | null> {
+      const row = stmt.findSession.get(studentId, exerciseId);
+      return row ? rowToSession(row) : null;
+    },
+    async create(data: Omit<HintSession, 'id'>): Promise<HintSession> {
+      const id = randomUUID();
+      stmt.insertSession.run(
+        id, data.studentId, data.exerciseId,
+        data.currentLevel, data.attemptsAtLevel, data.totalAttempts,
+        data.resolved ? 1 : 0,
+        data.hypothesisPending ? 1 : 0
+      );
+      return { id, ...data };
+    },
+    async update(id: string, patch: Partial<HintSession>): Promise<void> {
+      const current = stmt.findSessionById.get(id) as any;
+      if (!current) return;
+      const merged = { ...rowToSession(current), ...patch };
+      stmt.updateSession.run(
+        merged.currentLevel, merged.attemptsAtLevel, merged.totalAttempts,
+        merged.resolved ? 1 : 0,
+        merged.hypothesisPending ? 1 : 0,
+        id
+      );
+    },
+    async update2(studentId: string, exerciseId: string, patch: Partial<HintSession>): Promise<void> {
+      const current = await db.hintSessions.find(studentId, exerciseId);
+      if (!current) return;
+      await db.hintSessions.update(current.id, patch);
+    },
+    async getOrCreate(studentId: string, exerciseId: string): Promise<HintSession> {
+      const existing = await db.hintSessions.find(studentId, exerciseId);
+      if (existing) return existing;
+      return db.hintSessions.create({
+        studentId, exerciseId, currentLevel: 1,
+        attemptsAtLevel: 0, totalAttempts: 0, resolved: false,
+        hypothesisPending: true,
+      });
+    },
+  },
+
+  mistakePatterns: {
+    async record(rec: MistakePatternRecord): Promise<void> {
+      stmt.insertPattern.run(
+        rec.studentId, rec.exerciseId, rec.pattern,
+        rec.confidence ?? null, rec.source
+      );
+    },
+    async findRecent(studentId: string, limit: number) {
+      return (stmt.patternsByStudent.all(studentId, limit) as any[]).map(rowToPattern);
+    },
+    async findAllForStudent(studentId: string) {
+      return (stmt.allPatternsByStudent.all(studentId) as any[]).map(rowToPattern);
+    },
+    async findSince(since: Date) {
+      return (stmt.patternsSince.all(since.toISOString()) as any[]).map(rowToPattern);
+    },
+  },
+
+  hypotheses: {
+    async record(rec: {
+      studentId: string;
+      exerciseId: string;
+      hintLevel: number;
+      text: string;
+    }): Promise<void> {
+      stmt.insertHypothesis.run(
+        rec.studentId, rec.exerciseId, rec.hintLevel, rec.text
+      );
+    },
+    async findRecent(studentId: string, exerciseId: string, limit = 10) {
+      return (stmt.hypothesesByExercise.all(
+        studentId, exerciseId, limit
+      ) as any[]).map((row) => ({
+        hintLevel: row.hint_level,
+        text: row.text,
+        timestamp: new Date(row.recorded_at),
+      }));
+    },
+  },
+
+  telemetry: {
+    async record(ev: TelemetryEvent): Promise<void> {
+      stmt.insertTelemetry.run(
+        ev.type, ev.studentId ?? null, ev.exerciseId ?? null,
+        ev.reason ?? null, ev.latencyMs ?? null, ev.state ?? null,
+        ev.failures ?? null, ev.openedAt ?? null
+      );
+    },
+    async count({ type, since }: { type: string; since: Date }): Promise<number> {
+      const row = stmt.countTelemetryByType.get(type, since.toISOString()) as any;
+      return row?.n ?? 0;
+    },
+    async find({ type, since }: { type: string; since: Date }) {
+      return (stmt.telemetryByType.all(type, since.toISOString()) as any[]).map(rowToTelemetry);
+    },
+    async findLatest({ type }: { type: string }) {
+      const row = stmt.latestTelemetryByType.get(type) as any;
+      return row ? rowToTelemetry(row) : null;
+    },
+  },
+};

@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CodeTeach — AI Debug Tutor</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<div id="welcomeModal" class="modal-backdrop" hidden>
+  <div class="modal">
+    <div class="modal-badge">CodeTeach</div>
+    <h2 class="modal-title">This tutor won't give you the answer.</h2>
+
+    <div class="modal-body">
+      <p>
+        We could. ChatGPT and Copilot happily will. That feels good for five minutes
+        and teaches you nothing.
+      </p>
+      <p>
+        CodeTeach works differently. It'll ask questions instead of giving answers.
+        It'll make you write a one-sentence hypothesis before every hint. It'll be
+        slower, and slightly annoying on purpose.
+      </p>
+      <p>
+        Here's why: the students who sit with a hard bug and articulate what they
+        <em>think</em> is wrong are the ones who learn to debug. The ones who paste
+        the fix aren't.
+      </p>
+      <p class="modal-emphasis">
+        You'll still have to solve it. That's the deal.
+      </p>
+    </div>
+
+    <button id="welcomeAccept" class="primary modal-accept">
+      I'm in — let's debug
+    </button>
+  </div>
+</div>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark">CT</span>
+    <span class="brand-name">CodeTeach</span>
+    <span class="brand-tag">AI Debug Tutor</span>
+  </div>
+  <nav class="tabs">
+    <button class="tab active" data-tab="tutor">Tutor</button>
+    <button class="tab" data-tab="weak-spots">Weak Spots</button>
+    <button class="tab" data-tab="health">Health</button>
+  </nav>
+  <div class="user-chip">
+    <input id="studentId" type="text" value="test-student" spellcheck="false" />
+  </div>
+</header>
+
+<main>
+
+<!-- TUTOR TAB -->
+<section id="tab-tutor" class="tab-panel active">
+  <div class="tutor-layout">
+    <div class="editor-pane">
+      <div class="pane-header">
+        <label for="code">Your code</label>
+        <select id="language">
+          <option value="javascript">JavaScript</option>
+          <option value="typescript">TypeScript</option>
+          <option value="python">Python</option>
+        </select>
+      </div>
+      <textarea id="code" spellcheck="false" placeholder="Paste your code here...">const arr = [1, 2, 3];
+for (let i = 0; i < arr.length; i++) {
+  console.log(arr[i]);
+}</textarea>
+
+      <div class="pane-header">
+        <label for="errorOutput">Error output (optional)</label>
+      </div>
+      <textarea id="errorOutput" spellcheck="false" placeholder="Paste any error message here...">TypeError: Cannot read properties of undefined (reading '0')</textarea>
+
+      <div class="pane-header">
+        <label for="exerciseId">Exercise ID</label>
+      </div>
+      <input id="exerciseId" type="text" value="ex-1" spellcheck="false" />
+
+      <button id="askBtn" class="primary">Ask the Tutor for a Hint</button>
+      <button id="resetBtn" class="ghost">Reset hint ladder</button>
+    </div>
+
+    <div class="tutor-pane">
+      <div class="hint-level">
+        <div class="hint-level-label">Hint level</div>
+        <div class="hint-dots">
+          <span class="dot" data-level="1"></span>
+          <span class="dot" data-level="2"></span>
+          <span class="dot" data-level="3"></span>
+          <span class="dot" data-level="4"></span>
+        </div>
+        <div id="hintLevelText" class="hint-level-text">Vague nudge</div>
+      </div>
+
+      <div id="messages" class="messages">
+        <p class="empty-state">
+          Stuck? Ask for a hint. The tutor won't give you the answer — it'll help you find it.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- WEAK SPOTS TAB -->
+<section id="tab-weak-spots" class="tab-panel">
+  <div class="panel-wrap">
+    <h1>Your Debugging Weak Spots</h1>
+    <p class="subtitle">Patterns the tutor has noticed in your submissions. Not a grade — a map.</p>
+    <div id="weakSpotsList" class="card-list">
+      <p class="empty-state">Loading...</p>
+    </div>
+  </div>
+</section>
+
+<!-- HEALTH TAB -->
+<section id="tab-health" class="tab-panel">
+  <div class="panel-wrap">
+    <h1>Debug Tutor Health</h1>
+    <p class="subtitle">Operator view — how the tutor is behaving right now.</p>
+    <div class="admin-key-row">
+      <label for="adminKey">Admin key</label>
+      <input id="adminKey" type="text" value="change-me" spellcheck="false" />
+      <button id="refreshHealth" class="primary small">Refresh</button>
+    </div>
+    <div id="healthBody" class="health-body">
+      <p class="empty-state">Enter the admin key and press Refresh.</p>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<script src="/app.js"></script>
+</body>
+</html>
