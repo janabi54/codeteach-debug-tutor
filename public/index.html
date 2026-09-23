@@ -49,6 +49,7 @@
     <button class="tab active" data-tab="tutor">Tutor</button>
     <button class="tab" data-tab="weak-spots">Weak Spots</button>
     <button class="tab" data-tab="health">Health</button>
+    <button class="tab" data-tab="class">Class</button>
   </nav>
   <div class="user-chip">
     <input id="studentId" type="text" value="test-student" spellcheck="false" />
@@ -132,6 +133,25 @@ for (let i = 0; i < arr.length; i++) {
       <button id="refreshHealth" class="primary small">Refresh</button>
     </div>
     <div id="healthBody" class="health-body">
+      <p class="empty-state">Enter the admin key and press Refresh.</p>
+    </div>
+  </div>
+</section>
+
+
+<!-- CLASS TAB -->
+<section id="tab-class" class="tab-panel">
+  <div class="panel-wrap">
+    <h1>Class Fingerprint</h1>
+    <p class="subtitle">Aggregate view across all students. Not a grade — a teaching signal.</p>
+
+    <div class="admin-key-row">
+      <label for="adminKeyClass">Admin key</label>
+      <input id="adminKeyClass" type="text" value="change-me" spellcheck="false" />
+      <button id="refreshClass" class="primary small">Refresh</button>
+    </div>
+
+    <div id="classBody" class="health-body">
       <p class="empty-state">Enter the admin key and press Refresh.</p>
     </div>
   </div>

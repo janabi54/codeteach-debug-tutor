@@ -266,3 +266,52 @@ button.ghost:hover { background: #f0f1f3; }
 .card-pm .pm-partial { color: #d97706; font-weight: 600; }
 .card-pm .pm-incorrect { color: #dc2626; font-weight: 600; }
 .card-pm .pm-unscored { color: #7a7f88; font-weight: 600; }
+
+/* Class fingerprint tab */
+.class-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.class-table th {
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #7a7f88;
+  font-weight: 600;
+  padding: 8px 10px 8px 0;
+  border-bottom: 1px solid #e4e6eb;
+}
+.class-table td {
+  padding: 10px 10px 10px 0;
+  border-bottom: 1px solid #f0f1f3;
+  vertical-align: top;
+}
+.class-table tr:last-child td {
+  border-bottom: 0;
+}
+.class-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.class-table .pattern-name {
+  font-family: "SF Mono", Monaco, Consolas, monospace;
+  font-size: 12px;
+  color: #1a1d23;
+}
+.class-table .muted {
+  color: #7a7f88;
+  font-size: 12px;
+}
+.class-table .pm-cell {
+  font-size: 12px;
+  color: #4a4f57;
+}
+.class-table .rate {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.class-table .rate.good { color: #059669; }
+.class-table .rate.warn { color: #d97706; }
+.class-table .rate.bad { color: #dc2626; }

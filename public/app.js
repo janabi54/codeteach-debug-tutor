@@ -485,3 +485,123 @@ async function hydrateSession() {
   // Now that fields have the right values, hydrate the session
   hydrateSession();
 })();
+
+// --- Class fingerprint tab ---
+$('refreshClass').addEventListener('click', async () => {
+  const key = $('adminKeyClass').value.trim();
+  const body = $('classBody');
+  body.innerHTML = '<p class="empty-state">Loading...</p>';
+
+  try {
+    const res = await fetch('/api/admin/class-fingerprint?hours=168', {
+      headers: { 'x-admin-key': key },
+    });
+    if (!res.ok) {
+      body.innerHTML = '<p class="empty-state">Request failed: HTTP ' + res.status + '</p>';
+      return;
+    }
+    const fp = await res.json();
+    body.innerHTML = renderClassFingerprint(fp);
+  } catch (err) {
+    body.innerHTML = '<p class="empty-state">Failed: ' + escapeHtml(err.message) + '</p>';
+  }
+});
+
+function renderClassFingerprint(fp) {
+  const anomaliesHtml = fp.anomalies && fp.anomalies.length
+    ? `<div class="anomalies">
+         <h3>Teaching signals</h3>
+         <ul>${fp.anomalies.map(a => '<li>' + escapeHtml(a) + '</li>').join('')}</ul>
+       </div>`
+    : '';
+
+  const patternRows = fp.patterns.map(p => {
+    const pm = p.postMortems;
+    const pmTotal = pm.total;
+    const pmSummary = pmTotal === 0
+      ? '<span class="muted">no post-mortems</span>'
+      : `${pm.correct} correct · ${pm.partial} partial · ${pm.incorrect} incorrect${pm.unscored ? ' · ' + pm.unscored + ' saved' : ''}`;
+    return `
+      <tr>
+        <td><span class="pattern-name">${escapeHtml(p.pattern)}</span></td>
+        <td class="num">${p.occurrences}</td>
+        <td class="num">${p.students} <span class="muted">(${p.pctOfStudents}%)</span></td>
+        <td class="pm-cell">${pmSummary}</td>
+      </tr>
+    `;
+  }).join('');
+
+  const exerciseRows = fp.exercisesList.map(e => {
+    const ratePct = Math.round(e.completionRate * 100);
+    const rateClass = ratePct < 30 ? 'bad' : ratePct < 60 ? 'warn' : 'good';
+    return `
+      <tr>
+        <td><span class="pattern-name">${escapeHtml(e.exerciseId)}</span></td>
+        <td class="num">${e.students}</td>
+        <td class="num">${e.sessions}</td>
+        <td class="num"><span class="rate ${rateClass}">${ratePct}%</span></td>
+        <td>${e.topPattern ? '<span class="pattern-name">' + escapeHtml(e.topPattern) + '</span>' : '<span class="muted">—</span>'}</td>
+      </tr>
+    `;
+  }).join('');
+
+  const strugglesHtml = fp.struggles && fp.struggles.length
+    ? `<div class="section-card">
+         <h2>Concentrated struggles</h2>
+         <table class="class-table">
+           <thead><tr><th>Exercise</th><th>Pattern</th><th>Students</th><th>Occurrences</th></tr></thead>
+           <tbody>
+             ${fp.struggles.map(s => `
+               <tr>
+                 <td><span class="pattern-name">${escapeHtml(s.exerciseId)}</span></td>
+                 <td><span class="pattern-name">${escapeHtml(s.pattern)}</span></td>
+                 <td class="num">${s.students}</td>
+                 <td class="num">${s.occurrences}</td>
+               </tr>
+             `).join('')}
+           </tbody>
+         </table>
+       </div>`
+    : '';
+
+  return `
+    ${anomaliesHtml}
+
+    <div class="stat-grid">
+      <div class="stat">
+        <div class="stat-label">Students</div>
+        <div class="stat-value">${fp.students}</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Exercises</div>
+        <div class="stat-value">${fp.exercises}</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Total hints</div>
+        <div class="stat-value">${fp.totalHints}</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Window</div>
+        <div class="stat-value" style="font-size:16px;">${fp.window.hours}h</div>
+      </div>
+    </div>
+
+    <div class="section-card">
+      <h2>Patterns across the class</h2>
+      <table class="class-table">
+        <thead><tr><th>Pattern</th><th>Occurrences</th><th>Students</th><th>Post-mortems</th></tr></thead>
+        <tbody>${patternRows}</tbody>
+      </table>
+    </div>
+
+    <div class="section-card">
+      <h2>Exercises</h2>
+      <table class="class-table">
+        <thead><tr><th>Exercise</th><th>Students</th><th>Sessions</th><th>Completion</th><th>Top pattern</th></tr></thead>
+        <tbody>${exerciseRows}</tbody>
+      </table>
+    </div>
+
+    ${strugglesHtml}
+  `;
+}
