@@ -136,6 +136,10 @@ function handleHintResponse(data) {
     appendMessage({ kind: 'system', text: data.message });
     return;
   }
+  if (data.requiresStruggle) {
+    renderStruggleCard(data.prompt, data.remainingSeconds, data.attemptCount);
+    return;
+  }
   if (data.requiresHypothesis) {
     setLevel(data.hintLevel);
     renderHypothesisPrompt(data.prompt, data.hintLevel);
@@ -604,4 +608,57 @@ function renderClassFingerprint(fp) {
 
     ${strugglesHtml}
   `;
+}
+
+
+function renderStruggleCard(prompt, remainingSeconds, attemptCount) {
+  if (messagesEl.querySelector('.empty-state')) messagesEl.innerHTML = '';
+
+  const existing = messagesEl.querySelector('.msg.struggle-card');
+  if (existing) existing.remove();
+
+  const div = document.createElement('div');
+  div.className = 'msg struggle-card';
+  div.innerHTML = `
+    <div class="msg-header">Productive struggle</div>
+    <div class="struggle-prompt">${escapeHtml(prompt)}</div>
+    <div class="struggle-timer">
+      <span class="struggle-countdown" id="struggleCountdown">--:--</span>
+      <span class="struggle-label">of focused time</span>
+    </div>
+    <div class="struggle-hint">
+      You've made ${attemptCount || 0} attempt${attemptCount === 1 ? '' : 's'} so far. Keep going —
+      a hint will be available when the timer runs out.
+    </div>
+  `;
+  messagesEl.appendChild(div);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+
+  let secondsLeft = Math.max(0, remainingSeconds | 0);
+  const countdownEl = div.querySelector('#struggleCountdown');
+
+  function render() {
+    const m = Math.floor(secondsLeft / 60);
+    const s = secondsLeft % 60;
+    countdownEl.textContent = m + ':' + String(s).padStart(2, '0');
+  }
+  render();
+
+  if (window.__struggleInterval) {
+    clearInterval(window.__struggleInterval);
+  }
+
+  window.__struggleInterval = setInterval(() => {
+    secondsLeft -= 1;
+    if (secondsLeft <= 0) {
+      clearInterval(window.__struggleInterval);
+      window.__struggleInterval = null;
+      div.innerHTML = `
+        <div class="msg-header">Productive struggle</div>
+        <div class="struggle-prompt">Nice work putting in the time. Ask for a hint whenever you're ready.</div>
+      `;
+      return;
+    }
+    render();
+  }, 1000);
 }
