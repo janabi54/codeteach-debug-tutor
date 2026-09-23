@@ -2,7 +2,9 @@ import { db } from '../db.js';
 const REQUIRED_ATTEMPTS_PER_LEVEL = 2;
 
 export class HintSessionManager {
-  async getOrCreate(s: string, e: string) { return db.hintSessions.getOrCreate(s, e); }
+  async getOrCreate(s: string, e: string, options?: { struggleMinutes?: number }) {
+    return db.hintSessions.getOrCreate(s, e, options);
+  }
   async recordAttempt(s: string, e: string, passed: boolean) {
     const session = await this.getOrCreate(s, e);
     if (passed) {

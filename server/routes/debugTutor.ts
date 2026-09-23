@@ -2,6 +2,7 @@ import express from 'express';
 import { getTutorHint } from '../debugTutor/tutorService.js';
 import { scorePostMortem } from '../debugTutor/postMortem.js';
 import { HintSessionManager } from '../debugTutor/hintSession.js';
+import { getStruggleMinutes } from '../debugTutor/exerciseConfig.js';
 import { getWeakSpots } from '../debugTutor/weakSpots.js';
 import { db } from '../db.js';
 
@@ -14,7 +15,9 @@ router.post('/hint', async (req, res) => {
     exerciseContext, passed, hypothesis, postMortem,
   } = req.body;
 
-  const session = await hintSessions.getOrCreate(studentId, exerciseId);
+  const session = await hintSessions.getOrCreate(studentId, exerciseId, {
+    struggleMinutes: getStruggleMinutes(exerciseId),
+  });
 
   // ─── Post-mortem submission path ───
   if (postMortem) {
@@ -53,6 +56,38 @@ router.post('/hint', async (req, res) => {
       sessionComplete: true,
       message: 'This session is finished. Start a new exercise to keep going.',
     });
+  }
+
+  // ─── Struggle gate (only before the very first hint) ───
+  if (session.totalAttempts === 0 && session.struggleMinutes > 0) {
+    const elapsedMinutes = (Date.now() - session.createdAt.getTime()) / 60000;
+    const timerExpired = elapsedMinutes >= session.struggleMinutes;
+    const hasPriorSubmission = session.codeSubmissions >= 1;
+    const hasCode = typeof code === 'string' && code.trim().length > 0;
+
+    if (!timerExpired || !hasPriorSubmission) {
+      // Count this request as a submission for future requests, if it carried code.
+      if (hasCode && !hasPriorSubmission) {
+        await db.hintSessions.update(session.id, {
+          codeSubmissions: session.codeSubmissions + 1,
+        });
+      }
+
+      const remainingSeconds = Math.max(
+        0,
+        Math.ceil((session.struggleMinutes - elapsedMinutes) * 60)
+      );
+
+      return res.json({
+        requiresStruggle: true,
+        remainingSeconds,
+        struggleMinutes: session.struggleMinutes,
+        attemptCount: session.codeSubmissions,
+        hintLevel: 1,
+        prompt:
+          "Give it a bit more time. You'll get more out of this if you try on your own first.",
+      });
+    }
   }
 
   // ─── Passing: mark resolved, ask for post-mortem ───

@@ -7,6 +7,19 @@ import { randomUUID } from 'node:crypto';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+/**
+ * SQLite stores datetime('now') as 'YYYY-MM-DD HH:MM:SS' in UTC with no
+ * timezone marker. `new Date()` treats that as local time. Append 'Z' so
+ * the string parses as UTC and timestamps round-trip correctly.
+ */
+function parseSqliteTimestamp(raw: string | null | undefined): Date {
+  if (!raw) return new Date();
+  if (raw.endsWith('Z') || /[+-]\d{2}:?\d{2}$/.test(raw)) {
+    return new Date(raw);
+  }
+  return new Date(raw.replace(' ', 'T') + 'Z');
+}
+
 const DB_PATH = process.env.DB_PATH ?? join(__dirname, '..', 'codeteach.db');
 
 export const sqlite = new Database(DB_PATH);
@@ -38,6 +51,22 @@ if (!hasState) {
   console.log('[db] migrated: added hint_sessions.state');
 }
 
+const hasStruggle = sessionColumns.some((c) => c.name === 'struggle_minutes');
+if (!hasStruggle) {
+  sqlite.exec(
+    'ALTER TABLE hint_sessions ADD COLUMN struggle_minutes INTEGER NOT NULL DEFAULT 0'
+  );
+  console.log('[db] migrated: added hint_sessions.struggle_minutes');
+}
+
+const hasCodeSubs = sessionColumns.some((c) => c.name === 'code_submissions');
+if (!hasCodeSubs) {
+  sqlite.exec(
+    'ALTER TABLE hint_sessions ADD COLUMN code_submissions INTEGER NOT NULL DEFAULT 0'
+  );
+  console.log('[db] migrated: added hint_sessions.code_submissions');
+}
+
 
 interface HintSession {
   id: string;
@@ -49,6 +78,9 @@ interface HintSession {
   resolved: boolean;
   hypothesisPending: boolean;
   state: 'open' | 'resolved' | 'complete';
+  struggleMinutes: number;
+  codeSubmissions: number;
+  createdAt: Date;
 }
 
 interface MistakePatternRecord {
@@ -83,6 +115,9 @@ function rowToSession(row: any): HintSession {
     resolved: row.resolved === 1,
     hypothesisPending: row.hypothesis_pending === 1,
     state: row.state ?? 'open',
+    struggleMinutes: row.struggle_minutes ?? 0,
+    codeSubmissions: row.code_submissions ?? 0,
+    createdAt: parseSqliteTimestamp(row.created_at),
   };
 }
 
@@ -93,7 +128,7 @@ function rowToPattern(row: any) {
     pattern: row.pattern,
     confidence: row.confidence ?? undefined,
     source: row.source,
-    timestamp: new Date(row.recorded_at),
+    timestamp: parseSqliteTimestamp(row.recorded_at),
   };
 }
 
@@ -107,7 +142,7 @@ function rowToTelemetry(row: any): TelemetryEvent {
     state: row.state ?? undefined,
     failures: row.failures ?? undefined,
     openedAt: row.opened_at ?? undefined,
-    timestamp: new Date(row.recorded_at),
+    timestamp: parseSqliteTimestamp(row.recorded_at),
   };
 }
 
@@ -115,10 +150,10 @@ const stmt = {
   findSession: sqlite.prepare('SELECT * FROM hint_sessions WHERE student_id = ? AND exercise_id = ?'),
   findSessionById: sqlite.prepare('SELECT * FROM hint_sessions WHERE id = ?'),
   insertSession: sqlite.prepare(
-    'INSERT INTO hint_sessions (id, student_id, exercise_id, current_level, attempts_at_level, total_attempts, resolved, hypothesis_pending, state) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO hint_sessions (id, student_id, exercise_id, current_level, attempts_at_level, total_attempts, resolved, hypothesis_pending, state, struggle_minutes, code_submissions) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
   ),
   updateSession: sqlite.prepare(
-    "UPDATE hint_sessions SET current_level = ?, attempts_at_level = ?, total_attempts = ?, resolved = ?, hypothesis_pending = ?, state = ?, updated_at = datetime('now') WHERE id = ?"
+    "UPDATE hint_sessions SET current_level = ?, attempts_at_level = ?, total_attempts = ?, resolved = ?, hypothesis_pending = ?, state = ?, struggle_minutes = ?, code_submissions = ?, updated_at = datetime('now') WHERE id = ?"
   ),
   insertPattern: sqlite.prepare(
     'INSERT INTO mistake_patterns (student_id, exercise_id, pattern, confidence, source) VALUES (?, ?, ?, ?, ?)'
@@ -173,14 +208,21 @@ export const db = {
     async create(data: Omit<HintSession, 'id'>): Promise<HintSession> {
       const id = randomUUID();
       const state = data.state ?? 'open';
+      const struggleMinutes = data.struggleMinutes ?? 0;
+      const codeSubmissions = data.codeSubmissions ?? 0;
       stmt.insertSession.run(
         id, data.studentId, data.exerciseId,
         data.currentLevel, data.attemptsAtLevel, data.totalAttempts,
         data.resolved ? 1 : 0,
         data.hypothesisPending ? 1 : 0,
-        state
+        state,
+        struggleMinutes,
+        codeSubmissions
       );
-      return { id, ...data, state };
+      return {
+        id, ...data, state, struggleMinutes, codeSubmissions,
+        createdAt: data.createdAt ?? new Date(),
+      };
     },
     async update(id: string, patch: Partial<HintSession>): Promise<void> {
       const current = stmt.findSessionById.get(id) as any;
@@ -191,6 +233,8 @@ export const db = {
         merged.resolved ? 1 : 0,
         merged.hypothesisPending ? 1 : 0,
         merged.state,
+        merged.struggleMinutes,
+        merged.codeSubmissions,
         id
       );
     },
@@ -199,13 +243,20 @@ export const db = {
       if (!current) return;
       await db.hintSessions.update(current.id, patch);
     },
-    async getOrCreate(studentId: string, exerciseId: string): Promise<HintSession> {
+    async getOrCreate(
+      studentId: string,
+      exerciseId: string,
+      options?: { struggleMinutes?: number }
+    ): Promise<HintSession> {
       const existing = await db.hintSessions.find(studentId, exerciseId);
       if (existing) return existing;
       return db.hintSessions.create({
         studentId, exerciseId, currentLevel: 1,
         attemptsAtLevel: 0, totalAttempts: 0, resolved: false,
-        hypothesisPending: true,
+        hypothesisPending: true, state: 'open',
+        struggleMinutes: options?.struggleMinutes ?? 0,
+        codeSubmissions: 0,
+        createdAt: new Date(),
       });
     },
   },
@@ -245,7 +296,7 @@ export const db = {
       ) as any[]).map((row) => ({
         hintLevel: row.hint_level,
         text: row.text,
-        timestamp: new Date(row.recorded_at),
+        timestamp: parseSqliteTimestamp(row.recorded_at),
       }));
     },
   },
@@ -272,7 +323,7 @@ export const db = {
         text: row.text,
         score: row.score,
         feedback: row.feedback,
-        timestamp: new Date(row.recorded_at),
+        timestamp: parseSqliteTimestamp(row.recorded_at),
       };
     },
     async findAllForStudent(studentId: string) {
@@ -283,7 +334,7 @@ export const db = {
         text: row.text,
         score: row.score,
         feedback: row.feedback,
-        timestamp: new Date(row.recorded_at),
+        timestamp: parseSqliteTimestamp(row.recorded_at),
       }));
     },
     async statsByStudent(studentId: string): Promise<Record<string, {
