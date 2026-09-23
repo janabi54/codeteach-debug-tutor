@@ -30,6 +30,14 @@ if (!hasHypothesisPending) {
   console.log('[db] migrated: added hint_sessions.hypothesis_pending');
 }
 
+const hasState = sessionColumns.some((c) => c.name === 'state');
+if (!hasState) {
+  sqlite.exec(
+    "ALTER TABLE hint_sessions ADD COLUMN state TEXT NOT NULL DEFAULT 'open'"
+  );
+  console.log('[db] migrated: added hint_sessions.state');
+}
+
 
 interface HintSession {
   id: string;
@@ -40,6 +48,7 @@ interface HintSession {
   totalAttempts: number;
   resolved: boolean;
   hypothesisPending: boolean;
+  state: 'open' | 'resolved' | 'complete';
 }
 
 interface MistakePatternRecord {
@@ -73,6 +82,7 @@ function rowToSession(row: any): HintSession {
     totalAttempts: row.total_attempts,
     resolved: row.resolved === 1,
     hypothesisPending: row.hypothesis_pending === 1,
+    state: row.state ?? 'open',
   };
 }
 
@@ -105,10 +115,10 @@ const stmt = {
   findSession: sqlite.prepare('SELECT * FROM hint_sessions WHERE student_id = ? AND exercise_id = ?'),
   findSessionById: sqlite.prepare('SELECT * FROM hint_sessions WHERE id = ?'),
   insertSession: sqlite.prepare(
-    'INSERT INTO hint_sessions (id, student_id, exercise_id, current_level, attempts_at_level, total_attempts, resolved, hypothesis_pending) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO hint_sessions (id, student_id, exercise_id, current_level, attempts_at_level, total_attempts, resolved, hypothesis_pending, state) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
   ),
   updateSession: sqlite.prepare(
-    "UPDATE hint_sessions SET current_level = ?, attempts_at_level = ?, total_attempts = ?, resolved = ?, hypothesis_pending = ?, updated_at = datetime('now') WHERE id = ?"
+    "UPDATE hint_sessions SET current_level = ?, attempts_at_level = ?, total_attempts = ?, resolved = ?, hypothesis_pending = ?, state = ?, updated_at = datetime('now') WHERE id = ?"
   ),
   insertPattern: sqlite.prepare(
     'INSERT INTO mistake_patterns (student_id, exercise_id, pattern, confidence, source) VALUES (?, ?, ?, ?, ?)'
@@ -140,6 +150,18 @@ const stmt = {
   hypothesesByExercise: sqlite.prepare(
     'SELECT * FROM hypotheses WHERE student_id = ? AND exercise_id = ? ORDER BY recorded_at DESC LIMIT ?'
   ),
+  insertPostMortem: sqlite.prepare(
+    'INSERT INTO post_mortems (session_id, student_id, exercise_id, pattern, text, score, feedback) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ),
+  postMortemBySession: sqlite.prepare(
+    'SELECT * FROM post_mortems WHERE session_id = ? ORDER BY recorded_at DESC LIMIT 1'
+  ),
+  postMortemsByStudent: sqlite.prepare(
+    'SELECT * FROM post_mortems WHERE student_id = ? ORDER BY recorded_at DESC'
+  ),
+  postMortemStatsByStudent: sqlite.prepare(
+    "SELECT pattern, COALESCE(score, 'unscored') AS score, COUNT(*) AS n FROM post_mortems WHERE student_id = ? AND pattern IS NOT NULL GROUP BY pattern, score"
+  ),
 };
 
 export const db = {
@@ -150,13 +172,15 @@ export const db = {
     },
     async create(data: Omit<HintSession, 'id'>): Promise<HintSession> {
       const id = randomUUID();
+      const state = data.state ?? 'open';
       stmt.insertSession.run(
         id, data.studentId, data.exerciseId,
         data.currentLevel, data.attemptsAtLevel, data.totalAttempts,
         data.resolved ? 1 : 0,
-        data.hypothesisPending ? 1 : 0
+        data.hypothesisPending ? 1 : 0,
+        state
       );
-      return { id, ...data };
+      return { id, ...data, state };
     },
     async update(id: string, patch: Partial<HintSession>): Promise<void> {
       const current = stmt.findSessionById.get(id) as any;
@@ -166,6 +190,7 @@ export const db = {
         merged.currentLevel, merged.attemptsAtLevel, merged.totalAttempts,
         merged.resolved ? 1 : 0,
         merged.hypothesisPending ? 1 : 0,
+        merged.state,
         id
       );
     },
@@ -222,6 +247,77 @@ export const db = {
         text: row.text,
         timestamp: new Date(row.recorded_at),
       }));
+    },
+  },
+
+  postMortems: {
+    async record(rec: {
+      sessionId: string;
+      studentId: string;
+      exerciseId: string;
+      pattern: string | null;
+      text: string;
+      score: string;
+      feedback: string;
+    }): Promise<void> {
+      stmt.insertPostMortem.run(
+        rec.sessionId, rec.studentId, rec.exerciseId, rec.pattern,
+        rec.text, rec.score, rec.feedback
+      );
+    },
+    async findBySession(sessionId: string) {
+      const row = stmt.postMortemBySession.get(sessionId) as any;
+      if (!row) return null;
+      return {
+        text: row.text,
+        score: row.score,
+        feedback: row.feedback,
+        timestamp: new Date(row.recorded_at),
+      };
+    },
+    async findAllForStudent(studentId: string) {
+      return (stmt.postMortemsByStudent.all(studentId) as any[]).map((row) => ({
+        sessionId: row.session_id,
+        exerciseId: row.exercise_id,
+        pattern: row.pattern,
+        text: row.text,
+        score: row.score,
+        feedback: row.feedback,
+        timestamp: new Date(row.recorded_at),
+      }));
+    },
+    async statsByStudent(studentId: string): Promise<Record<string, {
+      correct: number;
+      partial: number;
+      incorrect: number;
+      unscored: number;
+      total: number;
+    }>> {
+      const rows = stmt.postMortemStatsByStudent.all(studentId) as Array<{
+        pattern: string;
+        score: string;
+        n: number;
+      }>;
+      const out: Record<string, {
+        correct: number;
+        partial: number;
+        incorrect: number;
+        unscored: number;
+        total: number;
+      }> = {};
+      for (const row of rows) {
+        if (!row.pattern) continue;
+        if (!out[row.pattern]) {
+          out[row.pattern] = { correct: 0, partial: 0, incorrect: 0, unscored: 0, total: 0 };
+        }
+        const bucket = out[row.pattern];
+        if (row.score === 'correct') bucket.correct += row.n;
+        else if (row.score === 'partial') bucket.partial += row.n;
+        else if (row.score === 'incorrect') bucket.incorrect += row.n;
+        else bucket.unscored += row.n;
+        bucket.total += row.n;
+      }
+      return out;
     },
   },
 

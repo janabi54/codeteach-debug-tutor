@@ -27,7 +27,7 @@ function setLevel(level) {
   hintLevelText.textContent = LEVEL_LABELS[level - 1] || LEVEL_LABELS[0];
 }
 
-function appendMessage({ kind, text, pattern, level, reason }) {
+function appendMessage({ kind, text, pattern, level, reason, label }) {
   if (messagesEl.querySelector('.empty-state')) messagesEl.innerHTML = '';
   const div = document.createElement('div');
   div.className = 'msg ' + kind + (kind === 'tutor' && reason ? ' fallback' : '');
@@ -41,7 +41,7 @@ function appendMessage({ kind, text, pattern, level, reason }) {
   } else if (kind === 'system') {
     header = '<div class="msg-header">Tutor</div>';
   } else if (kind === 'student') {
-    header = '<div class="msg-header">Your hypothesis</div>';
+    header = '<div class="msg-header">' + escapeHtml(label || 'Your hypothesis') + '</div>';
   }
   div.innerHTML = header + '<div>' + escapeHtml(text) + '</div>';
   messagesEl.appendChild(div);
@@ -124,6 +124,18 @@ function handleHintResponse(data) {
     appendMessage({ kind: 'system', text: data.message });
     return;
   }
+  if (data.requiresPostMortem) {
+    renderPostMortemPrompt(data.prompt);
+    return;
+  }
+  if (data.postMortemComplete) {
+    renderPostMortemResult(data);
+    return;
+  }
+  if (data.sessionComplete) {
+    appendMessage({ kind: 'system', text: data.message });
+    return;
+  }
   if (data.requiresHypothesis) {
     setLevel(data.hintLevel);
     renderHypothesisPrompt(data.prompt, data.hintLevel);
@@ -154,6 +166,39 @@ $('askBtn').addEventListener('click', async () => {
   }
 });
 
+$('fixedBtn').addEventListener('click', async () => {
+  const btn = $('fixedBtn');
+  btn.disabled = true;
+  btn.textContent = 'Nice!';
+  try {
+    const res = await fetch('/api/debug-tutor/hint', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        studentId: $('studentId').value.trim() || 'test-student',
+        exerciseId: $('exerciseId').value.trim() || 'ex-1',
+        code: $('code').value,
+        language: $('language').value,
+        errorOutput: $('errorOutput').value,
+        exerciseContext: {
+          title: 'Sum an array',
+          description: 'Iterate over an array and sum its elements.',
+          learningObjectives: ['loops', 'array indexing'],
+          expectedConcepts: ['for loop', 'array.length'],
+        },
+        passed: true,
+      }),
+    });
+    const data = await res.json();
+    handleHintResponse(data);
+  } catch (err) {
+    appendMessage({ kind: 'system', text: 'Request failed: ' + err.message });
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'I fixed it';
+  }
+});
+
 $('resetBtn').addEventListener('click', async () => {
   const sid = $('studentId').value.trim() || 'test-student';
   const eid = $('exerciseId').value.trim() || 'ex-1';
@@ -172,6 +217,17 @@ $('resetBtn').addEventListener('click', async () => {
 });
 
 // --- Weak spots ---
+function renderPostMortemStats(pm) {
+  if (!pm) return '';
+  const parts = [];
+  if (pm.correct > 0) parts.push(`<span class="pm-correct">${pm.correct} correct</span>`);
+  if (pm.partial > 0) parts.push(`<span class="pm-partial">${pm.partial} partial</span>`);
+  if (pm.incorrect > 0) parts.push(`<span class="pm-incorrect">${pm.incorrect} incorrect</span>`);
+  if (pm.unscored > 0) parts.push(`<span class="pm-unscored">${pm.unscored} saved</span>`);
+  if (parts.length === 0) return '';
+  return `<div class="card-pm">Post-mortem accuracy: <strong>${pm.total}</strong> scored · ${parts.join(' · ')}</div>`;
+}
+
 async function loadWeakSpots() {
   const sid = $('studentId').value.trim() || 'test-student';
   const list = $('weakSpotsList');
@@ -194,6 +250,7 @@ async function loadWeakSpots() {
         </div>
         <div class="card-bar"><div class="card-bar-fill" style="width:${s.percentage}%"></div></div>
         <div class="card-tip">${escapeHtml(s.tip)}</div>
+        ${renderPostMortemStats(s.postMortems)}
       </div>
     `).join('');
   } catch (err) {
@@ -294,4 +351,137 @@ setLevel(1);
     try { localStorage.setItem(KEY, '1'); } catch (e) {}
     modal.hidden = true;
   });
+})();
+
+// --- Post-mortem ---
+function renderPostMortemPrompt(prompt) {
+  if (messagesEl.querySelector('.empty-state')) messagesEl.innerHTML = '';
+  const div = document.createElement('div');
+  div.className = 'msg post-mortem-gate';
+  div.innerHTML = `
+    <div class="msg-header">Post-mortem</div>
+    <div class="post-mortem-prompt">${escapeHtml(prompt)}</div>
+    <textarea class="post-mortem-input" placeholder="In my own words, the bug happened because..." rows="3"></textarea>
+    <button class="post-mortem-submit primary small">Submit explanation</button>
+  `;
+  messagesEl.appendChild(div);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+
+  const input = div.querySelector('.post-mortem-input');
+  const btn = div.querySelector('.post-mortem-submit');
+  input.focus();
+
+  btn.addEventListener('click', async () => {
+    const text = input.value.trim();
+    if (text.length < 10) {
+      input.classList.add('shake');
+      setTimeout(() => input.classList.remove('shake'), 400);
+      return;
+    }
+    div.outerHTML = '';
+    appendMessage({ kind: 'student', text, label: 'Your explanation' });
+
+    btn.disabled = true;
+    try {
+      const res = await fetch('/api/debug-tutor/hint', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          studentId: $('studentId').value.trim() || 'test-student',
+          exerciseId: $('exerciseId').value.trim() || 'ex-1',
+          code: $('code').value,
+          language: $('language').value,
+          errorOutput: $('errorOutput').value,
+          exerciseContext: {
+            title: 'Sum an array',
+            description: 'Iterate over an array and sum its elements.',
+            learningObjectives: ['loops', 'array indexing'],
+            expectedConcepts: ['for loop', 'array.length'],
+          },
+          postMortem: text,
+        }),
+      });
+      const data = await res.json();
+      handleHintResponse(data);
+    } catch (err) {
+      appendMessage({ kind: 'system', text: 'Request failed: ' + err.message });
+    }
+  });
+}
+
+function renderPostMortemResult(data) {
+  if (messagesEl.querySelector('.empty-state')) messagesEl.innerHTML = '';
+  const div = document.createElement('div');
+  const scoreClass = 'score-' + (data.score || 'unscored');
+  const scoreLabel = {
+    correct: 'Correct',
+    partial: 'Partial',
+    incorrect: 'Off the mark',
+    unscored: 'Saved',
+  }[data.score] || 'Saved';
+
+  div.className = 'msg post-mortem-result ' + scoreClass;
+  div.innerHTML = `
+    <div class="msg-header">
+      Post-mortem scored <span class="score-badge ${scoreClass}">${scoreLabel}</span>
+    </div>
+    <div>${escapeHtml(data.feedback)}</div>
+  `;
+  messagesEl.appendChild(div);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+// --- Session state hydration on page load ---
+async function hydrateSession() {
+  const studentId = $('studentId').value.trim() || 'test-student';
+  const exerciseId = $('exerciseId').value.trim() || 'ex-1';
+  try {
+    const res = await fetch(
+      '/api/debug-tutor/session/' +
+      encodeURIComponent(studentId) + '/' +
+      encodeURIComponent(exerciseId)
+    );
+    const data = await res.json();
+    if (data.state === 'resolved') {
+      renderPostMortemPrompt(
+        "You fixed this one earlier. Before we move on: in your own words, why did the bug happen?"
+      );
+    } else if (data.state === 'complete') {
+      appendMessage({
+        kind: 'system',
+        text: 'This session is complete. Start a new exercise to keep debugging.',
+      });
+    } else {
+      setLevel(data.currentLevel || 1);
+    }
+  } catch (err) {
+    // silent — fall through to placeholder
+  }
+}
+
+
+// --- Persist studentId and exerciseId across refreshes ---
+(function persistIds() {
+  const sidEl = $('studentId');
+  const eidEl = $('exerciseId');
+  if (!sidEl || !eidEl) return;
+
+  // Restore from localStorage on load
+  try {
+    const savedSid = localStorage.getItem('codeteach.studentId');
+    const savedEid = localStorage.getItem('codeteach.exerciseId');
+    if (savedSid) sidEl.value = savedSid;
+    if (savedEid) eidEl.value = savedEid;
+  } catch (e) {}
+
+  // Save on change
+  sidEl.addEventListener('input', () => {
+    try { localStorage.setItem('codeteach.studentId', sidEl.value); } catch (e) {}
+  });
+  eidEl.addEventListener('input', () => {
+    try { localStorage.setItem('codeteach.exerciseId', eidEl.value); } catch (e) {}
+  });
+
+  // Now that fields have the right values, hydrate the session
+  hydrateSession();
 })();

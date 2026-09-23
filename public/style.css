@@ -224,3 +224,45 @@ button.ghost:hover { background: #f0f1f3; }
   padding: 12px 16px;
   font-size: 15px;
 }
+
+/* Post-mortem layout fix */
+.msg.post-mortem-gate {
+  display: block;
+}
+.msg.post-mortem-gate .post-mortem-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+}
+.msg.post-mortem-gate .post-mortem-submit {
+  display: block;
+  margin-top: 6px;
+}
+
+/* Post-mortem stats on weak-spots cards */
+.card-pm {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #f0f1f3;
+  font-size: 12px;
+  color: #4a4f57;
+}
+.card-pm strong { color: #1a1d23; }
+.card-pm .pm-correct { color: #059669; font-weight: 600; }
+.card-pm .pm-partial { color: #d97706; font-weight: 600; }
+.card-pm .pm-incorrect { color: #dc2626; font-weight: 600; }
+.card-pm .pm-unscored { color: #7a7f88; font-weight: 600; }
+
+/* Post-mortem stats on weak-spots cards */
+.card-pm {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #f0f1f3;
+  font-size: 12px;
+  color: #4a4f57;
+}
+.card-pm strong { color: #1a1d23; }
+.card-pm .pm-correct { color: #059669; font-weight: 600; }
+.card-pm .pm-partial { color: #d97706; font-weight: 600; }
+.card-pm .pm-incorrect { color: #dc2626; font-weight: 600; }
+.card-pm .pm-unscored { color: #7a7f88; font-weight: 600; }

@@ -57,3 +57,18 @@ CREATE TABLE IF NOT EXISTS hypotheses (
 
 CREATE INDEX IF NOT EXISTS idx_hypotheses_student_exercise
   ON hypotheses(student_id, exercise_id, recorded_at DESC);
+
+CREATE TABLE IF NOT EXISTS post_mortems (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL,
+  student_id TEXT NOT NULL,
+  exercise_id TEXT NOT NULL,
+  pattern TEXT,
+  text TEXT NOT NULL,
+  score TEXT,
+  feedback TEXT,
+  recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_post_mortems_student
+  ON post_mortems(student_id, recorded_at DESC);

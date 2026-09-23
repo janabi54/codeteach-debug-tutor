@@ -1,5 +1,6 @@
 import express from 'express';
 import { getTutorHint } from '../debugTutor/tutorService.js';
+import { scorePostMortem } from '../debugTutor/postMortem.js';
 import { HintSessionManager } from '../debugTutor/hintSession.js';
 import { getWeakSpots } from '../debugTutor/weakSpots.js';
 import { db } from '../db.js';
@@ -10,34 +11,68 @@ const hintSessions = new HintSessionManager();
 router.post('/hint', async (req, res) => {
   const {
     studentId, exerciseId, code, language, errorOutput,
-    exerciseContext, passed, hypothesis,
+    exerciseContext, passed, hypothesis, postMortem,
   } = req.body;
 
   const session = await hintSessions.getOrCreate(studentId, exerciseId);
 
-  console.log('[debug] hint request:', JSON.stringify({
-    studentId, exerciseId,
-    language,
-    codeLength: code?.length,
-    codePreview: typeof code === 'string' ? code.slice(0, 80) : code,
-    errorLength: errorOutput?.length,
-    errorPreview: typeof errorOutput === 'string' ? errorOutput.slice(0, 80) : errorOutput,
-    hasHypothesis: !!hypothesis,
-    hypothesisPreview: hypothesis ? String(hypothesis).slice(0, 60) : null,
-  }));
+  // ─── Post-mortem submission path ───
+  if (postMortem) {
+    if (session.state !== 'resolved') {
+      return res.status(400).json({
+        error: 'No pending post-mortem for this session.',
+      });
+    }
+    const recent = await db.mistakePatterns.findRecent(studentId, 1);
+    const pattern = recent[0]?.pattern ?? null;
+    const result = await scorePostMortem(String(postMortem), pattern);
 
-  const attempt = await hintSessions.recordAttempt(studentId, exerciseId, !!passed);
-  if (attempt.resolved) {
-    return res.json({ resolved: true, message: 'Nice — you got it!' });
+    await db.postMortems.record({
+      sessionId: session.id,
+      studentId,
+      exerciseId,
+      pattern,
+      text: String(postMortem).trim(),
+      score: result.score,
+      feedback: result.feedback,
+    });
+
+    await db.hintSessions.update(session.id, { state: 'complete' });
+
+    return res.json({
+      postMortemComplete: true,
+      score: result.score,
+      feedback: result.feedback,
+      scoredBy: result.scoredBy,
+    });
   }
 
-  // Gate: every hint request requires a fresh hypothesis.
+  // ─── Session already complete: refuse further hints ───
+  if (session.state === 'complete') {
+    return res.json({
+      sessionComplete: true,
+      message: 'This session is finished. Start a new exercise to keep going.',
+    });
+  }
+
+  // ─── Passing: mark resolved, ask for post-mortem ───
+  const attempt = await hintSessions.recordAttempt(studentId, exerciseId, !!passed);
+  if (attempt.resolved) {
+    await db.hintSessions.update(session.id, { state: 'resolved' });
+    return res.json({
+      requiresPostMortem: true,
+      prompt:
+        "Nice — that one's fixed. Before we move on: in your own words, why did the bug happen? One or two sentences is fine.",
+    });
+  }
+
+  // ─── Hypothesis gate ───
   if (session.hypothesisPending) {
     if (!hypothesis || String(hypothesis).trim().length < 10) {
       return res.json({
         requiresHypothesis: true,
         prompt:
-          'Before I give you a hint, tell me in one sentence what you think the bug is. Start with: \"I think the bug is because...\"',
+          'Before I give you a hint, tell me in one sentence what you think the bug is. Start with: "I think the bug is because..."',
         hintLevel: session.currentLevel,
       });
     }
@@ -51,6 +86,7 @@ router.post('/hint', async (req, res) => {
     await db.hintSessions.update(session.id, { hypothesisPending: false });
   }
 
+  // ─── Serve the hint ───
   const started = Date.now();
   const hint = await getTutorHint({
     studentId, exerciseId, code, language, errorOutput, exerciseContext,
@@ -66,7 +102,6 @@ router.post('/hint', async (req, res) => {
     timestamp: new Date(),
   });
 
-  // Re-arm the gate for the NEXT hint request.
   await db.hintSessions.update(session.id, { hypothesisPending: true });
 
   res.json(hint);
@@ -74,6 +109,19 @@ router.post('/hint', async (req, res) => {
 
 router.get('/weak-spots/:studentId', async (req, res) => {
   res.json(await getWeakSpots(req.params.studentId));
+});
+
+router.get('/session/:studentId/:exerciseId', async (req, res) => {
+  const { studentId, exerciseId } = req.params;
+  const session = await db.hintSessions.find(studentId, exerciseId);
+  if (!session) {
+    return res.json({ state: 'open', currentLevel: 1, hypothesisPending: true });
+  }
+  res.json({
+    state: session.state,
+    currentLevel: session.currentLevel,
+    hypothesisPending: session.hypothesisPending,
+  });
 });
 
 export default router;
