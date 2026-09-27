@@ -216,3 +216,10 @@ Struggle timer. Lock level 1 for N minutes of independent attempts before a hint
 None of these are needed to make the current tool work. They're needed to make it interesting enough that a classroom would actually adopt it.
 
 The repo is here: github.com/janabi54/codeteach-debug-tutor. If you're building something similar, or if you teach and want to try it, or if you just want to argue with the premise — I'd like to hear from you.
+---
+
+# Building the parts of an AI tutor that don't fit in a demo
+
+*(Follow-up, published on [dev.to](URL_OF_NEW_POST).)*
+
+[paste the body of the new post here — without the front matter]
