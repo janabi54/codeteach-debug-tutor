@@ -58,7 +58,7 @@ function escapeHtml(s) {
 
 async function callHintApi(hypothesis) {
   const payload = {
-    studentId: currentUser?.id || 'unknown',
+    studentId: $('studentId').value.trim() || 'test-student',
     exerciseId: $('exerciseId').value.trim() || 'ex-1',
     code: $('code').value,
     language: $('language').value,
@@ -179,7 +179,7 @@ $('fixedBtn').addEventListener('click', async () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        studentId: currentUser?.id || 'unknown',
+        studentId: $('studentId').value.trim() || 'test-student',
         exerciseId: $('exerciseId').value.trim() || 'ex-1',
         code: $('code').value,
         language: $('language').value,
@@ -204,7 +204,7 @@ $('fixedBtn').addEventListener('click', async () => {
 });
 
 $('resetBtn').addEventListener('click', async () => {
-  const sid = currentUser?.id || 'unknown';
+  const sid = $('studentId').value.trim() || 'test-student';
   const eid = $('exerciseId').value.trim() || 'ex-1';
   await fetch('/api/debug-tutor/hint', {
     method: 'POST',
@@ -233,7 +233,7 @@ function renderPostMortemStats(pm) {
 }
 
 async function loadWeakSpots() {
-  const sid = currentUser?.id || 'unknown';
+  const sid = $('studentId').value.trim() || 'test-student';
   const list = $('weakSpotsList');
   list.innerHTML = '<p class="empty-state">Loading...</p>';
   try {
@@ -391,7 +391,7 @@ function renderPostMortemPrompt(prompt) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          studentId: currentUser?.id || 'unknown',
+          studentId: $('studentId').value.trim() || 'test-student',
           exerciseId: $('exerciseId').value.trim() || 'ex-1',
           code: $('code').value,
           language: $('language').value,
@@ -437,7 +437,7 @@ function renderPostMortemResult(data) {
 
 // --- Session state hydration on page load ---
 async function hydrateSession() {
-  const studentId = currentUser?.id || 'unknown';
+  const studentId = $('studentId').value.trim() || 'test-student';
   const exerciseId = $('exerciseId').value.trim() || 'ex-1';
   try {
     const res = await fetch(
@@ -464,7 +464,31 @@ async function hydrateSession() {
 }
 
 
-// (persistIds removed — identity comes from session)
+// --- Persist studentId and exerciseId across refreshes ---
+(function persistIds() {
+  const sidEl = $('studentId');
+  const eidEl = $('exerciseId');
+  if (!sidEl || !eidEl) return;
+
+  // Restore from localStorage on load
+  try {
+    const savedSid = localStorage.getItem('codeteach.studentId');
+    const savedEid = localStorage.getItem('codeteach.exerciseId');
+    if (savedSid) sidEl.value = savedSid;
+    if (savedEid) eidEl.value = savedEid;
+  } catch (e) {}
+
+  // Save on change
+  sidEl.addEventListener('input', () => {
+    try { localStorage.setItem('codeteach.studentId', sidEl.value); } catch (e) {}
+  });
+  eidEl.addEventListener('input', () => {
+    try { localStorage.setItem('codeteach.exerciseId', eidEl.value); } catch (e) {}
+  });
+
+  // Now that fields have the right values, hydrate the session
+  hydrateSession();
+})();
 
 // --- Class fingerprint tab ---
 $('refreshClass').addEventListener('click', async () => {
@@ -637,172 +661,162 @@ function renderStruggleCard(prompt, remainingSeconds, attemptCount) {
     }
     render();
   }, 1000);
-}
+  // --- Auth bootstrap ---
+  let currentUser = null;
 
-// ═══════════════════════════════════════════════════════════
-// Auth bootstrap
-// ═══════════════════════════════════════════════════════════
+  function $(id) { return document.getElementById(id); }
 
-let currentUser = null;
-let loginMode = 'login';
+  // (Note: $ is already defined earlier in the file — this is a no-op redeclaration
+  // if so, but keeps the code self-contained. If eslint complains, remove this line.)
 
-async function loadCurrentUser() {
-  try {
-    const res = await fetch('/api/auth/me');
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.user;
-  } catch {
-    return null;
-  }
-}
-
-function showLoginView() {
-  $('loginView').hidden = false;
-  const topbar = document.querySelector('header.topbar');
-  if (topbar) topbar.style.display = 'none';
-  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-}
-
-function showAppView() {
-  $('loginView').hidden = true;
-  const topbar = document.querySelector('header.topbar');
-  if (topbar) topbar.style.display = '';
-}
-
-function applyRoleVisibility() {
-  const adminTabs = ['health', 'class'];
-  document.querySelectorAll('.tab').forEach(tab => {
-    if (adminTabs.includes(tab.dataset.tab) && currentUser.role !== 'instructor') {
-      tab.style.display = 'none';
-    } else {
-      tab.style.display = '';
+  async function loadCurrentUser() {
+    try {
+      const res = await fetch('/api/auth/me');
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data.user;
+    } catch {
+      return null;
     }
-  });
-  const nameEl = $('currentUserName');
-  if (nameEl) nameEl.textContent = currentUser.displayName;
-}
-
-function setLoginMode(mode) {
-  loginMode = mode;
-  if (mode === 'login') {
-    $('loginTitle').textContent = 'Welcome back';
-    $('loginSubtitle').textContent = 'Log in to keep debugging.';
-    $('loginSubmit').textContent = 'Log in';
-    $('loginToggleText').textContent = 'New here?';
-    $('loginToggle').textContent = 'Create an account';
-    $('registerFields').hidden = true;
-  } else {
-    $('loginTitle').textContent = 'Create your account';
-    $('loginSubtitle').textContent = 'Students sign up in seconds.';
-    $('loginSubmit').textContent = 'Create account';
-    $('loginToggleText').textContent = 'Already have an account?';
-    $('loginToggle').textContent = 'Log in';
-    $('registerFields').hidden = false;
-  }
-  $('loginError').hidden = true;
-}
-
-function showLoginError(msg) {
-  const el = $('loginError');
-  el.textContent = msg;
-  el.hidden = false;
-}
-
-async function submitLogin() {
-  const email = $('loginEmail').value.trim();
-  const password = $('loginPassword').value;
-  const displayNameEl = $('loginDisplayName');
-  const displayName = displayNameEl ? displayNameEl.value.trim() : '';
-
-  if (!email || !password) {
-    return showLoginError('Email and password are required.');
-  }
-  if (loginMode === 'register' && !displayName) {
-    return showLoginError('Please enter your name.');
-  }
-  if (loginMode === 'register' && password.length < 8) {
-    return showLoginError('Password must be at least 8 characters.');
   }
 
-  const url = loginMode === 'login' ? '/api/auth/login' : '/api/auth/register';
-  const body = loginMode === 'login'
-    ? { email, password }
-    : { email, password, displayName };
+  function showLoginView() {
+    $('loginView').hidden = false;
+    document.querySelector('header.topbar').style.display = 'none';
+    document.querySelector('main').style.display = 'block';
+    // hide all tab panels
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  }
 
-  $('loginSubmit').disabled = true;
-  try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+  function showAppView() {
+    $('loginView').hidden = true;
+    document.querySelector('header.topbar').style.display = '';
+  }
+
+  function applyRoleVisibility() {
+    // Hide admin-only tabs from students
+    const adminTabs = ['health', 'class'];
+    document.querySelectorAll('.tab').forEach(tab => {
+      if (adminTabs.includes(tab.dataset.tab) && currentUser.role !== 'instructor') {
+        tab.style.display = 'none';
+      } else {
+        tab.style.display = '';
+      }
     });
-    const data = await res.json();
-    if (!res.ok) {
-      return showLoginError(data.error || 'Something went wrong.');
+    // Update the user chip
+    const nameEl = $('currentUserName');
+    if (nameEl) nameEl.textContent = currentUser.displayName;
+  }
+
+  // --- Login form ---
+  let loginMode = 'login'; // or 'register'
+
+  function setLoginMode(mode) {
+    loginMode = mode;
+    if (mode === 'login') {
+      $('loginTitle').textContent = 'Welcome back';
+      $('loginSubtitle').textContent = 'Log in to keep debugging.';
+      $('loginSubmit').textContent = 'Log in';
+      $('loginToggleText').textContent = 'New here?';
+      $('loginToggle').textContent = 'Create an account';
+      $('registerFields').hidden = true;
+    } else {
+      $('loginTitle').textContent = 'Create your account';
+      $('loginSubtitle').textContent = 'Students sign up in seconds.';
+      $('loginSubmit').textContent = 'Create account';
+      $('loginToggleText').textContent = 'Already have an account?';
+      $('loginToggle').textContent = 'Log in';
+      $('registerFields').hidden = false;
     }
-    currentUser = data.user;
+    $('loginError').hidden = true;
+  }
+
+  function showLoginError(msg) {
+    const el = $('loginError');
+    el.textContent = msg;
+    el.hidden = false;
+  }
+
+  async function submitLogin() {
+    const email = $('loginEmail').value.trim();
+    const password = $('loginPassword').value;
+    const displayName = $('loginDisplayName')?.value?.trim() ?? '';
+
+    if (!email || !password) {
+      return showLoginError('Email and password are required.');
+    }
+    if (loginMode === 'register' && !displayName) {
+      return showLoginError('Please enter your name.');
+    }
+    if (loginMode === 'register' && password.length < 8) {
+      return showLoginError('Password must be at least 8 characters.');
+    }
+
+    const url = loginMode === 'login' ? '/api/auth/login' : '/api/auth/register';
+    const body = loginMode === 'login'
+      ? { email, password }
+      : { email, password, displayName };
+
+    $('loginSubmit').disabled = true;
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return showLoginError(data.error || 'Something went wrong.');
+      }
+      currentUser = data.user;
+      showAppView();
+      applyRoleVisibility();
+      // Kick off the app
+      if (typeof hydrateSession === 'function') {
+        hydrateSession();
+      }
+    } catch (err) {
+      showLoginError('Network error: ' + err.message);
+    } finally {
+      $('loginSubmit').disabled = false;
+    }
+  }
+
+  async function submitLogout() {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch {}
+    currentUser = null;
+    location.reload();
+  }
+
+  async function bootstrap() {
+    const user = await loadCurrentUser();
+    if (!user) {
+      setLoginMode('login');
+      showLoginView();
+      return;
+    }
+    currentUser = user;
     showAppView();
     applyRoleVisibility();
-    if (typeof hydrateSession === 'function') hydrateSession();
-  } catch (err) {
-    showLoginError('Network error: ' + err.message);
-  } finally {
-    $('loginSubmit').disabled = false;
+    if (typeof hydrateSession === 'function') {
+      hydrateSession();
+    }
   }
-}
 
-async function submitLogout() {
-  try {
-    await fetch('/api/auth/logout', { method: 'POST' });
-  } catch {}
-  currentUser = null;
-  location.reload();
-}
-
-async function authBootstrap() {
-  const user = await loadCurrentUser();
-  if (!user) {
-    setLoginMode('login');
-    showLoginView();
-    return;
-  }
-  currentUser = user;
-  showAppView();
-  applyRoleVisibility();
-  if (typeof hydrateSession === 'function') hydrateSession();
-}
-
-function onReady(fn) {
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', fn);
-  } else {
-    fn();
-  }
-}
-
-onReady(() => {
-  // Wire login form listeners
-  const loginSubmit = $('loginSubmit');
-  if (loginSubmit) loginSubmit.addEventListener('click', submitLogin);
-
-  const loginToggle = $('loginToggle');
-  if (loginToggle) {
-    loginToggle.addEventListener('click', (e) => {
+  // Wire event listeners
+  document.addEventListener('DOMContentLoaded', () => {
+    $('loginSubmit').addEventListener('click', submitLogin);
+    $('loginToggle').addEventListener('click', (e) => {
       e.preventDefault();
       setLoginMode(loginMode === 'login' ? 'register' : 'login');
     });
-  }
-
-  const logoutBtn = $('logoutBtn');
-  if (logoutBtn) logoutBtn.addEventListener('click', submitLogout);
-
-  const loginPassword = $('loginPassword');
-  if (loginPassword) {
-    loginPassword.addEventListener('keydown', (e) => {
+    $('logoutBtn').addEventListener('click', submitLogout);
+    $('loginPassword').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') submitLogin();
     });
-  }
 
-  authBootstrap();
-});
+    bootstrap();
+  });
+}

@@ -360,3 +360,119 @@ button.ghost:hover { background: #f0f1f3; }
   color: #854d0e;
   line-height: 1.5;
 }
+/* Login view */
+.login-view {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 40px 20px;
+  overflow-y: auto;
+}
+.login-card {
+  background: #fff;
+  border: 1px solid #e4e6eb;
+  border-radius: 14px;
+  padding: 32px;
+  max-width: 400px;
+  width: 100%;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.04);
+}
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+.login-title {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 4px;
+}
+.login-subtitle {
+  font-size: 13px;
+  color: #7a7f88;
+  margin: 0 0 24px;
+}
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.login-form label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #7a7f88;
+  font-weight: 600;
+  margin-top: 10px;
+}
+.login-form input {
+  border: 1px solid #dfe2e7;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: inherit;
+}
+.login-form input:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
+}
+.login-submit {
+  margin-top: 18px;
+  padding: 12px;
+  font-size: 15px;
+}
+.login-error {
+  color: #dc2626;
+  font-size: 13px;
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+}
+.login-toggle {
+  text-align: center;
+  font-size: 13px;
+  color: #7a7f88;
+  margin: 20px 0 0;
+}
+.login-toggle a {
+  color: #4f46e5;
+  text-decoration: none;
+  font-weight: 600;
+  margin-left: 4px;
+}
+.login-toggle a:hover { text-decoration: underline; }
+
+/* User chip in topbar */
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.current-user-name {
+  font-size: 13px;
+  color: #4a4f57;
+  font-weight: 600;
+}
+.logout-btn {
+  background: transparent;
+  border: 1px solid #dfe2e7;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #4a4f57;
+  cursor: pointer;
+  font-family: inherit;
+}
+.logout-btn:hover {
+  background: #f0f1f3;
+}
+
+/* The hidden attribute must beat any display rule (login view uses display:flex) */
+.login-view[hidden] {
+  display: none !important;
+}

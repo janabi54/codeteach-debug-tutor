@@ -51,12 +51,46 @@
     <button class="tab" data-tab="health">Health</button>
     <button class="tab" data-tab="class">Class</button>
   </nav>
-  <div class="user-chip">
-    <input id="studentId" type="text" value="test-student" spellcheck="false" />
-  </div>
+    <div class="user-chip">
+      <span id="currentUserName" class="current-user-name"></span>
+      <button id="logoutBtn" class="logout-btn">Log out</button>
+    </div>
 </header>
 
 <main>
+
+<!-- LOGIN VIEW (shown when not authenticated) -->
+<section id="loginView" class="login-view" hidden>
+  <div class="login-card">
+    <div class="login-brand">
+      <span class="brand-mark">CT</span>
+      <span class="brand-name">CodeTeach</span>
+    </div>
+    <h1 id="loginTitle" class="login-title">Welcome back</h1>
+    <p id="loginSubtitle" class="login-subtitle">Log in to keep debugging.</p>
+
+    <div class="login-form">
+      <label>Email</label>
+      <input id="loginEmail" type="email" spellcheck="false" placeholder="you@example.com" />
+
+      <label>Password</label>
+      <input id="loginPassword" type="password" placeholder="At least 8 characters" />
+
+      <div id="registerFields" hidden>
+        <label>Your name</label>
+        <input id="loginDisplayName" type="text" spellcheck="false" placeholder="How we'll greet you" />
+      </div>
+
+      <button id="loginSubmit" class="primary login-submit">Log in</button>
+      <p id="loginError" class="login-error" hidden></p>
+    </div>
+
+    <p class="login-toggle">
+      <span id="loginToggleText">New here?</span>
+      <a href="#" id="loginToggle">Create an account</a>
+    </p>
+  </div>
+</section>
 
 <!-- TUTOR TAB -->
 <section id="tab-tutor" class="tab-panel active">
