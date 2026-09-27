@@ -42,3 +42,8 @@ Thumbs.db
 .env.save*
 .env.bak*
 *.env~
+
+# Editor backups of .env
+.env.save*
+.env.bak*
+*.env~
