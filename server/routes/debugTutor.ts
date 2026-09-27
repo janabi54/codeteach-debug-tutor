@@ -5,15 +5,24 @@ import { HintSessionManager } from '../debugTutor/hintSession.js';
 import { getStruggleMinutes } from '../debugTutor/exerciseConfig.js';
 import { getWeakSpots } from '../debugTutor/weakSpots.js';
 import { db } from '../db.js';
+import {
+  requireAuth,
+  resolveActingStudentId,
+} from '../middleware/requireAuth.js';
 
 const router = express.Router();
 const hintSessions = new HintSessionManager();
 
-router.post('/hint', async (req, res) => {
+// ─────────────────────────────────────────────────────────────
+// POST /api/debug-tutor/hint
+// ─────────────────────────────────────────────────────────────
+router.post('/hint', requireAuth, async (req, res) => {
   const {
-    studentId, exerciseId, code, language, errorOutput,
-    exerciseContext, passed, hypothesis, postMortem,
+    exerciseId, code, language, errorOutput,
+    exerciseContext, passed, hypothesis, postMortem, studentId: requested,
   } = req.body;
+
+  const studentId = resolveActingStudentId(req, requested);
 
   const session = await hintSessions.getOrCreate(studentId, exerciseId, {
     struggleMinutes: getStruggleMinutes(exerciseId),
@@ -50,7 +59,7 @@ router.post('/hint', async (req, res) => {
     });
   }
 
-  // ─── Session already complete: refuse further hints ───
+  // ─── Session already complete ───
   if (session.state === 'complete') {
     return res.json({
       sessionComplete: true,
@@ -58,7 +67,7 @@ router.post('/hint', async (req, res) => {
     });
   }
 
-  // ─── Struggle gate (only before the very first hint) ───
+  // ─── Struggle gate ───
   if (session.totalAttempts === 0 && session.struggleMinutes > 0) {
     const elapsedMinutes = (Date.now() - session.createdAt.getTime()) / 60000;
     const timerExpired = elapsedMinutes >= session.struggleMinutes;
@@ -66,7 +75,6 @@ router.post('/hint', async (req, res) => {
     const hasCode = typeof code === 'string' && code.trim().length > 0;
 
     if (!timerExpired || !hasPriorSubmission) {
-      // Count this request as a submission for future requests, if it carried code.
       if (hasCode && !hasPriorSubmission) {
         await db.hintSessions.update(session.id, {
           codeSubmissions: session.codeSubmissions + 1,
@@ -142,12 +150,23 @@ router.post('/hint', async (req, res) => {
   res.json(hint);
 });
 
-router.get('/weak-spots/:studentId', async (req, res) => {
-  res.json(await getWeakSpots(req.params.studentId));
+// ─────────────────────────────────────────────────────────────
+// GET /api/debug-tutor/weak-spots/:studentId
+// ─────────────────────────────────────────────────────────────
+router.get('/weak-spots/:studentId', requireAuth, async (req, res) => {
+  const requested = req.params.studentId;
+  const studentId = resolveActingStudentId(req, requested);
+  res.json(await getWeakSpots(studentId));
 });
 
-router.get('/session/:studentId/:exerciseId', async (req, res) => {
-  const { studentId, exerciseId } = req.params;
+// ─────────────────────────────────────────────────────────────
+// GET /api/debug-tutor/session/:studentId/:exerciseId
+// ─────────────────────────────────────────────────────────────
+router.get('/session/:studentId/:exerciseId', requireAuth, async (req, res) => {
+  const requested = req.params.studentId;
+  const studentId = resolveActingStudentId(req, requested);
+  const { exerciseId } = req.params;
+
   const session = await db.hintSessions.find(studentId, exerciseId);
   if (!session) {
     return res.json({ state: 'open', currentLevel: 1, hypothesisPending: true });
