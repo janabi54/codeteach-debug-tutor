@@ -37,3 +37,8 @@ Thumbs.db
 
 # Temporary
 /tmp/
+
+# Editor backups of .env
+.env.save*
+.env.bak*
+*.env~
