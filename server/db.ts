@@ -20,6 +20,26 @@ function parseSqliteTimestamp(raw: string | null | undefined): Date {
   return new Date(raw.replace(' ', 'T') + 'Z');
 }
 
+function rowToUser(row: any): User {
+  return {
+    id: row.id,
+    email: row.email,
+    passwordHash: row.password_hash,
+    displayName: row.display_name,
+    role: row.role === 'instructor' ? 'instructor' : 'student',
+    createdAt: parseSqliteTimestamp(row.created_at),
+  };
+}
+
+function rowToAuthSession(row: any): AuthSession {
+  return {
+    token: row.token,
+    userId: row.user_id,
+    createdAt: parseSqliteTimestamp(row.created_at),
+    expiresAt: parseSqliteTimestamp(row.expires_at),
+  };
+}
+
 const DB_PATH = process.env.DB_PATH ?? join(__dirname, '..', 'codeteach.db');
 
 export const sqlite = new Database(DB_PATH);
@@ -67,6 +87,22 @@ if (!hasCodeSubs) {
   console.log('[db] migrated: added hint_sessions.code_submissions');
 }
 
+
+interface User {
+  id: string;
+  email: string;
+  passwordHash: string;
+  displayName: string;
+  role: 'student' | 'instructor';
+  createdAt: Date;
+}
+
+interface AuthSession {
+  token: string;
+  userId: string;
+  createdAt: Date;
+  expiresAt: Date;
+}
 
 interface HintSession {
   id: string;
@@ -197,9 +233,88 @@ const stmt = {
   postMortemStatsByStudent: sqlite.prepare(
     "SELECT pattern, COALESCE(score, 'unscored') AS score, COUNT(*) AS n FROM post_mortems WHERE student_id = ? AND pattern IS NOT NULL GROUP BY pattern, score"
   ),
+
+  // ── Auth: users ──
+  insertUser: sqlite.prepare(
+    'INSERT INTO users (id, email, password_hash, display_name, role) VALUES (?, ?, ?, ?, ?)'
+  ),
+  findUserByEmail: sqlite.prepare(
+    'SELECT * FROM users WHERE email = ?'
+  ),
+  findUserById: sqlite.prepare(
+    'SELECT * FROM users WHERE id = ?'
+  ),
+  countUsersByRole: sqlite.prepare(
+    'SELECT COUNT(*) AS n FROM users WHERE role = ?'
+  ),
+
+  // ── Auth: sessions ──
+  insertAuthSession: sqlite.prepare(
+    'INSERT INTO auth_sessions (token, user_id, expires_at) VALUES (?, ?, ?)'
+  ),
+  findAuthSession: sqlite.prepare(
+    "SELECT * FROM auth_sessions WHERE token = ? AND expires_at > datetime('now')"
+  ),
+  deleteAuthSession: sqlite.prepare(
+    'DELETE FROM auth_sessions WHERE token = ?'
+  ),
+  deleteExpiredAuthSessions: sqlite.prepare(
+    "DELETE FROM auth_sessions WHERE expires_at <= datetime('now')"
+  ),
 };
 
 export const db = {
+  users: {
+    async create(data: {
+      email: string;
+      passwordHash: string;
+      displayName: string;
+      role: 'student' | 'instructor';
+    }): Promise<User> {
+      const id = randomUUID();
+      const email = data.email.toLowerCase().trim();
+      stmt.insertUser.run(id, email, data.passwordHash, data.displayName, data.role);
+      const row = stmt.findUserById.get(id) as any;
+      return rowToUser(row);
+    },
+    async findByEmail(email: string): Promise<User | null> {
+      const row = stmt.findUserByEmail.get(email.toLowerCase().trim()) as any;
+      return row ? rowToUser(row) : null;
+    },
+    async findById(id: string): Promise<User | null> {
+      const row = stmt.findUserById.get(id) as any;
+      return row ? rowToUser(row) : null;
+    },
+    async countByRole(role: 'student' | 'instructor'): Promise<number> {
+      const row = stmt.countUsersByRole.get(role) as any;
+      return row?.n ?? 0;
+    },
+  },
+
+  authSessions: {
+    async create(data: {
+      token: string;
+      userId: string;
+      ttlDays: number;
+    }): Promise<AuthSession> {
+      const expiresAt = new Date(Date.now() + data.ttlDays * 24 * 60 * 60 * 1000);
+      stmt.insertAuthSession.run(data.token, data.userId, expiresAt.toISOString());
+      const row = stmt.findAuthSession.get(data.token) as any;
+      return rowToAuthSession(row);
+    },
+    async findValid(token: string): Promise<AuthSession | null> {
+      const row = stmt.findAuthSession.get(token) as any;
+      return row ? rowToAuthSession(row) : null;
+    },
+    async delete(token: string): Promise<void> {
+      stmt.deleteAuthSession.run(token);
+    },
+    async deleteExpired(): Promise<number> {
+      const info = stmt.deleteExpiredAuthSessions.run();
+      return info.changes ?? 0;
+    },
+  },
+
   hintSessions: {
     async find(studentId: string, exerciseId: string): Promise<HintSession | null> {
       const row = stmt.findSession.get(studentId, exerciseId);
