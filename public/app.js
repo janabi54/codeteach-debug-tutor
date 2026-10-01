@@ -244,28 +244,57 @@ async function loadWeakSpots() {
   list.innerHTML = '<p class="empty-state">Loading...</p>';
   try {
     const res = await fetch('/api/debug-tutor/weak-spots/' + encodeURIComponent(sid));
-    const spots = await res.json();
-    if (!spots.length) {
-      list.innerHTML = '<p class="empty-state">No patterns logged yet. Ask the tutor for hints and we\'ll start building your map.</p>';
-      return;
-    }
-    list.innerHTML = spots.map(s => `
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">${escapeHtml(s.label)}</div>
-          <div class="card-count">
-            ${s.count} occurrence${s.count === 1 ? '' : 's'} ·
-            <span class="trend ${s.recentTrend}">${s.recentTrend}</span>
+    const data = await res.json();
+    const spots = data.patterns || [];
+    const reasoning = data.reasoning;
+
+    const reasoningHtml = renderReasoningCard(reasoning);
+    const patternsHtml = spots.length
+      ? spots.map(s => `
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">${escapeHtml(s.label)}</div>
+              <div class="card-count">
+                ${s.count} occurrence${s.count === 1 ? '' : 's'} ·
+                <span class="trend ${s.recentTrend}">${s.recentTrend}</span>
+              </div>
+            </div>
+            <div class="card-bar"><div class="card-bar-fill" style="width:${s.percentage}%"></div></div>
+            <div class="card-tip">${escapeHtml(s.tip)}</div>
+            ${renderPostMortemStats(s.postMortems)}
           </div>
-        </div>
-        <div class="card-bar"><div class="card-bar-fill" style="width:${s.percentage}%"></div></div>
-        <div class="card-tip">${escapeHtml(s.tip)}</div>
-        ${renderPostMortemStats(s.postMortems)}
-      </div>
-    `).join('');
+        `).join('')
+      : `<p class="empty-state">No patterns logged yet. Ask the tutor for hints and we'll start building your map.</p>`;
+
+    list.innerHTML = reasoningHtml + patternsHtml;
   } catch (err) {
     list.innerHTML = '<p class="empty-state">Failed to load: ' + escapeHtml(err.message) + '</p>';
   }
+}
+
+function renderReasoningCard(reasoning) {
+  if (!reasoning || reasoning.total === 0) return '';
+  const trendClass = reasoning.recentTrend === 'improving' ? 'improving'
+    : reasoning.recentTrend === 'worsening' ? 'worsening'
+    : 'stable';
+  const parts = [];
+  if (reasoning.vague > 0) parts.push(`<span class="pm-vague">${reasoning.vague} vague</span>`);
+  if (reasoning.plausible > 0) parts.push(`<span class="pm-partial">${reasoning.plausible} plausible</span>`);
+  if (reasoning.precise > 0) parts.push(`<span class="pm-correct">${reasoning.precise} precise</span>`);
+  if (reasoning.unscored > 0) parts.push(`<span class="pm-unscored">${reasoning.unscored} unscored</span>`);
+
+  return `
+    <div class="card reasoning-card">
+      <div class="card-header">
+        <div class="card-title">Reasoning quality</div>
+        <div class="card-count">
+          ${reasoning.total} hypothesis${reasoning.total === 1 ? '' : 'es'} scored ·
+          <span class="trend ${trendClass}">${reasoning.recentTrend}</span>
+        </div>
+      </div>
+      <div class="card-tip">${parts.join(' · ')}</div>
+    </div>
+  `;
 }
 
 // --- Health ---
@@ -531,6 +560,20 @@ function renderClassFingerprint(fp) {
     `;
   }).join('');
 
+  const reasoningHtml = fp.reasoning
+    ? `<div class="section-card">
+         <h2>Hypothesis quality</h2>
+         <div class="pattern-row">
+           <span class="name">${fp.reasoning.total} scored</span>
+           <span class="count">
+             ${fp.reasoning.vague} vague ·
+             ${fp.reasoning.plausible} plausible ·
+             ${fp.reasoning.precise} precise
+           </span>
+         </div>
+       </div>`
+    : '';
+
   const strugglesHtml = fp.struggles && fp.struggles.length
     ? `<div class="section-card">
          <h2>Concentrated struggles</h2>
@@ -588,6 +631,7 @@ function renderClassFingerprint(fp) {
       </table>
     </div>
 
+    ${reasoningHtml}
     ${strugglesHtml}
   `;
 }

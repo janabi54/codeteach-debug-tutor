@@ -244,6 +244,12 @@ const stmt = {
   hypothesisQualityAll: sqlite.prepare(
     "SELECT COALESCE(quality, 'unscored') AS quality, COUNT(*) AS n FROM hypotheses WHERE quality IS NOT NULL GROUP BY quality"
   ),
+  hypothesisQualityByStudentRecent: sqlite.prepare(
+    "SELECT COALESCE(quality, 'unscored') AS quality, COUNT(*) AS n FROM hypotheses WHERE student_id = ? AND recorded_at >= ? GROUP BY quality"
+  ),
+  hypothesisQualityAllRecent: sqlite.prepare(
+    "SELECT COALESCE(quality, 'unscored') AS quality, COUNT(*) AS n FROM hypotheses WHERE quality IS NOT NULL AND recorded_at >= ? GROUP BY quality"
+  ),
   insertPostMortem: sqlite.prepare(
     'INSERT INTO post_mortems (session_id, student_id, exercise_id, pattern, text, score, feedback) VALUES (?, ?, ?, ?, ?, ?, ?)'
   ),
@@ -444,6 +450,87 @@ export const db = {
         timestamp: parseSqliteTimestamp(row.recorded_at),
       }));
     },
+
+    async qualityStatsForStudent(studentId: string): Promise<{
+      total: number;
+      vague: number;
+      plausible: number;
+      precise: number;
+      unscored: number;
+    }> {
+      const rows = stmt.hypothesisQualityByStudent.all(studentId) as Array<{
+        quality: string;
+        n: number;
+      }>;
+      const out = { total: 0, vague: 0, plausible: 0, precise: 0, unscored: 0 };
+      for (const row of rows) {
+        if (row.quality === 'vague') out.vague = row.n;
+        else if (row.quality === 'plausible') out.plausible = row.n;
+        else if (row.quality === 'precise') out.precise = row.n;
+        else out.unscored += row.n;
+        out.total += row.n;
+      }
+      return out;
+    },
+
+    async qualityStatsAll(): Promise<{
+      total: number;
+      vague: number;
+      plausible: number;
+      precise: number;
+      unscored: number;
+    }> {
+      const rows = stmt.hypothesisQualityAll.all() as Array<{
+        quality: string;
+        n: number;
+      }>;
+      const out = { total: 0, vague: 0, plausible: 0, precise: 0, unscored: 0 };
+      for (const row of rows) {
+        if (row.quality === 'vague') out.vague = row.n;
+        else if (row.quality === 'plausible') out.plausible = row.n;
+        else if (row.quality === 'precise') out.precise = row.n;
+        else out.unscored += row.n;
+        out.total += row.n;
+      }
+      return out;
+    },
+    async qualityStatsForStudentInWindow(
+      studentId: string,
+      since: Date
+    ): Promise<{ total: number; vague: number; plausible: number; precise: number }> {
+      const sinceIso = since.toISOString().replace('T', ' ').slice(0, 19);
+      const rows = stmt.hypothesisQualityByStudentRecent.all(
+        studentId,
+        sinceIso
+      ) as Array<{ quality: string; n: number }>;
+      const out = { total: 0, vague: 0, plausible: 0, precise: 0 };
+      for (const row of rows) {
+        if (row.quality === 'vague') out.vague = row.n;
+        else if (row.quality === 'plausible') out.plausible = row.n;
+        else if (row.quality === 'precise') out.precise = row.n;
+        out.total += row.n;
+      }
+      return out;
+    },
+
+    async qualityStatsAllInWindow(
+      since: Date
+    ): Promise<{ total: number; vague: number; plausible: number; precise: number }> {
+      const sinceIso = since.toISOString().replace('T', ' ').slice(0, 19);
+      const rows = stmt.hypothesisQualityAllRecent.all(sinceIso) as Array<{
+        quality: string;
+        n: number;
+      }>;
+      const out = { total: 0, vague: 0, plausible: 0, precise: 0 };
+      for (const row of rows) {
+        if (row.quality === 'vague') out.vague = row.n;
+        else if (row.quality === 'plausible') out.plausible = row.n;
+        else if (row.quality === 'precise') out.precise = row.n;
+        out.total += row.n;
+      }
+      return out;
+    },
+
   },
 
   postMortems: {

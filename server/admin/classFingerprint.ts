@@ -1,4 +1,4 @@
-import { sqlite } from '../db.js';
+import { sqlite, db } from '../db.js';
 
 export interface PatternStat {
   pattern: string;
@@ -39,6 +39,12 @@ export interface ClassFingerprint {
   patterns: PatternStat[];
   exercisesList: ExerciseStat[];
   struggles: StruggleRow[];
+  reasoning: {
+    total: number;
+    vague: number;
+    plausible: number;
+    precise: number;
+  } | null;
   anomalies: string[];
 }
 
@@ -180,6 +186,8 @@ export async function getClassFingerprint(
 
   const exercises = exercisesList.length;
 
+  const reasoningStats = await db.hypotheses.qualityStatsAll();
+
   const fingerprint: ClassFingerprint = {
     generatedAt: new Date().toISOString(),
     window: { hours: windowHours, since: since.toISOString() },
@@ -189,6 +197,14 @@ export async function getClassFingerprint(
     patterns,
     exercisesList,
     struggles,
+    reasoning: reasoningStats.total > 0
+      ? {
+          total: reasoningStats.total,
+          vague: reasoningStats.vague,
+          plausible: reasoningStats.plausible,
+          precise: reasoningStats.precise,
+        }
+      : null,
     anomalies: [],
   };
 
