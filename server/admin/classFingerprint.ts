@@ -45,6 +45,12 @@ export interface ClassFingerprint {
     plausible: number;
     precise: number;
   } | null;
+  hintDependency: {
+    sessions: number;
+    students: number;
+    totalHints: number;
+    avgHintsPerSession: number;
+  } | null;
   anomalies: string[];
 }
 
@@ -187,6 +193,7 @@ export async function getClassFingerprint(
   const exercises = exercisesList.length;
 
   const reasoningStats = await db.hypotheses.qualityStatsAll();
+  const hintDep = await db.hintDependency.all();
 
   const fingerprint: ClassFingerprint = {
     generatedAt: new Date().toISOString(),
@@ -203,6 +210,14 @@ export async function getClassFingerprint(
           vague: reasoningStats.vague,
           plausible: reasoningStats.plausible,
           precise: reasoningStats.precise,
+        }
+      : null,
+    hintDependency: hintDep.sessions > 0
+      ? {
+          sessions: hintDep.sessions,
+          students: hintDep.students,
+          totalHints: hintDep.totalHints,
+          avgHintsPerSession: hintDep.avgHintsPerSession,
         }
       : null,
     anomalies: [],

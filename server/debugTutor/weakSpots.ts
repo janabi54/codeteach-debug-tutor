@@ -40,9 +40,19 @@ export interface ReasoningStats {
   recentTrend: 'improving' | 'worsening' | 'stable';
 }
 
+export interface HintDependencyStats {
+  sessions: number;
+  totalHints: number;
+  avgHintsPerSession: number;
+  recentAvg: number;
+  priorAvg: number;
+  trend: 'improving' | 'worsening' | 'stable';
+}
+
 export interface WeakSpotsResponse {
   patterns: WeakSpotPattern[];
   reasoning: ReasoningStats;
+  hintDependency: HintDependencyStats;
 }
 
 export async function getWeakSpots(studentId: string): Promise<WeakSpotsResponse> {
@@ -112,7 +122,61 @@ export async function getWeakSpots(studentId: string): Promise<WeakSpotsResponse
     recentTrend: reasoningTrend,
   };
 
-  return { patterns: patternList, reasoning };
+  // Hint-dependency: all-time, plus trend over recent vs. prior 14-day windows.
+  const dependencyAllTime = await db.hintDependency.forStudent(studentId);
+
+  const fourteenDaysAgo = new Date(now - 14 * 24 * 60 * 60 * 1000);
+  const twentyEightDaysAgo = new Date(now - 28 * 24 * 60 * 60 * 1000);
+
+  const dependencyRecent = await db.hintDependency.forStudentInWindow(
+    studentId,
+    fourteenDaysAgo
+  );
+  const dependencyPriorFull = await db.hintDependency.forStudentInWindow(
+    studentId,
+    twentyEightDaysAgo
+  );
+
+  const priorSessions = Math.max(
+    0,
+    dependencyPriorFull.sessions - dependencyRecent.sessions
+  );
+  const priorHints = Math.max(
+    0,
+    dependencyPriorFull.totalHints - dependencyRecent.totalHints
+  );
+  const priorAvg = priorSessions > 0 ? priorHints / priorSessions : 0;
+
+  const dependencyTrend = computeDependencyTrend(
+    dependencyRecent.avgHintsPerSession,
+    dependencyRecent.sessions,
+    priorAvg,
+    priorSessions
+  );
+
+  const hintDependency: HintDependencyStats = {
+    sessions: dependencyAllTime.sessions,
+    totalHints: dependencyAllTime.totalHints,
+    avgHintsPerSession: dependencyAllTime.avgHintsPerSession,
+    recentAvg: dependencyRecent.avgHintsPerSession,
+    priorAvg,
+    trend: dependencyTrend,
+  };
+
+  return { patterns: patternList, reasoning, hintDependency };
+}
+
+function computeDependencyTrend(
+  recentAvg: number,
+  recentSessions: number,
+  priorAvg: number,
+  priorSessions: number
+): 'improving' | 'worsening' | 'stable' {
+  if (recentSessions < 3 || priorSessions < 3) return 'stable';
+  const delta = recentAvg - priorAvg;
+  if (delta < -0.3) return 'improving';
+  if (delta > 0.3) return 'worsening';
+  return 'stable';
 }
 
 function computeTrend(
