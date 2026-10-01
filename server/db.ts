@@ -87,6 +87,23 @@ if (!hasCodeSubs) {
   console.log('[db] migrated: added hint_sessions.code_submissions');
 }
 
+// Migrations for hypotheses table
+const hypothesisColumns = sqlite.prepare(
+  'PRAGMA table_info(hypotheses)'
+).all() as Array<{ name: string }>;
+
+const hasQuality = hypothesisColumns.some((c) => c.name === 'quality');
+if (!hasQuality) {
+  sqlite.exec('ALTER TABLE hypotheses ADD COLUMN quality TEXT');
+  console.log('[db] migrated: added hypotheses.quality');
+}
+
+const hasScoreSource = hypothesisColumns.some((c) => c.name === 'score_source');
+if (!hasScoreSource) {
+  sqlite.exec('ALTER TABLE hypotheses ADD COLUMN score_source TEXT');
+  console.log('[db] migrated: added hypotheses.score_source');
+}
+
 
 interface User {
   id: string;
@@ -216,10 +233,16 @@ const stmt = {
     'SELECT * FROM telemetry WHERE type = ? ORDER BY recorded_at DESC LIMIT 1'
   ),
   insertHypothesis: sqlite.prepare(
-    'INSERT INTO hypotheses (student_id, exercise_id, hint_level, text) VALUES (?, ?, ?, ?)'
+    'INSERT INTO hypotheses (student_id, exercise_id, hint_level, text, quality, score_source) VALUES (?, ?, ?, ?, ?, ?)'
   ),
   hypothesesByExercise: sqlite.prepare(
     'SELECT * FROM hypotheses WHERE student_id = ? AND exercise_id = ? ORDER BY recorded_at DESC LIMIT ?'
+  ),
+  hypothesisQualityByStudent: sqlite.prepare(
+    "SELECT COALESCE(quality, 'unscored') AS quality, COUNT(*) AS n FROM hypotheses WHERE student_id = ? GROUP BY quality"
+  ),
+  hypothesisQualityAll: sqlite.prepare(
+    "SELECT COALESCE(quality, 'unscored') AS quality, COUNT(*) AS n FROM hypotheses WHERE quality IS NOT NULL GROUP BY quality"
   ),
   insertPostMortem: sqlite.prepare(
     'INSERT INTO post_mortems (session_id, student_id, exercise_id, pattern, text, score, feedback) VALUES (?, ?, ?, ?, ?, ?, ?)'
@@ -400,9 +423,16 @@ export const db = {
       exerciseId: string;
       hintLevel: number;
       text: string;
+      quality?: string | null;
+      scoreSource?: string | null;
     }): Promise<void> {
       stmt.insertHypothesis.run(
-        rec.studentId, rec.exerciseId, rec.hintLevel, rec.text
+        rec.studentId,
+        rec.exerciseId,
+        rec.hintLevel,
+        rec.text,
+        rec.quality ?? null,
+        rec.scoreSource ?? null
       );
     },
     async findRecent(studentId: string, exerciseId: string, limit = 10) {
