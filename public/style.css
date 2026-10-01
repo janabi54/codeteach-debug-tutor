@@ -476,3 +476,29 @@ button.ghost:hover { background: #f0f1f3; }
 .login-view[hidden] {
   display: none !important;
 }
+
+/* Hypothesis quality score */
+.hypothesis-score {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.hypothesis-score .score-badge {
+  flex-shrink: 0;
+}
+.hypothesis-score .score-feedback {
+  color: #4a4f57;
+}
+.hypothesis-score.quality-vague .score-feedback { color: #7a7f88; }
+.hypothesis-score.quality-plausible .score-feedback { color: #92400e; }
+.hypothesis-score.quality-precise .score-feedback { color: #166534; }
+
+.score-badge.quality-vague { background: #f0f1f3; color: #4a4f57; }
+.score-badge.quality-plausible { background: #fef3c7; color: #92400e; }
+.score-badge.quality-precise { background: #dcfce7; color: #166534; }
+.score-badge.quality-unscored { background: #f0f1f3; color: #7a7f88; }

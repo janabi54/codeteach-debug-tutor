@@ -42,6 +42,9 @@ function appendMessage({ kind, text, pattern, level, reason, label }) {
     header = '<div class="msg-header">Tutor</div>';
   } else if (kind === 'student') {
     header = '<div class="msg-header">' + escapeHtml(label || 'Your hypothesis') + '</div>';
+    if (label === undefined || label === 'Your hypothesis') {
+      div.classList.add('hypothesis-bubble');
+    }
   }
   div.innerHTML = header + '<div>' + escapeHtml(text) + '</div>';
   messagesEl.appendChild(div);
@@ -144,6 +147,9 @@ function handleHintResponse(data) {
     setLevel(data.hintLevel);
     renderHypothesisPrompt(data.prompt, data.hintLevel);
     return;
+  }
+  if (data.hypothesisScore) {
+    renderHypothesisScore(data.hypothesisScore);
   }
   setLevel(data.hintLevel);
   appendMessage({
@@ -806,3 +812,29 @@ onReady(() => {
 
   authBootstrap();
 });
+
+
+function renderHypothesisScore(score) {
+  const bubbles = messagesEl.querySelectorAll('.hypothesis-bubble');
+  if (bubbles.length === 0) return;
+  const bubble = bubbles[bubbles.length - 1];
+
+  bubble.querySelectorAll('.hypothesis-score').forEach(el => el.remove());
+
+  const qualityClass = 'quality-' + (score.quality || 'unscored');
+  const label = {
+    vague: 'Vague',
+    plausible: 'Plausible',
+    precise: 'Precise',
+    unscored: 'Unscored',
+  }[score.quality] || 'Unscored';
+
+  const scoreEl = document.createElement('div');
+  scoreEl.className = 'hypothesis-score ' + qualityClass;
+  scoreEl.innerHTML = `
+    <span class="score-badge ${qualityClass}">${label}</span>
+    <span class="score-feedback">${escapeHtml(score.feedback)}</span>
+  `;
+  bubble.appendChild(scoreEl);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
