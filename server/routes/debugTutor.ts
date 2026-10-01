@@ -1,6 +1,7 @@
 import express from 'express';
 import { getTutorHint } from '../debugTutor/tutorService.js';
 import { scorePostMortem } from '../debugTutor/postMortem.js';
+import { scoreHypothesis } from '../debugTutor/hypothesisScore.js';
 import { HintSessionManager } from '../debugTutor/hintSession.js';
 import { getStruggleMinutes } from '../debugTutor/exerciseConfig.js';
 import { getWeakSpots } from '../debugTutor/weakSpots.js';
@@ -110,6 +111,7 @@ router.post('/hint', requireAuth, async (req, res) => {
   }
 
   // ─── Hypothesis gate ───
+  let hypothesisText: string | null = null;
   if (session.hypothesisPending) {
     if (!hypothesis || String(hypothesis).trim().length < 10) {
       return res.json({
@@ -119,13 +121,7 @@ router.post('/hint', requireAuth, async (req, res) => {
         hintLevel: session.currentLevel,
       });
     }
-
-    await db.hypotheses.record({
-      studentId,
-      exerciseId,
-      hintLevel: session.currentLevel,
-      text: String(hypothesis).trim(),
-    });
+    hypothesisText = String(hypothesis).trim();
     await db.hintSessions.update(session.id, { hypothesisPending: false });
   }
 
@@ -134,8 +130,47 @@ router.post('/hint', requireAuth, async (req, res) => {
   const hint = await getTutorHint({
     studentId, exerciseId, code, language, errorOutput, exerciseContext,
     attemptNumber: session.totalAttempts,
-    hypothesis: hypothesis ? String(hypothesis).trim() : undefined,
+    hypothesis: hypothesisText ?? undefined,
   });
+
+  // ─── Score the hypothesis now that we know the detected pattern ───
+  let hypothesisScore: {
+    quality: string;
+    feedback: string;
+    scoredBy: string;
+  } | null = null;
+
+  if (hypothesisText) {
+    try {
+      const scored = await scoreHypothesis(
+        hypothesisText,
+        (hint as any).detectedPattern ?? null,
+        code
+      );
+      hypothesisScore = {
+        quality: scored.quality,
+        feedback: scored.feedback,
+        scoredBy: scored.scoredBy,
+      };
+      await db.hypotheses.record({
+        studentId,
+        exerciseId,
+        hintLevel: session.currentLevel,
+        text: hypothesisText,
+        quality: scored.quality,
+        scoreSource: scored.scoredBy,
+      });
+    } catch (err: any) {
+      console.error('[hypothesisScore] failed:', err?.message ?? err);
+      // Fall through: store the hypothesis without a score so we don't lose it
+      await db.hypotheses.record({
+        studentId,
+        exerciseId,
+        hintLevel: session.currentLevel,
+        text: hypothesisText,
+      });
+    }
+  }
 
   await db.telemetry.record({
     type: 'hint-served',
@@ -147,7 +182,10 @@ router.post('/hint', requireAuth, async (req, res) => {
 
   await db.hintSessions.update(session.id, { hypothesisPending: true });
 
-  res.json(hint);
+  res.json({
+    ...hint,
+    ...(hypothesisScore ? { hypothesisScore } : {}),
+  });
 });
 
 // ─────────────────────────────────────────────────────────────
