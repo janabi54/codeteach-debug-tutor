@@ -575,6 +575,18 @@ function renderClassFingerprint(fp) {
        </div>`
     : '';
 
+  const dependencyHtml = fp.hintDependency
+    ? `<div class="section-card">
+         <h2>Hint dependency</h2>
+         <div class="pattern-row">
+           <span class="name">${fp.hintDependency.sessions} completed sessions across ${fp.hintDependency.students} students</span>
+           <span class="count">
+             <strong>${(Math.round(fp.hintDependency.avgHintsPerSession * 10) / 10).toFixed(1)}</strong> hints per session average
+           </span>
+         </div>
+       </div>`
+    : '';
+
   const strugglesHtml = fp.struggles && fp.struggles.length
     ? `<div class="section-card">
          <h2>Concentrated struggles</h2>
@@ -633,6 +645,7 @@ function renderClassFingerprint(fp) {
     </div>
 
     ${reasoningHtml}
+    ${dependencyHtml}
     ${strugglesHtml}
   `;
 }
