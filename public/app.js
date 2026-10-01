@@ -248,6 +248,7 @@ async function loadWeakSpots() {
     const spots = data.patterns || [];
     const reasoning = data.reasoning;
 
+    const dependencyHtml = renderHintDependencyCard(data.hintDependency);
     const reasoningHtml = renderReasoningCard(reasoning);
     const patternsHtml = spots.length
       ? spots.map(s => `
@@ -266,7 +267,7 @@ async function loadWeakSpots() {
         `).join('')
       : `<p class="empty-state">No patterns logged yet. Ask the tutor for hints and we'll start building your map.</p>`;
 
-    list.innerHTML = reasoningHtml + patternsHtml;
+    list.innerHTML = dependencyHtml + reasoningHtml + patternsHtml;
   } catch (err) {
     list.innerHTML = '<p class="empty-state">Failed to load: ' + escapeHtml(err.message) + '</p>';
   }
@@ -881,4 +882,40 @@ function renderHypothesisScore(score) {
   `;
   bubble.appendChild(scoreEl);
   messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+
+function renderHintDependencyCard(dep) {
+  if (!dep || dep.sessions === 0) return '';
+
+  const trendClass = dep.trend === 'improving' ? 'improving'
+    : dep.trend === 'worsening' ? 'worsening'
+    : 'stable';
+
+  const fmt = (n) => (Math.round(n * 10) / 10).toFixed(1);
+
+  const showComparison = dep.recentAvg > 0 && dep.priorAvg > 0;
+  const comparison = showComparison
+    ? `<div class="card-tip" style="margin-top:6px;">
+         Last 14 days: <strong>${fmt(dep.recentAvg)}</strong> ·
+         Prior 14 days: <strong>${fmt(dep.priorAvg)}</strong>
+       </div>`
+    : '';
+
+  return `
+    <div class="card reasoning-card">
+      <div class="card-header">
+        <div class="card-title">Hint dependency</div>
+        <div class="card-count">
+          ${dep.sessions} completed session${dep.sessions === 1 ? '' : 's'} ·
+          <span class="trend ${trendClass}">${dep.trend}</span>
+        </div>
+      </div>
+      <div class="card-tip">
+        <strong>${fmt(dep.avgHintsPerSession)}</strong> hints per session on average
+        <span class="muted">(${dep.totalHints} total)</span>
+      </div>
+      ${comparison}
+    </div>
+  `;
 }
