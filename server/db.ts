@@ -281,6 +281,51 @@ const stmt = {
   insertAuthSession: sqlite.prepare(
     'INSERT INTO auth_sessions (token, user_id, expires_at) VALUES (?, ?, ?)'
   ),
+
+  // ── Hint dependency ──
+  hintDependencyForStudent: sqlite.prepare(
+    `SELECT
+       COUNT(*) AS sessions,
+       COALESCE(SUM((
+         SELECT COUNT(*) FROM telemetry t
+         WHERE t.student_id = hs.student_id
+           AND t.exercise_id = hs.exercise_id
+           AND t.type = 'hint-served'
+           AND t.recorded_at >= hs.created_at
+       )), 0) AS total_hints
+     FROM hint_sessions hs
+     WHERE hs.state IN ('resolved', 'complete')
+       AND hs.student_id = ?`
+  ),
+  hintDependencyForStudentInWindow: sqlite.prepare(
+    `SELECT
+       COUNT(*) AS sessions,
+       COALESCE(SUM((
+         SELECT COUNT(*) FROM telemetry t
+         WHERE t.student_id = hs.student_id
+           AND t.exercise_id = hs.exercise_id
+           AND t.type = 'hint-served'
+           AND t.recorded_at >= hs.created_at
+       )), 0) AS total_hints
+     FROM hint_sessions hs
+     WHERE hs.state IN ('resolved', 'complete')
+       AND hs.student_id = ?
+       AND hs.created_at >= ?`
+  ),
+  hintDependencyAll: sqlite.prepare(
+    `SELECT
+       COUNT(*) AS sessions,
+       COUNT(DISTINCT hs.student_id) AS students,
+       COALESCE(SUM((
+         SELECT COUNT(*) FROM telemetry t
+         WHERE t.student_id = hs.student_id
+           AND t.exercise_id = hs.exercise_id
+           AND t.type = 'hint-served'
+           AND t.recorded_at >= hs.created_at
+       )), 0) AS total_hints
+     FROM hint_sessions hs
+     WHERE hs.state IN ('resolved', 'complete')`
+  ),
   findAuthSession: sqlite.prepare(
     "SELECT * FROM auth_sessions WHERE token = ? AND expires_at > datetime('now')"
   ),
@@ -341,6 +386,65 @@ export const db = {
     async deleteExpired(): Promise<number> {
       const info = stmt.deleteExpiredAuthSessions.run();
       return info.changes ?? 0;
+    },
+  },
+
+  hintDependency: {
+    async forStudent(studentId: string): Promise<{
+      sessions: number;
+      totalHints: number;
+      avgHintsPerSession: number;
+    }> {
+      const row = stmt.hintDependencyForStudent.get(studentId) as {
+        sessions: number;
+        total_hints: number;
+      };
+      const sessions = row?.sessions ?? 0;
+      const totalHints = row?.total_hints ?? 0;
+      return {
+        sessions,
+        totalHints,
+        avgHintsPerSession: sessions > 0 ? totalHints / sessions : 0,
+      };
+    },
+
+    async forStudentInWindow(
+      studentId: string,
+      since: Date
+    ): Promise<{ sessions: number; totalHints: number; avgHintsPerSession: number }> {
+      const sinceIso = since.toISOString().replace('T', ' ').slice(0, 19);
+      const row = stmt.hintDependencyForStudentInWindow.get(
+        studentId,
+        sinceIso
+      ) as { sessions: number; total_hints: number };
+      const sessions = row?.sessions ?? 0;
+      const totalHints = row?.total_hints ?? 0;
+      return {
+        sessions,
+        totalHints,
+        avgHintsPerSession: sessions > 0 ? totalHints / sessions : 0,
+      };
+    },
+
+    async all(): Promise<{
+      sessions: number;
+      students: number;
+      totalHints: number;
+      avgHintsPerSession: number;
+    }> {
+      const row = stmt.hintDependencyAll.get() as {
+        sessions: number;
+        students: number;
+        total_hints: number;
+      };
+      const sessions = row?.sessions ?? 0;
+      const totalHints = row?.total_hints ?? 0;
+      return {
+        sessions,
+        students: row?.students ?? 0,
+        totalHints,
+        avgHintsPerSession: sessions > 0 ? totalHints / sessions : 0,
+      };
     },
   },
 
