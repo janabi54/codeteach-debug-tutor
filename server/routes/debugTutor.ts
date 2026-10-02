@@ -25,8 +25,24 @@ router.post('/hint', requireAuth, async (req, res) => {
 
   const studentId = resolveActingStudentId(req, requested);
 
+  // Prefer the exercise stored in the DB when it exists. The client-supplied
+  // context is a fallback for exercises that haven't been authored yet.
+  const dbExercise = await db.exercises.findBySlug(exerciseId);
+  const resolvedContext = dbExercise
+    ? {
+        title: dbExercise.title,
+        description: dbExercise.description,
+        learningObjectives: dbExercise.learningObjectives,
+        expectedConcepts: dbExercise.expectedConcepts,
+      }
+    : exerciseContext;
+
+  const struggleMinutes = dbExercise
+    ? dbExercise.struggleMinutes
+    : getStruggleMinutes(exerciseId);
+
   const session = await hintSessions.getOrCreate(studentId, exerciseId, {
-    struggleMinutes: getStruggleMinutes(exerciseId),
+    struggleMinutes,
   });
 
   // ─── Post-mortem submission path ───
@@ -128,7 +144,8 @@ router.post('/hint', requireAuth, async (req, res) => {
   // ─── Serve the hint ───
   const started = Date.now();
   const hint = await getTutorHint({
-    studentId, exerciseId, code, language, errorOutput, exerciseContext,
+    studentId, exerciseId, code, language, errorOutput,
+    exerciseContext: resolvedContext,
     attemptNumber: session.totalAttempts,
     hypothesis: hypothesisText ?? undefined,
   });
