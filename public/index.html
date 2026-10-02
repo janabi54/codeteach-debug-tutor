@@ -79,6 +79,10 @@
       <div id="registerFields" hidden>
         <label>Your name</label>
         <input id="loginDisplayName" type="text" spellcheck="false" placeholder="How we'll greet you" />
+
+        <label>Invite code <span class="label-optional">(optional)</span></label>
+        <input id="loginInviteCode" type="text" spellcheck="false" placeholder="XXXX-XXXX-XXXX" autocomplete="off" />
+        <p class="field-hint">Leave blank if you're a student.</p>
       </div>
 
       <button id="loginSubmit" class="primary login-submit">Log in</button>
@@ -161,13 +165,24 @@ for (let i = 0; i < arr.length; i++) {
   <div class="panel-wrap">
     <h1>Debug Tutor Health</h1>
     <p class="subtitle">Operator view — how the tutor is behaving right now.</p>
-    <div class="admin-key-row">
-      <label for="adminKey">Admin key</label>
-      <input id="adminKey" type="text" value="change-me" spellcheck="false" />
-      <button id="refreshHealth" class="primary small">Refresh</button>
+    <div class="section-card">
+      <h2>Invite codes</h2>
+      <p class="subtitle" style="margin-bottom:12px;">
+        Generate a code to invite another instructor. Codes are single-use and expire.
+      </p>
+      <div class="invite-generate-row">
+        <label for="inviteExpires">Expires in</label>
+        <input id="inviteExpires" type="number" value="30" min="1" max="365" />
+        <span class="muted">days</span>
+        <button id="generateInviteBtn" class="primary small">Generate instructor code</button>
+      </div>
+      <div id="inviteCodeList" class="invite-code-list">
+        <p class="empty-state">Loading…</p>
+      </div>
     </div>
+
     <div id="healthBody" class="health-body">
-      <p class="empty-state">Enter the admin key and press Refresh.</p>
+      <p class="empty-state">Press Refresh to load health metrics.</p>
     </div>
   </div>
 </section>

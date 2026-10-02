@@ -299,14 +299,13 @@ function renderReasoningCard(reasoning) {
 }
 
 // --- Health ---
-$('refreshHealth').addEventListener('click', async () => {
-  const key = $('adminKey').value.trim();
+// --- Health tab ---
+async function loadHealth() {
   const body = $('healthBody');
+  if (!body) return;
   body.innerHTML = '<p class="empty-state">Loading...</p>';
   try {
-    const res = await fetch('/api/admin/health/debug-tutor?hours=24', {
-      headers: { 'x-admin-key': key },
-    });
+    const res = await fetch('/api/admin/health/debug-tutor?hours=24');
     if (!res.ok) {
       body.innerHTML = '<p class="empty-state">Request failed: HTTP ' + res.status + '</p>';
       return;
@@ -314,7 +313,6 @@ $('refreshHealth').addEventListener('click', async () => {
     const h = await res.json();
     const pct = (h.hints.fallbackRate * 100).toFixed(1);
     const fbClass = h.hints.fallbackRate > 0.1 ? 'warn' : 'good';
-
     body.innerHTML = `
       ${h.anomalies.length ? `
         <div class="anomalies">
@@ -322,27 +320,12 @@ $('refreshHealth').addEventListener('click', async () => {
           <ul>${h.anomalies.map(a => '<li>' + escapeHtml(a) + '</li>').join('')}</ul>
         </div>
       ` : ''}
-
       <div class="stat-grid">
-        <div class="stat">
-          <div class="stat-label">Total hints</div>
-          <div class="stat-value">${h.hints.total}</div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">Fallback rate</div>
-          <div class="stat-value ${fbClass}">${pct}%</div>
-          <div class="stat-sub">${h.hints.fromFallback} of ${h.hints.total}</div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">Avg latency</div>
-          <div class="stat-value">${h.hints.avgLatencyMs ?? '—'}${h.hints.avgLatencyMs ? 'ms' : ''}</div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">Circuit breaker</div>
-          <div class="stat-value ${h.circuitBreaker.state === 'open' ? 'bad' : 'good'}">${h.circuitBreaker.state}</div>
-        </div>
+        <div class="stat"><div class="stat-label">Total hints</div><div class="stat-value">${h.hints.total}</div></div>
+        <div class="stat"><div class="stat-label">Fallback rate</div><div class="stat-value ${fbClass}">${pct}%</div><div class="stat-sub">${h.hints.fromFallback} of ${h.hints.total}</div></div>
+        <div class="stat"><div class="stat-label">Avg latency</div><div class="stat-value">${h.hints.avgLatencyMs ?? '—'}${h.hints.avgLatencyMs ? 'ms' : ''}</div></div>
+        <div class="stat"><div class="stat-label">Circuit breaker</div><div class="stat-value ${h.circuitBreaker.state === 'open' ? 'bad' : 'good'}">${h.circuitBreaker.state}</div></div>
       </div>
-
       <div class="section-card">
         <h2>Fallback reasons</h2>
         ${Object.keys(h.fallbackBreakdown).length
@@ -351,7 +334,6 @@ $('refreshHealth').addEventListener('click', async () => {
             ).join('')
           : '<p class="empty-state">No fallbacks in this window.</p>'}
       </div>
-
       <div class="section-card">
         <h2>Top mistake patterns</h2>
         ${h.patterns.top.length
@@ -365,7 +347,7 @@ $('refreshHealth').addEventListener('click', async () => {
   } catch (err) {
     body.innerHTML = '<p class="empty-state">Failed: ' + escapeHtml(err.message) + '</p>';
   }
-});
+}
 
 // --- Init ---
 setLevel(1);
@@ -732,6 +714,11 @@ function showAppView() {
   $('loginView').hidden = true;
   const topbar = document.querySelector('header.topbar');
   if (topbar) topbar.style.display = '';
+
+  setTimeout(() => {
+    if (typeof loadInviteCodes === 'function') loadInviteCodes();
+    if (typeof loadHealth === 'function') loadHealth();
+  }, 100);
 }
 
 function applyRoleVisibility() {
@@ -765,6 +752,8 @@ function setLoginMode(mode) {
     $('registerFields').hidden = false;
   }
   $('loginError').hidden = true;
+  const inviteEl = $('loginInviteCode');
+  if (inviteEl) inviteEl.value = '';
 }
 
 function showLoginError(msg) {
@@ -790,9 +779,15 @@ async function submitLogin() {
   }
 
   const url = loginMode === 'login' ? '/api/auth/login' : '/api/auth/register';
+  const inviteCode = $('loginInviteCode')?.value?.trim() ?? '';
   const body = loginMode === 'login'
     ? { email, password }
-    : { email, password, displayName };
+    : {
+        email,
+        password,
+        displayName,
+        ...(inviteCode ? { inviteCode } : {}),
+      };
 
   $('loginSubmit').disabled = true;
   try {
@@ -932,3 +927,131 @@ function renderHintDependencyCard(dep) {
     </div>
   `;
 }
+
+// --- Invite codes (Health tab) ---
+
+async function loadInviteCodes() {
+  const list = $('inviteCodeList');
+  if (!list) return;
+  list.innerHTML = '<p class="empty-state">Loading…</p>';
+
+  try {
+    const res = await fetch('/api/admin/invite-codes');
+    if (!res.ok) {
+      list.innerHTML =
+        '<p class="empty-state">Could not load codes (HTTP ' + res.status + ').</p>';
+      return;
+    }
+    const codes = await res.json();
+    if (!codes.length) {
+      list.innerHTML =
+        '<p class="empty-state">No codes yet. Generate one above.</p>';
+      return;
+    }
+    list.innerHTML = codes.map(renderInviteCodeRow).join('');
+  } catch (err) {
+    list.innerHTML =
+      '<p class="empty-state">Failed: ' + escapeHtml(err.message) + '</p>';
+  }
+}
+
+function renderInviteCodeRow(c) {
+  const now = Date.now();
+  const expiresAt = c.expiresAt ? new Date(c.expiresAt).getTime() : null;
+  const expired = expiresAt !== null && expiresAt < now;
+
+  let status;
+  if (c.usedBy) {
+    status = '<span class="invite-status used">Used</span>';
+  } else if (expired) {
+    status = '<span class="invite-status expired">Expired</span>';
+  } else {
+    status = '<span class="invite-status active">Active</span>';
+  }
+
+  const expiresText = c.expiresAt
+    ? 'expires ' + new Date(c.expiresAt).toLocaleDateString()
+    : 'no expiry';
+
+  const revokeBtn =
+    !c.usedBy && !expired
+      ? `<button class="invite-revoke" data-code="${escapeHtml(c.code)}">Revoke</button>`
+      : '';
+
+  return `
+    <div class="invite-row">
+      <code class="invite-code-value">${escapeHtml(c.code)}</code>
+      <span class="invite-meta">${escapeHtml(c.role)} · ${escapeHtml(expiresText)}</span>
+      ${status}
+      ${revokeBtn}
+    </div>
+  `;
+}
+
+async function generateInviteCode() {
+  const btn = $('generateInviteBtn');
+  const days = Number($('inviteExpires').value) || 30;
+  btn.disabled = true;
+  btn.textContent = 'Generating…';
+
+  try {
+    const res = await fetch('/api/admin/invite-codes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'instructor', expiresInDays: days }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || 'Could not generate code.');
+      return;
+    }
+    await loadInviteCodes();
+  } catch (err) {
+    alert('Failed: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Generate instructor code';
+  }
+}
+
+async function revokeInviteCode(code) {
+  if (!confirm('Revoke invite code ' + code + '?')) return;
+  try {
+    const res = await fetch('/api/admin/invite-codes/' + encodeURIComponent(code), {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || 'Could not revoke code.');
+      return;
+    }
+    await loadInviteCodes();
+  } catch (err) {
+    alert('Failed: ' + err.message);
+  }
+}
+
+document.addEventListener('click', (e) => {
+  const target = e.target;
+  if (!target || !target.classList) return;
+
+  if (target.id === 'generateInviteBtn') {
+    generateInviteCode();
+    return;
+  }
+  if (target.classList.contains('invite-revoke')) {
+    const code = target.dataset.code;
+    if (code) revokeInviteCode(code);
+  }
+});
+
+document.querySelectorAll('.tab').forEach((tab) => {
+  tab.addEventListener('click', () => {
+    if (tab.dataset.tab === 'health') {
+      setTimeout(() => {
+        loadInviteCodes();
+        loadHealth();
+      }, 50);
+    }
+  });
+});
