@@ -112,3 +112,36 @@ CREATE TABLE IF NOT EXISTS invite_codes (
 CREATE INDEX IF NOT EXISTS idx_invite_codes_code ON invite_codes(code);
 CREATE INDEX IF NOT EXISTS idx_invite_codes_unused
   ON invite_codes(used_by, expires_at);
+
+CREATE TABLE IF NOT EXISTS cohorts (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  instructor_id TEXT NOT NULL,
+  enrollment_code TEXT UNIQUE,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (instructor_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_cohorts_instructor ON cohorts(instructor_id);
+CREATE INDEX IF NOT EXISTS idx_cohorts_enrollment_code ON cohorts(enrollment_code);
+
+CREATE TABLE IF NOT EXISTS exercises (
+  id TEXT PRIMARY KEY,
+  slug TEXT NOT NULL UNIQUE,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  language TEXT NOT NULL DEFAULT 'javascript',
+  starter_code TEXT NOT NULL DEFAULT '',
+  expected_concepts TEXT NOT NULL DEFAULT '[]',
+  learning_objectives TEXT NOT NULL DEFAULT '[]',
+  struggle_minutes INTEGER NOT NULL DEFAULT 0,
+  cohort_id TEXT,
+  created_by TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (cohort_id) REFERENCES cohorts(id) ON DELETE SET NULL,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_exercises_cohort ON exercises(cohort_id);
+CREATE INDEX IF NOT EXISTS idx_exercises_slug ON exercises(slug);

@@ -31,6 +31,38 @@ function rowToUser(row: any): User {
   };
 }
 
+function rowToCohort(row: any): Cohort {
+  return {
+    id: row.id,
+    name: row.name,
+    instructorId: row.instructor_id,
+    enrollmentCode: row.enrollment_code ?? null,
+    createdAt: parseSqliteTimestamp(row.created_at),
+  };
+}
+
+function rowToExercise(row: any): Exercise {
+  let concepts: string[] = [];
+  let objectives: string[] = [];
+  try { concepts = JSON.parse(row.expected_concepts || '[]'); } catch {}
+  try { objectives = JSON.parse(row.learning_objectives || '[]'); } catch {}
+  return {
+    id: row.id,
+    slug: row.slug,
+    title: row.title,
+    description: row.description,
+    language: row.language,
+    starterCode: row.starter_code,
+    expectedConcepts: concepts,
+    learningObjectives: objectives,
+    struggleMinutes: row.struggle_minutes,
+    cohortId: row.cohort_id,
+    createdBy: row.created_by,
+    createdAt: parseSqliteTimestamp(row.created_at),
+    updatedAt: parseSqliteTimestamp(row.updated_at),
+  };
+}
+
 function rowToInviteCode(row: any) {
   return {
     id: row.id,
@@ -117,6 +149,30 @@ if (!hasScoreSource) {
   console.log('[db] migrated: added hypotheses.score_source');
 }
 
+
+interface Cohort {
+  id: string;
+  name: string;
+  instructorId: string;
+  enrollmentCode: string | null;
+  createdAt: Date;
+}
+
+interface Exercise {
+  id: string;
+  slug: string;
+  title: string;
+  description: string;
+  language: string;
+  starterCode: string;
+  expectedConcepts: string[];
+  learningObjectives: string[];
+  struggleMinutes: number;
+  cohortId: string | null;
+  createdBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 interface User {
   id: string;
@@ -356,6 +412,45 @@ const stmt = {
   deleteInviteCode: sqlite.prepare(
     'DELETE FROM invite_codes WHERE code = ? AND used_by IS NULL'
   ),
+
+  // ── Cohorts ──
+  findCohortByInstructor: sqlite.prepare(
+    'SELECT * FROM cohorts WHERE instructor_id = ? ORDER BY created_at ASC LIMIT 1'
+  ),
+  findCohortById: sqlite.prepare(
+    'SELECT * FROM cohorts WHERE id = ?'
+  ),
+  insertCohort: sqlite.prepare(
+    'INSERT INTO cohorts (id, name, instructor_id, enrollment_code) VALUES (?, ?, ?, ?)'
+  ),
+
+  // ── Exercises ──
+  insertExercise: sqlite.prepare(
+    `INSERT INTO exercises
+      (id, slug, title, description, language, starter_code,
+       expected_concepts, learning_objectives, struggle_minutes,
+       cohort_id, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ),
+  findExerciseById: sqlite.prepare(
+    'SELECT * FROM exercises WHERE id = ?'
+  ),
+  findExerciseBySlug: sqlite.prepare(
+    'SELECT * FROM exercises WHERE slug = ?'
+  ),
+  listExercisesByCohort: sqlite.prepare(
+    'SELECT * FROM exercises WHERE cohort_id = ? ORDER BY created_at DESC'
+  ),
+  updateExercise: sqlite.prepare(
+    `UPDATE exercises SET
+       title = ?, description = ?, language = ?, starter_code = ?,
+       expected_concepts = ?, learning_objectives = ?, struggle_minutes = ?,
+       updated_at = datetime('now')
+     WHERE id = ?`
+  ),
+  deleteExercise: sqlite.prepare(
+    'DELETE FROM exercises WHERE id = ?'
+  ),
   findAuthSession: sqlite.prepare(
     "SELECT * FROM auth_sessions WHERE token = ? AND expires_at > datetime('now')"
   ),
@@ -416,6 +511,109 @@ export const db = {
     async deleteExpired(): Promise<number> {
       const info = stmt.deleteExpiredAuthSessions.run();
       return info.changes ?? 0;
+    },
+  },
+
+  cohorts: {
+    async findById(id: string): Promise<Cohort | null> {
+      const row = stmt.findCohortById.get(id) as any;
+      return row ? rowToCohort(row) : null;
+    },
+    async findByInstructor(instructorId: string): Promise<Cohort | null> {
+      const row = stmt.findCohortByInstructor.get(instructorId) as any;
+      return row ? rowToCohort(row) : null;
+    },
+    async create(data: {
+      name: string;
+      instructorId: string;
+      enrollmentCode?: string | null;
+    }): Promise<Cohort> {
+      const id = crypto.randomUUID();
+      stmt.insertCohort.run(id, data.name, data.instructorId, data.enrollmentCode ?? null);
+      const row = stmt.findCohortById.get(id) as any;
+      return rowToCohort(row);
+    },
+    /**
+     * Get the instructor's cohort, creating a default one if they don't
+     * have any yet. Every instructor gets exactly one cohort in v1.
+     */
+    async ensureForInstructor(instructorId: string): Promise<Cohort> {
+      const existing = await db.cohorts.findByInstructor(instructorId);
+      if (existing) return existing;
+      return db.cohorts.create({
+        name: 'My Exercises',
+        instructorId,
+      });
+    },
+  },
+
+  exercises: {
+    async findById(id: string): Promise<Exercise | null> {
+      const row = stmt.findExerciseById.get(id) as any;
+      return row ? rowToExercise(row) : null;
+    },
+    async findBySlug(slug: string): Promise<Exercise | null> {
+      const row = stmt.findExerciseBySlug.get(slug) as any;
+      return row ? rowToExercise(row) : null;
+    },
+    async listByCohort(cohortId: string): Promise<Exercise[]> {
+      return (stmt.listExercisesByCohort.all(cohortId) as any[]).map(rowToExercise);
+    },
+    async create(data: {
+      slug: string;
+      title: string;
+      description: string;
+      language: string;
+      starterCode: string;
+      expectedConcepts: string[];
+      learningObjectives: string[];
+      struggleMinutes: number;
+      cohortId: string | null;
+      createdBy: string | null;
+    }): Promise<Exercise> {
+      const id = crypto.randomUUID();
+      stmt.insertExercise.run(
+        id,
+        data.slug,
+        data.title,
+        data.description,
+        data.language,
+        data.starterCode,
+        JSON.stringify(data.expectedConcepts),
+        JSON.stringify(data.learningObjectives),
+        data.struggleMinutes,
+        data.cohortId,
+        data.createdBy
+      );
+      const row = stmt.findExerciseById.get(id) as any;
+      return rowToExercise(row);
+    },
+    async update(id: string, patch: Partial<{
+      title: string;
+      description: string;
+      language: string;
+      starterCode: string;
+      expectedConcepts: string[];
+      learningObjectives: string[];
+      struggleMinutes: number;
+    }>): Promise<void> {
+      const current = await db.exercises.findById(id);
+      if (!current) return;
+      const merged = { ...current, ...patch };
+      stmt.updateExercise.run(
+        merged.title,
+        merged.description,
+        merged.language,
+        merged.starterCode,
+        JSON.stringify(merged.expectedConcepts),
+        JSON.stringify(merged.learningObjectives),
+        merged.struggleMinutes,
+        id
+      );
+    },
+    async delete(id: string): Promise<boolean> {
+      const info = stmt.deleteExercise.run(id);
+      return (info.changes ?? 0) > 0;
     },
   },
 

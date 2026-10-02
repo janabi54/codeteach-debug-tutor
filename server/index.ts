@@ -6,6 +6,7 @@ import authRoutes from './routes/auth.js';
 import { startHealthMonitor } from './admin/alerts.js';
 import { bootstrapInstructor } from './auth/bootstrap.js';
 import { pruneExpiredSessions } from './auth/sessions.js';
+import { seedExercisesFromConfig } from './db/seedExercises.js';
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -20,6 +21,7 @@ const PORT = Number(process.env.PORT ?? 3001);
 
 async function main() {
   await bootstrapInstructor();
+  await seedExercisesFromConfig();
   await pruneExpiredSessions();
 
   app.listen(PORT, () => {
