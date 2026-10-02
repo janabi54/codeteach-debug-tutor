@@ -15,12 +15,14 @@
     "@capacitor/android": "^8.5.2",
     "@capacitor/core": "^8.5.2",
     "@typescript-eslint/parser": "^8.0.0",
+    "@yaireo/tagify": "^4.39.0",
     "bcrypt": "^6.0.0",
     "better-sqlite3": "^13.0.3",
     "cookie-parser": "^1.4.7",
     "eslint": "^9.0.0",
     "express": "^4.19.0",
-    "openai": "^7.25.0"
+    "openai": "^7.25.0",
+    "prismjs": "^1.30.0"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.5.2",
@@ -30,6 +32,7 @@
     "@types/express": "^4.17.21",
     "@types/jest": "^29.5.0",
     "@types/node": "^20.11.0",
+    "@types/prismjs": "^1.26.6",
     "jest": "^29.7.0",
     "ts-jest": "^29.1.0",
     "tsx": "^4.7.0",

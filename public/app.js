@@ -1055,3 +1055,395 @@ document.querySelectorAll('.tab').forEach((tab) => {
     }
   });
 });
+
+// ═══════════════════════════════════════════════════════════
+// Exercises tab
+// ═══════════════════════════════════════════════════════════
+
+const exercisesState = {
+  list: [],
+  currentSlug: null,
+  conceptsTagify: null,
+  objectivesTagify: null,
+};
+
+function showExercisesList() {
+  $('exercisesListView').hidden = false;
+  $('exerciseEditorView').hidden = true;
+}
+
+function showExercisesEditor() {
+  $('exercisesListView').hidden = true;
+  $('exerciseEditorView').hidden = false;
+}
+
+document.querySelectorAll('.tab').forEach((tab) => {
+  tab.addEventListener('click', () => {
+    if (tab.dataset.tab === 'exercises') {
+      showExercisesList();
+      loadExercises();
+    }
+  });
+});
+
+async function loadExercises() {
+  const list = $('exercisesList');
+  if (!list) return;
+  list.innerHTML = '<p class="empty-state">Loading...</p>';
+
+  try {
+    const res = await fetch('/api/admin/exercises');
+    if (!res.ok) {
+      list.innerHTML = '<p class="empty-state">Failed to load: HTTP ' + res.status + '</p>';
+      return;
+    }
+    const data = await res.json();
+    exercisesState.list = data;
+
+    if (!data.length) {
+      list.innerHTML = '<p class="empty-state">No exercises yet. Create your first one.</p>';
+      return;
+    }
+
+    list.innerHTML = renderExercisesTable(data);
+    wireExercisesTable();
+  } catch (err) {
+    list.innerHTML = '<p class="empty-state">Failed: ' + escapeHtml(err.message) + '</p>';
+  }
+}
+
+function renderExercisesTable(exercises) {
+  return `
+    <table class="exercises-table">
+      <thead>
+        <tr>
+          <th>Title</th>
+          <th>Language</th>
+          <th>Struggle</th>
+          <th>Updated</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${exercises.map((e) => `
+          <tr data-slug="${escapeHtml(e.slug)}">
+            <td>
+              <span class="exercise-title-cell">${escapeHtml(e.title)}</span>
+              <span class="exercise-slug-cell">${escapeHtml(e.slug)}</span>
+            </td>
+            <td>${escapeHtml(e.language)}</td>
+            <td>${e.struggleMinutes === 0 ? '<span class="muted">none</span>' : e.struggleMinutes + ' min'}</td>
+            <td>${new Date(e.updatedAt).toLocaleDateString()}</td>
+            <td class="exercise-actions-cell">
+              <button data-action="edit">Edit</button>
+              <button data-action="duplicate">Duplicate</button>
+              <button data-action="delete" class="danger">Delete</button>
+            </td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function wireExercisesTable() {
+  document.querySelectorAll('.exercises-table tbody tr').forEach((row) => {
+    const slug = row.dataset.slug;
+    row.querySelectorAll('button[data-action]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const action = btn.dataset.action;
+        if (action === 'edit') openExerciseEditor(slug);
+        else if (action === 'duplicate') duplicateExercise(slug);
+        else if (action === 'delete') deleteExercise(slug);
+      });
+    });
+  });
+}
+
+document.addEventListener('click', (e) => {
+  const t = e.target;
+  if (!t || !t.id) return;
+
+  if (t.id === 'newExerciseBtn') openExerciseEditor(null);
+  else if (t.id === 'cancelExerciseBtn') { showExercisesList(); loadExercises(); }
+  else if (t.id === 'saveExerciseBtn') saveExercise();
+  else if (t.id === 'deleteExerciseBtn') deleteExercise(exercisesState.currentSlug);
+});
+
+async function openExerciseEditor(slug) {
+  exercisesState.currentSlug = slug;
+
+  // Reset form
+  $('exTitle').value = '';
+  $('exDescription').value = '';
+  $('exLanguage').value = 'javascript';
+  $('exStarterCode').value = '';
+  $('exStruggle').value = '0';
+  $('exSlugHint').textContent = '';
+  $('deleteExerciseBtn').hidden = true;
+  $('editorTitle').textContent = slug ? 'Edit exercise' : 'New exercise';
+  $('editorSubtitle').textContent = slug
+    ? 'Changes save on the server when you click Save.'
+    : 'Students will see this exercise when they enter its ID.';
+
+  // Init Tagify if not already done
+  initTagifyFields();
+
+  // Load existing exercise data if editing
+  if (slug) {
+    const ex = exercisesState.list.find((e) => e.slug === slug);
+    if (ex) {
+      $('exTitle').value = ex.title;
+      $('exDescription').value = ex.description;
+      $('exLanguage').value = ex.language;
+      $('exStarterCode').value = ex.starterCode;
+      $('exStruggle').value = String(ex.struggleMinutes);
+      $('exSlugHint').textContent = 'Slug: ' + ex.slug;
+      $('deleteExerciseBtn').hidden = false;
+      if (exercisesState.conceptsTagify) {
+        exercisesState.conceptsTagify.removeAllTags();
+        exercisesState.conceptsTagify.addTags(ex.expectedConcepts);
+      }
+      if (exercisesState.objectivesTagify) {
+        exercisesState.objectivesTagify.removeAllTags();
+        exercisesState.objectivesTagify.addTags(ex.learningObjectives);
+      }
+    }
+  } else {
+    if (exercisesState.conceptsTagify) exercisesState.conceptsTagify.removeAllTags();
+    if (exercisesState.objectivesTagify) exercisesState.objectivesTagify.removeAllTags();
+  }
+
+  showExercisesEditor();
+  refreshCodeHighlight();
+  refreshPreview();
+}
+
+function initTagifyFields() {
+  if (typeof Tagify === 'undefined') return;
+  if (exercisesState.conceptsTagify) return; // already initialized
+
+  const conceptsEl = $('exConcepts');
+  const objectivesEl = $('exObjectives');
+  if (!conceptsEl || !objectivesEl) return;
+
+  exercisesState.conceptsTagify = new Tagify(conceptsEl, {
+    delimiters: ',|\\n',
+    maxTags: 20,
+    trim: true,
+    placeholder: 'Type a concept and press Enter',
+    dropdown: { enabled: 0 },
+    originalInputValueFormat: (valuesArr) => valuesArr.map((i) => i.value),
+  });
+
+  exercisesState.objectivesTagify = new Tagify(objectivesEl, {
+    delimiters: ',|\\n',
+    maxTags: 20,
+    trim: true,
+    placeholder: 'Type an objective and press Enter',
+    dropdown: { enabled: 0 },
+    originalInputValueFormat: (valuesArr) => valuesArr.map((i) => i.value),
+  });
+
+  exercisesState.conceptsTagify.on('add', refreshPreview);
+  exercisesState.conceptsTagify.on('remove', refreshPreview);
+  exercisesState.objectivesTagify.on('add', refreshPreview);
+  exercisesState.objectivesTagify.on('remove', refreshPreview);
+}
+
+function getTagValues(tagifyInstance) {
+  if (!tagifyInstance) return [];
+  return tagifyInstance.value.map((t) => t.value).filter(Boolean);
+}
+
+function refreshCodeHighlight() {
+  const input = $('exStarterCode');
+  const preview = $('exStarterPreview');
+  if (!input || !preview) return;
+  const code = input.value || ' ';
+  const lang = $('exLanguage').value;
+  const prismLang = lang === 'typescript' ? 'typescript' : lang === 'python' ? 'python' : 'javascript';
+  preview.className = 'code-editor-highlight language-' + prismLang;
+  preview.innerHTML = '<code class="language-' + prismLang + '">' + escapeHtml(code) + '</code>';
+  if (typeof Prism !== 'undefined') {
+    Prism.highlightElement(preview.querySelector('code'));
+  }
+}
+
+function refreshPreview() {
+  const title = $('exTitle').value || 'Untitled exercise';
+  const desc = $('exDescription').value || 'No description yet.';
+  const code = $('exStarterCode').value || '// no starter code';
+  const struggle = parseInt($('exStruggle').value, 10) || 0;
+  const lang = $('exLanguage').value;
+  const prismLang = lang === 'typescript' ? 'typescript' : lang === 'python' ? 'python' : 'javascript';
+
+  $('previewTitle').textContent = title;
+  $('previewDescription').textContent = desc;
+
+  const previewCode = $('previewCode');
+  previewCode.className = 'preview-code language-' + prismLang;
+  previewCode.innerHTML = '<code class="language-' + prismLang + '">' + escapeHtml(code) + '</code>';
+  if (typeof Prism !== 'undefined') {
+    Prism.highlightElement(previewCode.querySelector('code'));
+  }
+
+  const concepts = getTagValues(exercisesState.conceptsTagify);
+  const objectives = getTagValues(exercisesState.objectivesTagify);
+
+  if (concepts.length) {
+    $('previewConceptsWrap').hidden = false;
+    $('previewConcepts').innerHTML = concepts
+      .map((c) => '<span class="preview-tag">' + escapeHtml(c) + '</span>')
+      .join('');
+  } else {
+    $('previewConceptsWrap').hidden = true;
+  }
+
+  if (objectives.length) {
+    $('previewObjectivesWrap').hidden = false;
+    $('previewObjectives').innerHTML = objectives
+      .map((o) => '<span class="preview-tag">' + escapeHtml(o) + '</span>')
+      .join('');
+  } else {
+    $('previewObjectivesWrap').hidden = true;
+  }
+
+  if (struggle > 0) {
+    $('previewStruggleWrap').hidden = false;
+    $('previewStruggle').textContent = struggle;
+  } else {
+    $('previewStruggleWrap').hidden = true;
+  }
+}
+
+// Live preview wiring — attached once, on load.
+document.addEventListener('DOMContentLoaded', () => {
+  const ids = ['exTitle', 'exDescription', 'exStarterCode', 'exStruggle', 'exLanguage'];
+  ids.forEach((id) => {
+    const el = $(id);
+    if (!el) return;
+    el.addEventListener('input', () => {
+      refreshCodeHighlight();
+      refreshPreview();
+    });
+    el.addEventListener('change', () => {
+      refreshCodeHighlight();
+      refreshPreview();
+    });
+  });
+
+  // Sync scroll between the code input and the Prism highlight overlay
+  const input = $('exStarterCode');
+  const overlay = $('exStarterPreview');
+  if (input && overlay) {
+    input.addEventListener('scroll', () => {
+      overlay.scrollTop = input.scrollTop;
+      overlay.scrollLeft = input.scrollLeft;
+    });
+  }
+});
+
+async function saveExercise() {
+  const btn = $('saveExerciseBtn');
+  const title = $('exTitle').value.trim();
+  if (title.length < 2) {
+    alert('Title must be at least 2 characters.');
+    return;
+  }
+
+  const body = {
+    title,
+    description: $('exDescription').value,
+    language: $('exLanguage').value,
+    starterCode: $('exStarterCode').value,
+    expectedConcepts: getTagValues(exercisesState.conceptsTagify),
+    learningObjectives: getTagValues(exercisesState.objectivesTagify),
+    struggleMinutes: Math.max(0, Math.min(60, parseInt($('exStruggle').value, 10) || 0)),
+  };
+
+  const isEdit = exercisesState.currentSlug !== null;
+  const url = isEdit
+    ? '/api/admin/exercises/' + encodeURIComponent(exercisesState.currentSlug)
+    : '/api/admin/exercises';
+  const method = isEdit ? 'PUT' : 'POST';
+
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || 'Save failed.');
+      return;
+    }
+    exercisesState.currentSlug = data.slug;
+    showExercisesList();
+    await loadExercises();
+  } catch (err) {
+    alert('Save failed: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Save';
+  }
+}
+
+async function deleteExercise(slug) {
+  if (!slug) return;
+  if (!confirm('Delete "' + slug + '"? This cannot be undone.')) return;
+
+  try {
+    const res = await fetch('/api/admin/exercises/' + encodeURIComponent(slug), {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || 'Delete failed.');
+      return;
+    }
+    exercisesState.currentSlug = null;
+    showExercisesList();
+    await loadExercises();
+  } catch (err) {
+    alert('Delete failed: ' + err.message);
+  }
+}
+
+function duplicateExercise(slug) {
+  const source = exercisesState.list.find((e) => e.slug === slug);
+  if (!source) {
+    alert('Exercise not found in cache. Refresh and try again.');
+    return;
+  }
+
+  // Open the editor in "new" mode, prefilled from the source
+  exercisesState.currentSlug = null;
+  $('editorTitle').textContent = 'Duplicate exercise';
+  $('editorSubtitle').textContent = 'Adjust the copy and save it as a new exercise.';
+  $('exTitle').value = source.title + ' (copy)';
+  $('exDescription').value = source.description;
+  $('exLanguage').value = source.language;
+  $('exStarterCode').value = source.starterCode;
+  $('exStruggle').value = String(source.struggleMinutes);
+  $('exSlugHint').textContent = 'A new slug will be generated on save.';
+  $('deleteExerciseBtn').hidden = true;
+
+  initTagifyFields();
+  if (exercisesState.conceptsTagify) {
+    exercisesState.conceptsTagify.removeAllTags();
+    exercisesState.conceptsTagify.addTags(source.expectedConcepts);
+  }
+  if (exercisesState.objectivesTagify) {
+    exercisesState.objectivesTagify.removeAllTags();
+    exercisesState.objectivesTagify.addTags(source.learningObjectives);
+  }
+
+  showExercisesEditor();
+  refreshCodeHighlight();
+  refreshPreview();
+}

@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CodeTeach — AI Debug Tutor</title>
+<link rel="stylesheet" href="/prism-theme.css">
+<link rel="stylesheet" href="/tagify.css">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -50,6 +52,7 @@
     <button class="tab" data-tab="weak-spots">Weak Spots</button>
     <button class="tab" data-tab="health">Health</button>
     <button class="tab" data-tab="class">Class</button>
+    <button class="tab" data-tab="exercises">Exercises</button>
   </nav>
     <div class="user-chip">
       <span id="currentUserName" class="current-user-name"></span>
@@ -206,8 +209,129 @@ for (let i = 0; i < arr.length; i++) {
   </div>
 </section>
 
+<!-- EXERCISES TAB (instructor only) -->
+<section id="tab-exercises" class="tab-panel">
+  <div class="panel-wrap panel-wrap-wide">
+
+    <div id="exercisesListView">
+      <div class="exercises-header">
+        <div>
+          <h1>Exercises</h1>
+          <p class="subtitle">Author exercises that students practice on. Each exercise carries its own context, starter code, and struggle timer.</p>
+        </div>
+        <button id="newExerciseBtn" class="primary">+ New exercise</button>
+      </div>
+      <div id="exercisesList" class="card-list">
+        <p class="empty-state">Loading...</p>
+      </div>
+    </div>
+
+    <div id="exerciseEditorView" hidden>
+      <div class="exercises-header">
+        <div>
+          <h1 id="editorTitle">New exercise</h1>
+          <p class="subtitle" id="editorSubtitle">Students will see this exercise when they enter its ID.</p>
+        </div>
+        <div class="editor-actions-top">
+          <button id="cancelExerciseBtn" class="ghost">Cancel</button>
+          <button id="saveExerciseBtn" class="primary">Save</button>
+        </div>
+      </div>
+
+      <div class="exercise-editor">
+        <div class="exercise-editor-form">
+          <div class="field">
+            <label for="exTitle">Title</label>
+            <input id="exTitle" type="text" spellcheck="false" placeholder="e.g. Find the maximum" />
+            <p class="field-hint" id="exSlugHint"></p>
+          </div>
+
+          <div class="field">
+            <label for="exDescription">Description</label>
+            <textarea id="exDescription" rows="3" spellcheck="false" placeholder="What should the student do?"></textarea>
+          </div>
+
+          <div class="field-row">
+            <div class="field">
+              <label for="exLanguage">Language</label>
+              <select id="exLanguage">
+                <option value="javascript">JavaScript</option>
+                <option value="typescript">TypeScript</option>
+                <option value="python">Python</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="exStruggle">Struggle timer (minutes)</label>
+              <input id="exStruggle" type="number" value="0" min="0" max="60" />
+              <p class="field-hint">0 disables the timer. Otherwise, students must work this long before their first hint unlocks.</p>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="exStarterCode">Starter code</label>
+            <div class="code-editor-wrap">
+              <pre id="exStarterPreview" class="code-editor-highlight language-javascript" aria-hidden="true"></pre>
+              <textarea id="exStarterCode" class="code-editor-input" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" rows="10"></textarea>
+            </div>
+            <p class="field-hint">Shown to the student as the starting point.</p>
+          </div>
+
+          <div class="field">
+            <label for="exConcepts">Expected concepts</label>
+            <input id="exConcepts" type="text" placeholder="Type a concept and press Enter" />
+            <p class="field-hint">Topics the student should recognize. Shown in the class dashboard.</p>
+          </div>
+
+          <div class="field">
+            <label for="exObjectives">Learning objectives</label>
+            <input id="exObjectives" type="text" placeholder="Type an objective and press Enter" />
+            <p class="field-hint">Concrete outcomes. Used to tailor hints.</p>
+          </div>
+
+          <div class="field danger-zone">
+            <button id="deleteExerciseBtn" class="danger" hidden>Delete this exercise</button>
+          </div>
+        </div>
+
+        <div class="exercise-editor-preview">
+          <div class="preview-label">Preview — what the student sees</div>
+          <div class="preview-card">
+            <h2 id="previewTitle" class="preview-title">Untitled exercise</h2>
+            <p id="previewDescription" class="preview-description">No description yet.</p>
+
+            <div class="preview-section-label">Starter code</div>
+            <pre id="previewCode" class="preview-code language-javascript"><code></code></pre>
+
+            <div id="previewConceptsWrap" class="preview-section" hidden>
+              <div class="preview-section-label">Expected concepts</div>
+              <div id="previewConcepts" class="preview-tags"></div>
+            </div>
+
+            <div id="previewObjectivesWrap" class="preview-section" hidden>
+              <div class="preview-section-label">Learning objectives</div>
+              <div id="previewObjectives" class="preview-tags"></div>
+            </div>
+
+            <div id="previewStruggleWrap" class="preview-section" hidden>
+              <div class="preview-section-label">Struggle timer</div>
+              <p class="preview-struggle">
+                <span id="previewStruggle">0</span> minutes before the first hint unlocks
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
 </main>
 
+<script src="/prism.js"></script>
+<script src="/prism-typescript.js"></script>
+<script src="/prism-python.js"></script>
+<script src="/tagify.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>
