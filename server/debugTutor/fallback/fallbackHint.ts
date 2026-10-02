@@ -5,7 +5,7 @@ export interface FallbackHint {
   message: string; hintLevel: 1;
   detectedPattern: MistakePattern | null;
   isFallback: true;
-  reason: 'llm-error' | 'llm-timeout' | 'llm-rate-limit' | 'llm-invalid-response' | 'disabled';
+  reason: 'llm-error' | 'llm-timeout' | 'llm-rate-limit' | 'llm-invalid-response' | 'disabled' | 'not-configured';
 }
 
 export function generateFallbackHint(c: PreClassificationResult, reason: FallbackHint['reason']): FallbackHint {

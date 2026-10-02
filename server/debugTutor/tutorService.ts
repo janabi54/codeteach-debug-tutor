@@ -17,6 +17,7 @@ export interface TutorRequest {
   exerciseContext: { title: string; description: string;
     learningObjectives: string[]; expectedConcepts: string[]; };
   attemptNumber: number; passed?: boolean;
+  hypothesis?: string;
 }
 export interface TutorResponse {
   message: string; hintLevel: HintLevel;

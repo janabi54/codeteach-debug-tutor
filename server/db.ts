@@ -31,6 +31,19 @@ function rowToUser(row: any): User {
   };
 }
 
+function rowToInviteCode(row: any) {
+  return {
+    id: row.id,
+    code: row.code,
+    role: row.role,
+    createdBy: row.created_by,
+    createdAt: parseSqliteTimestamp(row.created_at),
+    usedBy: row.used_by,
+    usedAt: row.used_at ? parseSqliteTimestamp(row.used_at) : null,
+    expiresAt: row.expires_at ? parseSqliteTimestamp(row.expires_at) : null,
+  };
+}
+
 function rowToAuthSession(row: any): AuthSession {
   return {
     token: row.token,
@@ -326,6 +339,23 @@ const stmt = {
      FROM hint_sessions hs
      WHERE hs.state IN ('resolved', 'complete')`
   ),
+
+  // ── Invite codes ──
+  insertInviteCode: sqlite.prepare(
+    'INSERT INTO invite_codes (id, code, role, created_by, expires_at) VALUES (?, ?, ?, ?, ?)'
+  ),
+  findInviteCode: sqlite.prepare(
+    'SELECT * FROM invite_codes WHERE code = ?'
+  ),
+  listInviteCodes: sqlite.prepare(
+    'SELECT * FROM invite_codes ORDER BY created_at DESC'
+  ),
+  markInviteCodeUsed: sqlite.prepare(
+    "UPDATE invite_codes SET used_by = ?, used_at = datetime('now') WHERE code = ? AND used_by IS NULL"
+  ),
+  deleteInviteCode: sqlite.prepare(
+    'DELETE FROM invite_codes WHERE code = ? AND used_by IS NULL'
+  ),
   findAuthSession: sqlite.prepare(
     "SELECT * FROM auth_sessions WHERE token = ? AND expires_at > datetime('now')"
   ),
@@ -386,6 +416,45 @@ export const db = {
     async deleteExpired(): Promise<number> {
       const info = stmt.deleteExpiredAuthSessions.run();
       return info.changes ?? 0;
+    },
+  },
+
+  inviteCodes: {
+    async create(data: {
+      code: string;
+      role: 'instructor' | 'student';
+      createdBy: string | null;
+      expiresAt: Date | null;
+    }): Promise<{
+      id: string;
+      code: string;
+      role: string;
+      createdBy: string | null;
+      createdAt: Date;
+      usedBy: string | null;
+      usedAt: Date | null;
+      expiresAt: Date | null;
+    }> {
+      const id = crypto.randomUUID();
+      const expiresIso = data.expiresAt ? data.expiresAt.toISOString() : null;
+      stmt.insertInviteCode.run(id, data.code, data.role, data.createdBy, expiresIso);
+      const row = stmt.findInviteCode.get(data.code) as any;
+      return rowToInviteCode(row);
+    },
+    async find(code: string) {
+      const row = stmt.findInviteCode.get(code) as any;
+      return row ? rowToInviteCode(row) : null;
+    },
+    async list() {
+      return (stmt.listInviteCodes.all() as any[]).map(rowToInviteCode);
+    },
+    async markUsed(code: string, userId: string): Promise<boolean> {
+      const info = stmt.markInviteCodeUsed.run(userId, code);
+      return (info.changes ?? 0) > 0;
+    },
+    async delete(code: string): Promise<boolean> {
+      const info = stmt.deleteInviteCode.run(code);
+      return (info.changes ?? 0) > 0;
     },
   },
 

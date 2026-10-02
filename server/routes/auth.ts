@@ -69,13 +69,38 @@ router.post('/register', async (req, res) => {
       .json({ error: 'An account with that email already exists.' });
   }
 
+  // Optional invite code grants the instructor role
+  const rawInvite = (req.body ?? {}).inviteCode;
+  let assignedRole: 'student' | 'instructor' = 'student';
+  let usedInviteCode: string | null = null;
+
+  if (rawInvite && typeof rawInvite === 'string' && rawInvite.trim().length > 0) {
+    const trimmed = rawInvite.trim().toUpperCase();
+    const code = await db.inviteCodes.find(trimmed);
+    if (!code) {
+      return res.status(400).json({ error: 'Invalid invite code.' });
+    }
+    if (code.usedBy) {
+      return res.status(400).json({ error: 'That invite code has already been used.' });
+    }
+    if (code.expiresAt && code.expiresAt.getTime() < Date.now()) {
+      return res.status(400).json({ error: 'That invite code has expired.' });
+    }
+    assignedRole = code.role === 'instructor' ? 'instructor' : 'student';
+    usedInviteCode = trimmed;
+  }
+
   const passwordHash = await hashPassword(password);
   const user = await db.users.create({
     email: normalizedEmail,
     passwordHash,
     displayName: displayName.trim(),
-    role: 'student',
+    role: assignedRole,
   });
+
+  if (usedInviteCode) {
+    await db.inviteCodes.markUsed(usedInviteCode, user.id);
+  }
 
   const token = await createSession(user.id);
   setSessionCookie(res, token);

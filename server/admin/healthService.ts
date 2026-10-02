@@ -27,11 +27,17 @@ export async function getDebugTutorHealth(windowHours = 24): Promise<DebugTutorH
   const totalP = patternEvents.length;
   const top = Object.entries(counts).map(([pattern, count]) => ({ pattern, count, pct: totalP ? count / totalP : 0 }))
     .sort((a, b) => b.count - a.count).slice(0, 10);
-  const byConfidence = { high: 0, medium: 0, low: 0 };
+  const byConfidence: { high: number; medium: number; low: number } = {
+    high: 0,
+    medium: 0,
+    low: 0,
+  };
   let classifierOnly = 0;
   for (const p of patternEvents) {
     if (p.source === 'classifier') classifierOnly++;
-    if (p.confidence && p.confidence in byConfidence) byConfidence[p.confidence]++;
+    if (p.confidence === 'high') byConfidence.high++;
+    else if (p.confidence === 'medium') byConfidence.medium++;
+    else if (p.confidence === 'low') byConfidence.low++;
   }
   const lat = llmEvents.map(e => e.latencyMs).filter((n): n is number => typeof n === 'number');
   const avgLatencyMs = lat.length ? Math.round(lat.reduce((a, b) => a + b, 0) / lat.length) : null;
