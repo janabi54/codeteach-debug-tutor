@@ -11,6 +11,12 @@ import {
   clearSessionCookie,
   getSessionTokenFromRequest,
 } from '../auth/cookies.js';
+import {
+  checkLimit,
+  recordFailure,
+  clearLimit,
+  clientIp,
+} from '../middleware/rateLimit.js';
 
 const router = express.Router();
 
@@ -22,6 +28,26 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // ─────────────────────────────────────────────────────────────
 router.post('/register', async (req, res) => {
   const { email, password, displayName } = req.body ?? {};
+  const ip = clientIp(req);
+  const rlKey = `register:${ip}`;
+
+  const preCheck = checkLimit({ key: rlKey });
+  if (!preCheck.allowed) {
+    res.set('Retry-After', String(preCheck.retryAfterSeconds));
+    return res.status(429).json({
+      error: 'Too many registration attempts. Try again later.',
+      retryAfterSeconds: preCheck.retryAfterSeconds,
+    });
+  }
+
+  res.on('finish', () => {
+    if (res.statusCode >= 400 && res.statusCode < 500 && res.statusCode !== 429) {
+      recordFailure({ key: rlKey });
+    }
+    if (res.statusCode === 201) {
+      clearLimit(rlKey);
+    }
+  });
 
   if (typeof email !== 'string' || !EMAIL_RE.test(email.trim())) {
     return res.status(400).json({ error: 'A valid email is required.' });
@@ -74,15 +100,38 @@ router.post('/login', async (req, res) => {
     return res.status(400).json({ error: 'Email and password are required.' });
   }
 
-  const user = await db.users.findByEmail(email.trim());
-  if (!user) {
+  const ip = clientIp(req);
+  const normalizedEmail = email.trim().toLowerCase();
+  const rlKey = `login:${normalizedEmail}|${ip}`;
+
+  const preCheck = checkLimit({ key: rlKey });
+  if (!preCheck.allowed) {
+    res.set('Retry-After', String(preCheck.retryAfterSeconds));
+    return res.status(429).json({
+      error: 'Too many failed login attempts. Try again later.',
+      retryAfterSeconds: preCheck.retryAfterSeconds,
+    });
+  }
+
+  const user = await db.users.findByEmail(normalizedEmail);
+
+  // Timing-safe: verify against a dummy hash if user is missing
+  const hash = user?.passwordHash ?? '$2b$12$invalid.hash.for.timing.equality';
+  const ok = await verifyPassword(password, hash);
+
+  if (!user || !ok) {
+    const state = recordFailure({ key: rlKey });
+    if (!state.allowed) {
+      res.set('Retry-After', String(state.retryAfterSeconds));
+      return res.status(429).json({
+        error: 'Too many failed login attempts. Try again later.',
+        retryAfterSeconds: state.retryAfterSeconds,
+      });
+    }
     return res.status(401).json({ error: 'Invalid email or password.' });
   }
 
-  const ok = await verifyPassword(password, user.passwordHash);
-  if (!ok) {
-    return res.status(401).json({ error: 'Invalid email or password.' });
-  }
+  clearLimit(rlKey);
 
   const token = await createSession(user.id);
   setSessionCookie(res, token);
