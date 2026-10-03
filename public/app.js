@@ -1482,8 +1482,11 @@ async function openSettings() {
   $('settingsModal').hidden = false;
 
   if (currentUser) {
-    $('settingsEmail').textContent = currentUser.email || '—';
-    $('settingsRole').textContent = currentUser.role === 'instructor' ? 'Instructor' : 'Student';
+    const line = $('settingsAccountLine');
+    if (line) {
+      const role = currentUser.role === 'instructor' ? 'Instructor' : 'Student';
+      line.textContent = 'Signed in as ' + (currentUser.email || 'unknown') + ' (' + role + ')';
+    }
   }
 
   $('settingsJoinCode').value = '';

@@ -60,7 +60,7 @@
         <span class="user-menu-caret">▾</span>
       </button>
       <div id="userMenuDropdown" class="user-menu-dropdown" hidden>
-        <button id="openSettingsBtn" class="user-menu-item">Settings</button>
+        <button id="openSettingsBtn" class="user-menu-item">Join Class</button>
         <button id="logoutBtn" class="user-menu-item">Log out</button>
       </div>
     </div>>
@@ -343,15 +343,9 @@ for (let i = 0; i < arr.length; i++) {
 <!-- SETTINGS MODAL -->
 <div id="settingsModal" class="modal-backdrop" hidden>
   <div class="modal settings-modal">
-    <div class="modal-badge">Settings</div>
-    <h2 class="modal-title">Your account</h2>
-
-    <div class="settings-section">
-      <div class="settings-label">Email</div>
-      <div id="settingsEmail" class="settings-value">—</div>
-      <div class="settings-label" style="margin-top:12px;">Role</div>
-      <div id="settingsRole" class="settings-value">—</div>
-    </div>
+    <div class="modal-badge">Join Class</div>
+    <h2 class="modal-title">Classes</h2>
+    <p id="settingsAccountLine" class="settings-account-line">—</p>
 
     <div class="settings-section">
       <h3 class="settings-heading">Your classes</h3>
