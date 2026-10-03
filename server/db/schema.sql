@@ -145,3 +145,15 @@ CREATE TABLE IF NOT EXISTS exercises (
 
 CREATE INDEX IF NOT EXISTS idx_exercises_cohort ON exercises(cohort_id);
 CREATE INDEX IF NOT EXISTS idx_exercises_slug ON exercises(slug);
+
+CREATE TABLE IF NOT EXISTS cohort_members (
+  cohort_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  joined_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (cohort_id, user_id),
+  FOREIGN KEY (cohort_id) REFERENCES cohorts(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_cohort_members_user ON cohort_members(user_id);
+CREATE INDEX IF NOT EXISTS idx_cohort_members_cohort ON cohort_members(cohort_id);

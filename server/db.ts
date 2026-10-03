@@ -424,6 +424,30 @@ const stmt = {
     'INSERT INTO cohorts (id, name, instructor_id, enrollment_code) VALUES (?, ?, ?, ?)'
   ),
 
+  // ── Cohort membership ──
+  insertCohortMember: sqlite.prepare(
+    'INSERT OR IGNORE INTO cohort_members (cohort_id, user_id) VALUES (?, ?)'
+  ),
+  deleteCohortMember: sqlite.prepare(
+    'DELETE FROM cohort_members WHERE cohort_id = ? AND user_id = ?'
+  ),
+  findCohortByEnrollmentCode: sqlite.prepare(
+    'SELECT * FROM cohorts WHERE enrollment_code = ?'
+  ),
+  listCohortsForUser: sqlite.prepare(
+    `SELECT c.*, cm.joined_at AS membership_joined_at
+     FROM cohort_members cm
+     JOIN cohorts c ON c.id = cm.cohort_id
+     WHERE cm.user_id = ?
+     ORDER BY cm.joined_at DESC`
+  ),
+  countCohortMembers: sqlite.prepare(
+    'SELECT COUNT(*) AS n FROM cohort_members WHERE cohort_id = ?'
+  ),
+  setCohortEnrollmentCode: sqlite.prepare(
+    'UPDATE cohorts SET enrollment_code = ? WHERE id = ?'
+  ),
+
   // ── Exercises ──
   insertExercise: sqlite.prepare(
     `INSERT INTO exercises
@@ -544,6 +568,34 @@ export const db = {
         name: 'My Exercises',
         instructorId,
       });
+    },
+    async findByEnrollmentCode(code: string): Promise<Cohort | null> {
+      const row = stmt.findCohortByEnrollmentCode.get(code) as any;
+      return row ? rowToCohort(row) : null;
+    },
+    async setEnrollmentCode(cohortId: string, code: string): Promise<void> {
+      stmt.setCohortEnrollmentCode.run(code, cohortId);
+    },
+    async listForUser(userId: string): Promise<Array<Cohort & { joinedAt: Date }>> {
+      const rows = stmt.listCohortsForUser.all(userId) as any[];
+      return rows.map((row) => ({
+        ...rowToCohort(row),
+        joinedAt: parseSqliteTimestamp(row.membership_joined_at),
+      }));
+    },
+    async countMembers(cohortId: string): Promise<number> {
+      const row = stmt.countCohortMembers.get(cohortId) as any;
+      return row?.n ?? 0;
+    },
+  },
+
+  cohortMembers: {
+    async add(cohortId: string, userId: string): Promise<void> {
+      stmt.insertCohortMember.run(cohortId, userId);
+    },
+    async remove(cohortId: string, userId: string): Promise<boolean> {
+      const info = stmt.deleteCohortMember.run(cohortId, userId);
+      return (info.changes ?? 0) > 0;
     },
   },
 
