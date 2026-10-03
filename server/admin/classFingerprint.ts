@@ -1,5 +1,24 @@
 import { sqlite, db } from '../db.js';
 
+/**
+ * Returns a SQL fragment that restricts a query to students in the
+ * given cohort, plus the params to bind. When cohortId is null or
+ * undefined, returns an empty clause (no filtering).
+ *
+ * The clause is a constant string; only the cohort ID is parameterized.
+ */
+function cohortFilter(cohortId: string | null | undefined): {
+  clause: string;
+  params: unknown[];
+} {
+  if (!cohortId) return { clause: '', params: [] };
+  return {
+    clause:
+      ' AND student_id IN (SELECT user_id FROM cohort_members WHERE cohort_id = ?)',
+    params: [cohortId],
+  };
+}
+
 export interface PatternStat {
   pattern: string;
   occurrences: number;
@@ -55,25 +74,27 @@ export interface ClassFingerprint {
 }
 
 export async function getClassFingerprint(
-  windowHours = 168
+  windowHours = 168,
+  cohortId: string | null = null
 ): Promise<ClassFingerprint> {
   const since = new Date(Date.now() - windowHours * 60 * 60 * 1000);
   const sinceIso = since.toISOString().replace('T', ' ').slice(0, 19);
+  const filter = cohortFilter(cohortId);
 
   // ── Students count ──
   const studentsRow = sqlite
     .prepare(
-      `SELECT COUNT(DISTINCT student_id) AS n FROM mistake_patterns WHERE recorded_at >= ?`
+      `SELECT COUNT(DISTINCT student_id) AS n FROM mistake_patterns WHERE recorded_at >= ?${filter.clause}`
     )
-    .get(sinceIso) as { n: number };
+    .get(sinceIso, ...filter.params) as { n: number };
   const students = studentsRow?.n ?? 0;
 
   // ── Total hints in window ──
   const totalHintsRow = sqlite
     .prepare(
-      `SELECT COUNT(*) AS n FROM telemetry WHERE type = 'hint-served' AND recorded_at >= ?`
+      `SELECT COUNT(*) AS n FROM telemetry WHERE type = 'hint-served' AND recorded_at >= ?${filter.clause}`
     )
-    .get(sinceIso) as { n: number };
+    .get(sinceIso, ...filter.params) as { n: number };
   const totalHints = totalHintsRow?.n ?? 0;
 
   // ── Pattern aggregate ──
@@ -84,11 +105,11 @@ export async function getClassFingerprint(
          COUNT(*) AS occurrences,
          COUNT(DISTINCT student_id) AS students
        FROM mistake_patterns
-       WHERE recorded_at >= ?
+       WHERE recorded_at >= ?${filter.clause}
        GROUP BY pattern
        ORDER BY occurrences DESC`
     )
-    .all(sinceIso) as Array<{ pattern: string; occurrences: number; students: number }>;
+    .all(sinceIso, ...filter.params) as Array<{ pattern: string; occurrences: number; students: number }>;
 
   // ── Post-mortem stats joined by pattern ──
   const pmRows = sqlite
@@ -98,10 +119,10 @@ export async function getClassFingerprint(
          COALESCE(score, 'unscored') AS score,
          COUNT(*) AS n
        FROM post_mortems
-       WHERE pattern IS NOT NULL AND recorded_at >= ?
+       WHERE pattern IS NOT NULL AND recorded_at >= ?${filter.clause}
        GROUP BY pattern, score`
     )
-    .all(sinceIso) as Array<{ pattern: string; score: string; n: number }>;
+    .all(sinceIso, ...filter.params) as Array<{ pattern: string; score: string; n: number }>;
 
   const pmByPattern: Record<string, PatternStat['postMortems']> = {};
   for (const row of pmRows) {
@@ -135,11 +156,11 @@ export async function getClassFingerprint(
          COUNT(*) AS sessions,
          SUM(CASE WHEN state = 'complete' THEN 1 ELSE 0 END) AS completed
        FROM hint_sessions
-       WHERE created_at >= ?
+       WHERE created_at >= ?${filter.clause}
        GROUP BY exercise_id
        ORDER BY students DESC`
     )
-    .all(sinceIso) as Array<{
+    .all(sinceIso, ...filter.params) as Array<{
       exercise_id: string;
       students: number;
       sessions: number;
@@ -151,10 +172,10 @@ export async function getClassFingerprint(
     .prepare(
       `SELECT exercise_id, pattern, COUNT(*) AS n
        FROM mistake_patterns
-       WHERE recorded_at >= ?
+       WHERE recorded_at >= ?${filter.clause}
        GROUP BY exercise_id, pattern`
     )
-    .all(sinceIso) as Array<{ exercise_id: string; pattern: string; n: number }>;
+    .all(sinceIso, ...filter.params) as Array<{ exercise_id: string; pattern: string; n: number }>;
 
   const topPatternByExercise: Record<string, { pattern: string; n: number }> = {};
   for (const row of exerciseTopPatterns) {
@@ -182,16 +203,19 @@ export async function getClassFingerprint(
          COUNT(*) AS occurrences,
          COUNT(DISTINCT student_id) AS students
        FROM mistake_patterns
-       WHERE recorded_at >= ?
+       WHERE recorded_at >= ?${filter.clause}
        GROUP BY exercise_id, pattern
        HAVING students >= 2
        ORDER BY students DESC, occurrences DESC
        LIMIT 20`
     )
-    .all(sinceIso) as StruggleRow[];
+    .all(sinceIso, ...filter.params) as StruggleRow[];
 
   const exercises = exercisesList.length;
 
+  // Note: these two aggregates are still global. Scoping them by cohort
+  // requires a variant of the underlying DB methods — deferred to a
+  // follow-up. The pattern/exercise/struggle views above are cohort-scoped.
   const reasoningStats = await db.hypotheses.qualityStatsAll();
   const hintDep = await db.hintDependency.all();
 

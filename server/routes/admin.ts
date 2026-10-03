@@ -14,7 +14,8 @@ router.get('/health/debug-tutor', requireInstructor, async (req, res) => {
 
 router.get('/class-fingerprint', requireInstructor, async (req, res) => {
   const hours = Math.min(720, Math.max(1, Number(req.query.hours) || 168));
-  res.json(await getClassFingerprint(hours));
+  const cohort = await db.cohorts.ensureForInstructor(req.user!.id);
+  res.json(await getClassFingerprint(hours, cohort.id));
 });
 
 // ── Invite codes ──
