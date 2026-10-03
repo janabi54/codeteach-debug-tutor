@@ -227,6 +227,26 @@ for (let i = 0; i < arr.length; i++) {
         </div>
         <button id="newExerciseBtn" class="primary">+ New exercise</button>
       </div>
+      <div id="cohortCard" class="cohort-card" hidden>
+        <div class="cohort-card-inner">
+          <div>
+            <div class="cohort-label">Enrollment code</div>
+            <div class="cohort-code-row">
+              <code id="cohortCode" class="cohort-code">—</code>
+              <button id="copyCohortCodeBtn" class="ghost small">Copy</button>
+            </div>
+            <p class="cohort-hint">
+              Share this code with your students. They'll enter it in
+              <strong>Join Class</strong> to see your exercises.
+            </p>
+          </div>
+          <div class="cohort-stats">
+            <div class="cohort-stat-value" id="cohortMemberCount">0</div>
+            <div class="cohort-stat-label">student<span id="cohortMemberPlural">s</span> enrolled</div>
+          </div>
+        </div>
+      </div>
+
       <div id="exercisesList" class="card-list">
         <p class="empty-state">Loading...</p>
       </div>

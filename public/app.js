@@ -1082,6 +1082,7 @@ document.querySelectorAll('.tab').forEach((tab) => {
     if (tab.dataset.tab === 'exercises') {
       showExercisesList();
       loadExercises();
+      loadCohortCard();
     }
   });
 });
@@ -1616,5 +1617,50 @@ document.addEventListener('DOMContentLoaded', () => {
     codeInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') joinClass();
     });
+  }
+});
+
+async function loadCohortCard() {
+  const card = $('cohortCard');
+  if (!card) return;
+
+  try {
+    const res = await fetch('/api/cohorts/me');
+    if (!res.ok) {
+      // Not an instructor or endpoint failed — hide the card silently
+      card.hidden = true;
+      return;
+    }
+    const data = await res.json();
+    if (!data.enrollmentCode) {
+      card.hidden = true;
+      return;
+    }
+
+    $('cohortCode').textContent = data.enrollmentCode;
+    $('cohortMemberCount').textContent = String(data.memberCount || 0);
+    $('cohortMemberPlural').textContent = (data.memberCount === 1) ? '' : 's';
+    card.hidden = false;
+  } catch {
+    card.hidden = true;
+  }
+}
+
+document.addEventListener('click', async (e) => {
+  const t = e.target;
+  if (!t || t.id !== 'copyCohortCodeBtn') return;
+
+  const code = $('cohortCode').textContent;
+  if (!code || code === '—') return;
+
+  try {
+    await navigator.clipboard.writeText(code);
+    const btn = t;
+    const original = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = original; }, 1200);
+  } catch {
+    // Fallback for browsers without clipboard API
+    alert('Enrollment code: ' + code);
   }
 });
