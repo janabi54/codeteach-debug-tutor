@@ -12,12 +12,21 @@ const router = express.Router();
 // ─────────────────────────────────────────────────────────────
 router.get('/me', requireInstructor, async (req, res) => {
   const instructorId = req.user!.id;
-  const cohort = await db.cohorts.ensureForInstructor(instructorId);
+  const requestedId = typeof req.query.cohortId === 'string' ? req.query.cohortId : null;
+
+  let cohort;
+  if (requestedId) {
+    cohort = await db.cohorts.findById(requestedId);
+    if (!cohort || cohort.instructorId !== instructorId) {
+      return res.status(404).json({ error: 'Class not found.' });
+    }
+  } else {
+    cohort = await db.cohorts.ensureForInstructor(instructorId);
+  }
 
   // Generate an enrollment code lazily if one doesn't exist
   let enrollmentCode = cohort.enrollmentCode;
   if (!enrollmentCode) {
-    // Try a few times in case of collision
     for (let i = 0; i < 5; i++) {
       const candidate = generateEnrollmentCode();
       const existing = await db.cohorts.findByEnrollmentCode(candidate);

@@ -4,6 +4,7 @@ import debugTutorRoutes from './routes/debugTutor.js';
 import adminRoutes from './routes/admin.js';
 import exerciseRoutes from './routes/exercises.js';
 import cohortRoutes from './routes/cohorts.js';
+import cohortAdminRoutes from './routes/cohortAdmin.js';
 import authRoutes from './routes/auth.js';
 import { startHealthMonitor } from './admin/alerts.js';
 import { bootstrapInstructor } from './auth/bootstrap.js';
@@ -20,6 +21,7 @@ app.use('/api/debug-tutor', debugTutorRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/admin/exercises', exerciseRoutes);
 app.use('/api/cohorts', cohortRoutes);
+app.use('/api/admin/cohorts', cohortAdminRoutes);
 
 const PORT = Number(process.env.PORT ?? 3001);
 

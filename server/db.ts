@@ -447,6 +447,18 @@ const stmt = {
   setCohortEnrollmentCode: sqlite.prepare(
     'UPDATE cohorts SET enrollment_code = ? WHERE id = ?'
   ),
+  listCohortsByInstructor: sqlite.prepare(
+    'SELECT * FROM cohorts WHERE instructor_id = ? ORDER BY created_at ASC'
+  ),
+  updateCohortName: sqlite.prepare(
+    'UPDATE cohorts SET name = ? WHERE id = ?'
+  ),
+  deleteCohort: sqlite.prepare(
+    'DELETE FROM cohorts WHERE id = ?'
+  ),
+  countExercisesInCohort: sqlite.prepare(
+    'SELECT COUNT(*) AS n FROM exercises WHERE cohort_id = ?'
+  ),
 
   // ── Exercises ──
   insertExercise: sqlite.prepare(
@@ -585,6 +597,20 @@ export const db = {
     },
     async countMembers(cohortId: string): Promise<number> {
       const row = stmt.countCohortMembers.get(cohortId) as any;
+      return row?.n ?? 0;
+    },
+    async listByInstructor(instructorId: string): Promise<Cohort[]> {
+      return (stmt.listCohortsByInstructor.all(instructorId) as any[]).map(rowToCohort);
+    },
+    async rename(cohortId: string, name: string): Promise<void> {
+      stmt.updateCohortName.run(name, cohortId);
+    },
+    async delete(cohortId: string): Promise<boolean> {
+      const info = stmt.deleteCohort.run(cohortId);
+      return (info.changes ?? 0) > 0;
+    },
+    async countExercises(cohortId: string): Promise<number> {
+      const row = stmt.countExercisesInCohort.get(cohortId) as any;
       return row?.n ?? 0;
     },
   },

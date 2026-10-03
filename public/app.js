@@ -1081,8 +1081,10 @@ document.querySelectorAll('.tab').forEach((tab) => {
   tab.addEventListener('click', () => {
     if (tab.dataset.tab === 'exercises') {
       showExercisesList();
-      loadExercises();
-      loadCohortCard();
+      loadClassPicker().then(() => {
+        loadExercises();
+        loadCohortCard();
+      });
     }
   });
 });
@@ -1093,7 +1095,10 @@ async function loadExercises() {
   list.innerHTML = '<p class="empty-state">Loading...</p>';
 
   try {
-    const res = await fetch('/api/admin/exercises');
+    const url = selectedCohortId
+      ? '/api/admin/exercises?cohortId=' + encodeURIComponent(selectedCohortId)
+      : '/api/admin/exercises';
+    const res = await fetch(url);
     if (!res.ok) {
       list.innerHTML = '<p class="empty-state">Failed to load: HTTP ' + res.status + '</p>';
       return;
@@ -1361,6 +1366,7 @@ async function saveExercise() {
     expectedConcepts: getTagValues(exercisesState.conceptsTagify),
     learningObjectives: getTagValues(exercisesState.objectivesTagify),
     struggleMinutes: Math.max(0, Math.min(60, parseInt($('exStruggle').value, 10) || 0)),
+    ...(selectedCohortId && !exercisesState.currentSlug ? { cohortId: selectedCohortId } : {}),
   };
 
   const isEdit = exercisesState.currentSlug !== null;
@@ -1625,7 +1631,10 @@ async function loadCohortCard() {
   if (!card) return;
 
   try {
-    const res = await fetch('/api/cohorts/me');
+    const url = selectedCohortId
+      ? '/api/cohorts/me?cohortId=' + encodeURIComponent(selectedCohortId)
+      : '/api/cohorts/me';
+    const res = await fetch(url);
     if (!res.ok) {
       // Not an instructor or endpoint failed — hide the card silently
       card.hidden = true;
@@ -1662,5 +1671,101 @@ document.addEventListener('click', async (e) => {
   } catch {
     // Fallback for browsers without clipboard API
     alert('Enrollment code: ' + code);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// Class picker (Exercises tab)
+// ═══════════════════════════════════════════════════════════
+
+let selectedCohortId = null;
+let instructorCohorts = [];
+
+async function loadClassPicker() {
+  const row = $('classPickerRow');
+  const picker = $('classPicker');
+  if (!row || !picker) return;
+
+  try {
+    const res = await fetch('/api/admin/cohorts');
+    if (!res.ok) {
+      row.hidden = true;
+      return;
+    }
+    instructorCohorts = await res.json();
+    if (!instructorCohorts.length) {
+      row.hidden = true;
+      return;
+    }
+    row.hidden = false;
+
+    // Preserve current selection if still valid
+    const stillValid = instructorCohorts.some((c) => c.id === selectedCohortId);
+    if (!stillValid) selectedCohortId = instructorCohorts[0].id;
+
+    picker.innerHTML = instructorCohorts
+      .map((c) => `<option value="${escapeHtml(c.id)}"${c.id === selectedCohortId ? ' selected' : ''}>${escapeHtml(c.name)}</option>`)
+      .join('');
+  } catch {
+    row.hidden = true;
+  }
+}
+
+document.addEventListener('change', (e) => {
+  if (e.target && e.target.id === 'classPicker') {
+    selectedCohortId = e.target.value;
+    loadExercises();
+    loadCohortCard();
+  }
+});
+
+document.addEventListener('click', async (e) => {
+  const t = e.target;
+  if (!t || !t.id) return;
+
+  if (t.id === 'newClassBtn') {
+    const name = prompt('Class name:');
+    if (!name || name.trim().length < 2) return;
+    try {
+      const res = await fetch('/api/admin/cohorts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Could not create class.');
+        return;
+      }
+      selectedCohortId = data.id;
+      await loadClassPicker();
+      loadExercises();
+      loadCohortCard();
+    } catch (err) {
+      alert('Failed: ' + err.message);
+    }
+    return;
+  }
+
+  if (t.id === 'renameClassBtn') {
+    if (!selectedCohortId) return;
+    const current = instructorCohorts.find((c) => c.id === selectedCohortId);
+    const name = prompt('New name:', current ? current.name : '');
+    if (!name || name.trim().length < 2) return;
+    try {
+      const res = await fetch('/api/admin/cohorts/' + encodeURIComponent(selectedCohortId), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Could not rename class.');
+        return;
+      }
+      await loadClassPicker();
+    } catch (err) {
+      alert('Failed: ' + err.message);
+    }
   }
 });

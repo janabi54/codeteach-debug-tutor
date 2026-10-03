@@ -1194,3 +1194,33 @@ button.ghost.small {
   padding: 6px 12px;
   font-size: 12px;
 }
+
+.class-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.class-picker-row label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #7a7f88;
+  font-weight: 600;
+}
+.class-picker {
+  border: 1px solid #dfe2e7;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  background: #fff;
+  color: #1a1d23;
+  min-width: 220px;
+  cursor: pointer;
+}
+.class-picker:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}

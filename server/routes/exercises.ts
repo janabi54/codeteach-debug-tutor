@@ -35,9 +35,22 @@ function exerciseShape(e: any) {
 // ─── List ───
 
 router.get('/', requireInstructor, async (req, res) => {
-  const cohort = await getInstructorCohort(req);
-  if (!cohort) return res.status(500).json({ error: 'Could not resolve instructor cohort.' });
-  const exercises = await db.exercises.listByCohort(cohort.id);
+  const requestedId = typeof req.query.cohortId === 'string' ? req.query.cohortId : null;
+
+  let cohortId: string;
+  if (requestedId) {
+    const cohort = await db.cohorts.findById(requestedId);
+    if (!cohort || cohort.instructorId !== req.user!.id) {
+      return res.status(404).json({ error: 'Class not found.' });
+    }
+    cohortId = cohort.id;
+  } else {
+    const cohort = await getInstructorCohort(req);
+    if (!cohort) return res.status(500).json({ error: 'Could not resolve instructor cohort.' });
+    cohortId = cohort.id;
+  }
+
+  const exercises = await db.exercises.listByCohort(cohortId);
   res.json(exercises.map(exerciseShape));
 });
 
@@ -58,7 +71,16 @@ router.get('/:slug', requireInstructor, async (req, res) => {
 // ─── Create ───
 
 router.post('/', requireInstructor, async (req, res) => {
-  const cohort = await getInstructorCohort(req);
+  const requestedId = typeof req.body?.cohortId === 'string' ? req.body.cohortId : null;
+  let cohort;
+  if (requestedId) {
+    cohort = await db.cohorts.findById(requestedId);
+    if (!cohort || cohort.instructorId !== req.user!.id) {
+      return res.status(404).json({ error: 'Class not found.' });
+    }
+  } else {
+    cohort = await getInstructorCohort(req);
+  }
   if (!cohort) return res.status(500).json({ error: 'Could not resolve instructor cohort.' });
 
   const {
