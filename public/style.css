@@ -936,3 +936,185 @@ button.danger:hover {
   font-size: 13px;
   color: #4a4f57;
 }
+
+/* ── User menu dropdown ── */
+
+.user-chip {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.user-menu-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 13px;
+  color: #4a4f57;
+  cursor: pointer;
+}
+.user-menu-toggle:hover {
+  background: #f0f1f3;
+  border-color: #e4e6eb;
+}
+.user-menu-caret {
+  font-size: 10px;
+  color: #9ca3af;
+  transition: transform 0.15s;
+}
+.user-menu-toggle[aria-expanded="true"] .user-menu-caret {
+  transform: rotate(180deg);
+}
+.user-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 160px;
+  background: #fff;
+  border: 1px solid #e4e6eb;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+  padding: 6px;
+  z-index: 100;
+}
+.user-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 13px;
+  color: #1a1d23;
+  cursor: pointer;
+}
+.user-menu-item:hover {
+  background: #f0f1f3;
+}
+
+/* ── Settings modal ── */
+
+.settings-modal {
+  max-width: 520px;
+}
+.settings-section {
+  padding: 18px 0;
+  border-bottom: 1px solid #f0f1f3;
+}
+.settings-section:last-of-type {
+  border-bottom: 0;
+  padding-bottom: 8px;
+}
+.settings-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #7a7f88;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.settings-value {
+  font-size: 14px;
+  color: #1a1d23;
+  font-weight: 500;
+}
+.settings-heading {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 12px;
+  color: #1a1d23;
+}
+.settings-hint {
+  font-size: 12px;
+  color: #7a7f88;
+  margin: 0 0 10px;
+  line-height: 1.4;
+}
+.settings-class-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.settings-class-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: #fbfcff;
+  border: 1px solid #e4e6eb;
+  border-radius: 8px;
+}
+.settings-class-name {
+  font-weight: 600;
+  font-size: 13px;
+  color: #1a1d23;
+}
+.settings-class-meta {
+  display: block;
+  font-size: 11px;
+  color: #7a7f88;
+  margin-top: 2px;
+}
+.settings-leave-btn {
+  background: transparent;
+  border: 1px solid #fecaca;
+  color: #dc2626;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.settings-leave-btn:hover {
+  background: #fef2f2;
+}
+.settings-join-row {
+  display: flex;
+  gap: 8px;
+}
+.settings-join-row input {
+  flex: 1;
+  border: 1px solid #dfe2e7;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-family: "SF Mono", Monaco, Consolas, monospace;
+  font-size: 13px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.settings-join-row input:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+.settings-join-message {
+  font-size: 12px;
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+}
+.settings-join-message.success {
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  color: #065f46;
+}
+.settings-join-message.error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+}
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 20px;
+  margin-top: 8px;
+  border-top: 1px solid #f0f1f3;
+}

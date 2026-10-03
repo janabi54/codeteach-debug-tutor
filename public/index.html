@@ -54,10 +54,16 @@
     <button class="tab" data-tab="class">Class</button>
     <button class="tab" data-tab="exercises">Exercises</button>
   </nav>
-    <div class="user-chip">
-      <span id="currentUserName" class="current-user-name"></span>
-      <button id="logoutBtn" class="logout-btn">Log out</button>
-    </div>
+    <div class="user-chip" id="userChip">
+      <button id="userMenuToggle" class="user-menu-toggle" aria-haspopup="menu" aria-expanded="false">
+        <span id="currentUserName" class="current-user-name"></span>
+        <span class="user-menu-caret">▾</span>
+      </button>
+      <div id="userMenuDropdown" class="user-menu-dropdown" hidden>
+        <button id="openSettingsBtn" class="user-menu-item">Settings</button>
+        <button id="logoutBtn" class="user-menu-item">Log out</button>
+      </div>
+    </div>>
 </header>
 
 <main>
@@ -333,5 +339,41 @@ for (let i = 0; i < arr.length; i++) {
 <script src="/prism-python.js"></script>
 <script src="/tagify.js"></script>
 <script src="/app.js"></script>
+
+<!-- SETTINGS MODAL -->
+<div id="settingsModal" class="modal-backdrop" hidden>
+  <div class="modal settings-modal">
+    <div class="modal-badge">Settings</div>
+    <h2 class="modal-title">Your account</h2>
+
+    <div class="settings-section">
+      <div class="settings-label">Email</div>
+      <div id="settingsEmail" class="settings-value">—</div>
+      <div class="settings-label" style="margin-top:12px;">Role</div>
+      <div id="settingsRole" class="settings-value">—</div>
+    </div>
+
+    <div class="settings-section">
+      <h3 class="settings-heading">Your classes</h3>
+      <div id="settingsClassList" class="settings-class-list">
+        <p class="empty-state">Loading...</p>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h3 class="settings-heading">Join a class</h3>
+      <p class="settings-hint">Ask your instructor for the class enrollment code.</p>
+      <div class="settings-join-row">
+        <input id="settingsJoinCode" type="text" spellcheck="false" placeholder="XXXX-XXXX" autocomplete="off" />
+        <button id="settingsJoinBtn" class="primary small">Join</button>
+      </div>
+      <p id="settingsJoinMessage" class="settings-join-message" hidden></p>
+    </div>
+
+    <div class="modal-footer">
+      <button id="closeSettingsBtn" class="ghost">Close</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>

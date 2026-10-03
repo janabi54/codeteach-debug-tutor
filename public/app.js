@@ -1447,3 +1447,171 @@ function duplicateExercise(slug) {
   refreshCodeHighlight();
   refreshPreview();
 }
+
+// ═══════════════════════════════════════════════════════════
+// User menu + settings
+// ═══════════════════════════════════════════════════════════
+
+function toggleUserMenu(open) {
+  const menu = $('userMenuDropdown');
+  const toggle = $('userMenuToggle');
+  if (!menu || !toggle) return;
+  const shouldOpen = open !== undefined ? open : menu.hidden;
+  menu.hidden = !shouldOpen;
+  toggle.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+}
+
+document.addEventListener('click', (e) => {
+  const t = e.target;
+  if (!t) return;
+
+  if (t.id === 'userMenuToggle' || t.closest('#userMenuToggle')) {
+    e.preventDefault();
+    toggleUserMenu();
+    return;
+  }
+
+  const chip = $('userChip');
+  if (chip && !chip.contains(t)) {
+    toggleUserMenu(false);
+  }
+});
+
+async function openSettings() {
+  toggleUserMenu(false);
+  $('settingsModal').hidden = false;
+
+  if (currentUser) {
+    $('settingsEmail').textContent = currentUser.email || '—';
+    $('settingsRole').textContent = currentUser.role === 'instructor' ? 'Instructor' : 'Student';
+  }
+
+  $('settingsJoinCode').value = '';
+  $('settingsJoinMessage').hidden = true;
+  $('settingsJoinMessage').className = 'settings-join-message';
+
+  await loadSettingsClasses();
+}
+
+async function loadSettingsClasses() {
+  const list = $('settingsClassList');
+  list.innerHTML = '<p class="empty-state">Loading...</p>';
+
+  try {
+    const res = await fetch('/api/cohorts/mine');
+    if (!res.ok) {
+      list.innerHTML = '<p class="empty-state">Could not load classes.</p>';
+      return;
+    }
+    const cohorts = await res.json();
+
+    if (!cohorts.length) {
+      list.innerHTML = '<p class="empty-state">You are not in any classes yet. Ask your instructor for a code.</p>';
+      return;
+    }
+
+    list.innerHTML = cohorts.map((c) => `
+      <div class="settings-class-row">
+        <div>
+          <div class="settings-class-name">${escapeHtml(c.name)}</div>
+          <span class="settings-class-meta">joined ${new Date(c.joinedAt).toLocaleDateString()}</span>
+        </div>
+        <button class="settings-leave-btn" data-cohort-id="${escapeHtml(c.id)}" data-cohort-name="${escapeHtml(c.name)}">Leave</button>
+      </div>
+    `).join('');
+
+    list.querySelectorAll('.settings-leave-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        leaveClass(btn.dataset.cohortId, btn.dataset.cohortName);
+      });
+    });
+  } catch (err) {
+    list.innerHTML = '<p class="empty-state">Failed: ' + escapeHtml(err.message) + '</p>';
+  }
+}
+
+async function leaveClass(cohortId, cohortName) {
+  if (!confirm('Leave "' + cohortName + '"?')) return;
+  try {
+    const res = await fetch('/api/cohorts/' + encodeURIComponent(cohortId) + '/leave', {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || 'Could not leave class.');
+      return;
+    }
+    await loadSettingsClasses();
+  } catch (err) {
+    alert('Failed: ' + err.message);
+  }
+}
+
+async function joinClass() {
+  const code = $('settingsJoinCode').value.trim();
+  const msg = $('settingsJoinMessage');
+  if (!code) {
+    msg.textContent = 'Enter a code first.';
+    msg.className = 'settings-join-message error';
+    msg.hidden = false;
+    return;
+  }
+
+  const btn = $('settingsJoinBtn');
+  btn.disabled = true;
+  btn.textContent = 'Joining...';
+  msg.hidden = true;
+
+  try {
+    const res = await fetch('/api/cohorts/join', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      msg.textContent = data.error || 'Could not join.';
+      msg.className = 'settings-join-message error';
+      msg.hidden = false;
+      return;
+    }
+
+    msg.textContent = 'Joined "' + data.cohort.name + '".';
+    msg.className = 'settings-join-message success';
+    msg.hidden = false;
+    $('settingsJoinCode').value = '';
+    await loadSettingsClasses();
+  } catch (err) {
+    msg.textContent = 'Failed: ' + err.message;
+    msg.className = 'settings-join-message error';
+    msg.hidden = false;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Join';
+  }
+}
+
+document.addEventListener('click', (e) => {
+  const t = e.target;
+  if (!t || !t.id) return;
+
+  if (t.id === 'openSettingsBtn') openSettings();
+  else if (t.id === 'closeSettingsBtn') $('settingsModal').hidden = true;
+  else if (t.id === 'settingsJoinBtn') joinClass();
+});
+
+document.addEventListener('click', (e) => {
+  if (e.target && e.target.id === 'settingsModal') {
+    $('settingsModal').hidden = true;
+  }
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+  const codeInput = $('settingsJoinCode');
+  if (codeInput) {
+    codeInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') joinClass();
+    });
+  }
+});
