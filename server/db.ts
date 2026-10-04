@@ -625,6 +625,245 @@ export const db = {
     },
   },
 
+  students: {
+    /**
+     * Summary stats for a student, restricted to a set of exercise IDs.
+     * Used by the roster view.
+     */
+    statsFor(studentId: string, exerciseIds: string[]): {
+      exercisesAttempted: number;
+      exercisesCompleted: number;
+      lastActiveAt: string | null;
+    } {
+      if (exerciseIds.length === 0) {
+        return { exercisesAttempted: 0, exercisesCompleted: 0, lastActiveAt: null };
+      }
+      const placeholders = exerciseIds.map(() => '?').join(',');
+      const row = sqlite
+        .prepare(
+          `SELECT
+             COUNT(DISTINCT exercise_id) AS attempted,
+             COUNT(DISTINCT CASE WHEN state = 'complete' THEN exercise_id END) AS completed,
+             MAX(updated_at) AS lastActive
+           FROM hint_sessions
+           WHERE student_id = ? AND exercise_id IN (${placeholders})`
+        )
+        .get(studentId, ...exerciseIds) as {
+          attempted: number;
+          completed: number;
+          lastActive: string | null;
+        };
+      return {
+        exercisesAttempted: row?.attempted ?? 0,
+        exercisesCompleted: row?.completed ?? 0,
+        lastActiveAt: row?.lastActive ?? null,
+      };
+    },
+
+    /**
+     * Full student detail: metrics, weak spots, session history.
+     * Scoped to exerciseIds the viewing instructor is allowed to see.
+     */
+    detailFor(studentId: string, exerciseIds: string[]): {
+      metrics: {
+        reasoningQuality: { total: number; vague: number; plausible: number; precise: number; unscored: number };
+        hintDependency: { sessions: number; totalHints: number; avgHintsPerSession: number };
+      };
+      weakSpots: Array<{ pattern: string; count: number }>;
+      sessionHistory: Array<{
+        exerciseId: string;
+        exerciseTitle: string;
+        state: string;
+        currentLevel: number;
+        totalAttempts: number;
+        createdAt: string;
+        updatedAt: string;
+      }>;
+    } {
+      if (exerciseIds.length === 0) {
+        return {
+          metrics: {
+            reasoningQuality: { total: 0, vague: 0, plausible: 0, precise: 0, unscored: 0 },
+            hintDependency: { sessions: 0, totalHints: 0, avgHintsPerSession: 0 },
+          },
+          weakSpots: [],
+          sessionHistory: [],
+        };
+      }
+      const placeholders = exerciseIds.map(() => '?').join(',');
+
+      // Reasoning quality
+      const reasoningRows = sqlite
+        .prepare(
+          `SELECT COALESCE(quality, 'unscored') AS quality, COUNT(*) AS n
+           FROM hypotheses
+           WHERE student_id = ? AND exercise_id IN (${placeholders})
+           GROUP BY quality`
+        )
+        .all(studentId, ...exerciseIds) as Array<{ quality: string; n: number }>;
+
+      const reasoning = { total: 0, vague: 0, plausible: 0, precise: 0, unscored: 0 };
+      for (const r of reasoningRows) {
+        if (r.quality === 'vague') reasoning.vague = r.n;
+        else if (r.quality === 'plausible') reasoning.plausible = r.n;
+        else if (r.quality === 'precise') reasoning.precise = r.n;
+        else reasoning.unscored += r.n;
+        reasoning.total += r.n;
+      }
+
+      // Hint dependency: hints per resolved session
+      const depRow = sqlite
+        .prepare(
+          `SELECT
+             COUNT(*) AS sessions,
+             COALESCE(SUM((
+               SELECT COUNT(*) FROM telemetry t
+               WHERE t.student_id = hs.student_id
+                 AND t.exercise_id = hs.exercise_id
+                 AND t.type = 'hint-served'
+                 AND t.recorded_at >= hs.created_at
+             )), 0) AS total_hints
+           FROM hint_sessions hs
+           WHERE hs.student_id = ? AND hs.exercise_id IN (${placeholders})
+             AND hs.state IN ('resolved', 'complete')`
+        )
+        .get(studentId, ...exerciseIds) as { sessions: number; total_hints: number };
+
+      const sessions = depRow?.sessions ?? 0;
+      const totalHints = depRow?.total_hints ?? 0;
+
+      // Weak spots
+      const weakRows = sqlite
+        .prepare(
+          `SELECT pattern, COUNT(*) AS n
+           FROM mistake_patterns
+           WHERE student_id = ? AND exercise_id IN (${placeholders})
+           GROUP BY pattern
+           ORDER BY n DESC
+           LIMIT 10`
+        )
+        .all(studentId, ...exerciseIds) as Array<{ pattern: string; n: number }>;
+
+      // Session history
+      const sessionRows = sqlite
+        .prepare(
+          `SELECT
+             hs.exercise_id AS exerciseId,
+             COALESCE(e.title, hs.exercise_id) AS exerciseTitle,
+             hs.state,
+             hs.current_level AS currentLevel,
+             hs.total_attempts AS totalAttempts,
+             hs.created_at AS createdAt,
+             hs.updated_at AS updatedAt
+           FROM hint_sessions hs
+           LEFT JOIN exercises e ON e.id = hs.exercise_id OR e.slug = hs.exercise_id
+           WHERE hs.student_id = ? AND hs.exercise_id IN (${placeholders})
+           ORDER BY hs.updated_at DESC`
+        )
+        .all(studentId, ...exerciseIds) as Array<{
+          exerciseId: string;
+          exerciseTitle: string;
+          state: string;
+          currentLevel: number;
+          totalAttempts: number;
+          createdAt: string;
+          updatedAt: string;
+        }>;
+
+      return {
+        metrics: {
+          reasoningQuality: reasoning,
+          hintDependency: {
+            sessions,
+            totalHints,
+            avgHintsPerSession: sessions > 0 ? totalHints / sessions : 0,
+          },
+        },
+        weakSpots: weakRows.map((r) => ({ pattern: r.pattern, count: r.n })),
+        sessionHistory: sessionRows,
+      };
+    },
+
+    /**
+     * Per-exercise detail for one (student, exercise) pair.
+     */
+    exerciseDetailFor(studentId: string, exerciseId: string): {
+      session: {
+        state: string;
+        currentLevel: number;
+        totalAttempts: number;
+        createdAt: string;
+        updatedAt: string;
+      } | null;
+      hypotheses: Array<{ level: number; text: string; quality: string | null; createdAt: string }>;
+      postMortems: Array<{ text: string; score: string; feedback: string; createdAt: string }>;
+    } | null {
+      const sessionRow = sqlite
+        .prepare(
+          `SELECT state, current_level AS currentLevel, total_attempts AS totalAttempts,
+                  created_at AS createdAt, updated_at AS updatedAt
+           FROM hint_sessions
+           WHERE student_id = ? AND exercise_id = ?
+           ORDER BY updated_at DESC LIMIT 1`
+        )
+        .get(studentId, exerciseId) as any;
+
+      const hypotheses = sqlite
+        .prepare(
+          `SELECT hint_level AS level, text, quality, recorded_at AS createdAt
+           FROM hypotheses
+           WHERE student_id = ? AND exercise_id = ?
+           ORDER BY recorded_at ASC`
+        )
+        .all(studentId, exerciseId) as any[];
+
+      const postMortems = sqlite
+        .prepare(
+          `SELECT text, score, feedback, recorded_at AS createdAt
+           FROM post_mortems
+           WHERE student_id = ? AND exercise_id = ?
+           ORDER BY recorded_at DESC`
+        )
+        .all(studentId, exerciseId) as any[];
+
+      if (!sessionRow && hypotheses.length === 0 && postMortems.length === 0) {
+        return null;
+      }
+
+      return {
+        session: sessionRow ?? null,
+        hypotheses,
+        postMortems,
+      };
+    },
+
+    /**
+     * Reset a student's progress on a single exercise.
+     * Removes their sessions, hypotheses, post-mortems, and mistake patterns.
+     * Returns counts of what was removed.
+     */
+    resetProgress(studentId: string, exerciseId: string): {
+      sessions: number;
+      hypotheses: number;
+      postMortems: number;
+      patterns: number;
+    } {
+      const tx = sqlite.transaction(() => {
+        const s = sqlite.prepare('DELETE FROM hint_sessions WHERE student_id = ? AND exercise_id = ?').run(studentId, exerciseId);
+        const h = sqlite.prepare('DELETE FROM hypotheses WHERE student_id = ? AND exercise_id = ?').run(studentId, exerciseId);
+        const p = sqlite.prepare('DELETE FROM post_mortems WHERE student_id = ? AND exercise_id = ?').run(studentId, exerciseId);
+        const m = sqlite.prepare('DELETE FROM mistake_patterns WHERE student_id = ? AND exercise_id = ?').run(studentId, exerciseId);
+        return {
+          sessions: s.changes ?? 0,
+          hypotheses: h.changes ?? 0,
+          postMortems: p.changes ?? 0,
+          patterns: m.changes ?? 0,
+        };
+      });
+      return tx();
+    },
+  },
+
   exercises: {
     async findById(id: string): Promise<Exercise | null> {
       const row = stmt.findExerciseById.get(id) as any;
