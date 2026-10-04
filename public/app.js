@@ -1769,3 +1769,110 @@ document.addEventListener('click', async (e) => {
     }
   }
 });
+
+// ═══════════════════════════════════════════════════════════
+// Students tab (roster view)
+// ═══════════════════════════════════════════════════════════
+
+async function loadStudentsRoster() {
+  const container = $('studentsRoster');
+  if (!container) return;
+  container.innerHTML = '<p class="empty-state">Loading...</p>';
+
+  const rangeDays = Number($('studentsRange')?.value ?? 0);
+  const url = '/api/admin/students' + (rangeDays > 0 ? '?days=' + rangeDays : '');
+
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      container.innerHTML = '<p class="empty-state">Could not load students (HTTP ' + res.status + ').</p>';
+      return;
+    }
+    const students = await res.json();
+
+    if (!students.length) {
+      container.innerHTML = '<p class="empty-state">No students yet. Share your enrollment code from the Exercises tab.</p>';
+      return;
+    }
+
+    container.innerHTML = `
+      <table class="students-table">
+        <thead>
+          <tr>
+            <th>Student</th>
+            <th>Classes</th>
+            <th>Attempted</th>
+            <th>Completed</th>
+            <th>Last active</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${students.map((s) => `
+            <tr data-student-id="${escapeHtml(s.studentId)}">
+              <td>
+                <span class="student-name-cell">${escapeHtml(s.displayName)}</span>
+                <span class="student-email-cell">${escapeHtml(s.email)}</span>
+              </td>
+              <td>${s.cohortNames.map((n) => escapeHtml(n)).join(', ')}</td>
+              <td>${s.exercisesAttempted}</td>
+              <td>${s.exercisesCompleted}</td>
+              <td>${s.lastActiveAt ? relativeTime(s.lastActiveAt) : '—'}</td>
+              <td>${renderStatusBadge(s.status)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+
+    container.querySelectorAll('tr[data-student-id]').forEach((row) => {
+      row.addEventListener('click', () => {
+        const studentId = row.dataset.studentId;
+        // Stage 3 will navigate to the detail view. For now, log it.
+        console.log('clicked student', studentId);
+      });
+    });
+  } catch (err) {
+    container.innerHTML = '<p class="empty-state">Failed: ' + escapeHtml(err.message) + '</p>';
+  }
+}
+
+function renderStatusBadge(status) {
+  const labels = {
+    'on-track': 'On track',
+    'needs-attention': 'Needs attention',
+    'inactive': 'Inactive',
+    'new': 'New',
+  };
+  return '<span class="status-badge ' + status + '">' + (labels[status] || status) + '</span>';
+}
+
+function relativeTime(iso) {
+  const then = new Date(iso).getTime();
+  if (isNaN(then)) return '—';
+  const diff = Date.now() - then;
+  const min = Math.round(diff / 60000);
+  if (min < 1) return 'just now';
+  if (min < 60) return min + 'm ago';
+  const hr = Math.round(min / 60);
+  if (hr < 24) return hr + 'h ago';
+  const days = Math.round(hr / 24);
+  if (days < 30) return days + 'd ago';
+  return new Date(iso).toLocaleDateString();
+}
+
+// Tab wiring
+document.querySelectorAll('.tab').forEach((tab) => {
+  tab.addEventListener('click', () => {
+    if (tab.dataset.tab === 'students') {
+      loadStudentsRoster();
+    }
+  });
+});
+
+// Range filter
+document.addEventListener('change', (e) => {
+  if (e.target && e.target.id === 'studentsRange') {
+    loadStudentsRoster();
+  }
+});

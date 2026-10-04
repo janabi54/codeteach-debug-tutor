@@ -52,6 +52,7 @@
     <button class="tab" data-tab="weak-spots">Weak Spots</button>
     <button class="tab" data-tab="health">Health</button>
     <button class="tab" data-tab="class">Class</button>
+    <button class="tab" data-tab="students">Students</button>
     <button class="tab" data-tab="exercises">Exercises</button>
   </nav>
     <div class="user-chip" id="userChip">
@@ -356,6 +357,30 @@ for (let i = 0; i < arr.length; i++) {
       </div>
     </div>
 
+  </div>
+</section>
+
+<!-- STUDENTS TAB (instructor only) -->
+<section id="tab-students" class="tab-panel">
+  <div class="panel-wrap panel-wrap-wide">
+    <div class="exercises-header">
+      <div>
+        <h1>Students</h1>
+        <p class="subtitle">Everyone enrolled in your classes. Click a row to see their work.</p>
+      </div>
+      <div class="range-picker">
+        <label for="studentsRange">Range</label>
+        <select id="studentsRange">
+          <option value="7">Last 7 days</option>
+          <option value="30">Last 30 days</option>
+          <option value="0" selected>All time</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="studentsRoster" class="card-list">
+      <p class="empty-state">Loading...</p>
+    </div>
   </div>
 </section>
 
