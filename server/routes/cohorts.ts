@@ -111,4 +111,15 @@ router.get('/mine', requireAuth, async (req, res) => {
   );
 });
 
+// ─────────────────────────────────────────────────────────────
+// GET /api/cohorts/my-exercises
+// Returns every exercise in every cohort the caller belongs to.
+// Used by students to pick an exercise from the course curriculum
+// instead of typing an arbitrary exercise ID.
+// ─────────────────────────────────────────────────────────────
+router.get('/my-exercises', requireAuth, async (req, res) => {
+  const rows = await db.exercises.listForUserCohorts(req.user!.id);
+  res.json(rows);
+});
+
 export default router;

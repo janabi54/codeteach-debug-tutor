@@ -722,7 +722,7 @@ function showAppView() {
 }
 
 function applyRoleVisibility() {
-  const adminTabs = ['health', 'class'];
+  const adminTabs = ['health', 'class', 'students', 'exercises'];
   document.querySelectorAll('.tab').forEach(tab => {
     if (adminTabs.includes(tab.dataset.tab) && currentUser.role !== 'instructor') {
       tab.style.display = 'none';

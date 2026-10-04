@@ -932,6 +932,36 @@ export const db = {
       const info = stmt.deleteExercise.run(id);
       return (info.changes ?? 0) > 0;
     },
+    /**
+     * All exercises in every cohort the given user is a member of.
+     * Used by students to pick an exercise.
+     */
+    async listForUserCohorts(userId: string): Promise<Array<{
+      id: string;
+      slug: string;
+      title: string;
+      language: string;
+      cohortId: string;
+      cohortName: string;
+    }>> {
+      return (sqlite
+        .prepare(
+          `SELECT e.id, e.slug, e.title, e.language, e.cohort_id AS cohortId, c.name AS cohortName
+           FROM exercises e
+           JOIN cohorts c ON c.id = e.cohort_id
+           JOIN cohort_members cm ON cm.cohort_id = c.id
+           WHERE cm.user_id = ?
+           ORDER BY c.name, e.title`
+        )
+        .all(userId) as any[]).map((row) => ({
+          id: row.id,
+          slug: row.slug,
+          title: row.title,
+          language: row.language,
+          cohortId: row.cohortId,
+          cohortName: row.cohortName,
+        }));
+    },
   },
 
   inviteCodes: {
