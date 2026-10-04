@@ -454,6 +454,56 @@ for (let i = 0; i < arr.length; i++) {
         </div>
       </div>
     </div>
+
+    <div id="studentExerciseDetailView" hidden>
+      <div class="student-detail-header">
+        <button id="backToStudentBtn" class="ghost small">← Back to student</button>
+      </div>
+
+      <div class="student-detail-top">
+        <div>
+          <h1 id="sedExerciseTitle" class="student-detail-name">—</h1>
+          <p class="student-detail-meta">
+            <span id="sedStudentName">—</span>
+            <span class="meta-sep">·</span>
+            <span id="sedExerciseSlug">—</span>
+          </p>
+        </div>
+        <div class="sed-actions">
+          <button id="sedResetBtn" class="danger small">Reset progress</button>
+        </div>
+      </div>
+
+      <div class="sd-metrics-row">
+        <div class="sd-metric-card">
+          <div class="sd-metric-label">State</div>
+          <div id="sedState" class="sd-metric-value">—</div>
+        </div>
+        <div class="sd-metric-card">
+          <div class="sd-metric-label">Hint level</div>
+          <div id="sedLevel" class="sd-metric-value">—</div>
+          <div class="sd-metric-sub">Highest reached</div>
+        </div>
+        <div class="sd-metric-card">
+          <div class="sd-metric-label">Attempts</div>
+          <div id="sedAttempts" class="sd-metric-value">—</div>
+        </div>
+      </div>
+
+      <div class="sd-section">
+        <h3 class="sd-section-heading">Hypotheses</h3>
+        <div id="sedHypotheses" class="sed-list">
+          <p class="empty-state">Loading...</p>
+        </div>
+      </div>
+
+      <div class="sd-section">
+        <h3 class="sd-section-heading">Post-mortems</h3>
+        <div id="sedPostMortems" class="sed-list">
+          <p class="empty-state">Loading...</p>
+        </div>
+      </div>
+    </div>
   </div>
 </section>
 

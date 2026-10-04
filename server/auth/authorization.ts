@@ -34,16 +34,17 @@ export function instructorCohortIds(instructorId: string): string[] {
  */
 export function instructorTeachesExercise(
   instructorId: string,
-  exerciseId: string
+  exerciseSlug: string
 ): CohortedExercise | null {
+  // The param is a slug — that's what the API and hint_sessions use.
   const row = sqlite
     .prepare(
-      `SELECT e.cohort_id AS cohortId, e.id AS exerciseId
+      `SELECT e.cohort_id AS cohortId, e.slug AS exerciseId
        FROM exercises e
        JOIN cohorts c ON c.id = e.cohort_id
-       WHERE e.id = ? AND c.instructor_id = ?`
+       WHERE e.slug = ? AND c.instructor_id = ?`
     )
-    .get(exerciseId, instructorId) as CohortedExercise | undefined;
+    .get(exerciseSlug, instructorId) as CohortedExercise | undefined;
   return row ?? null;
 }
 
@@ -84,17 +85,19 @@ export function viewableExerciseIdsFor(
   instructorId: string,
   studentId: string
 ): string[] {
+  // NOTE: hint_sessions.exercise_id stores the *slug*, not the UUID.
+  // We must return slugs here so the downstream IN (...) filter matches.
   const rows = sqlite
     .prepare(
-      `SELECT e.id AS exerciseId
+      `SELECT e.slug AS exerciseSlug
        FROM exercises e
        JOIN cohorts c ON c.id = e.cohort_id
        JOIN cohort_members cm ON cm.cohort_id = c.id
        WHERE c.instructor_id = ?
          AND cm.user_id = ?`
     )
-    .all(instructorId, studentId) as Array<{ exerciseId: string }>;
-  return rows.map((r) => r.exerciseId);
+    .all(instructorId, studentId) as Array<{ exerciseSlug: string }>;
+  return rows.map((r) => r.exerciseSlug);
 }
 
 /**

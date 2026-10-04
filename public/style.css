@@ -1528,3 +1528,80 @@ button.ghost.small {
   color: #9ca3af;
   cursor: not-allowed;
 }
+
+/* ── Exercise detail (within student view) ── */
+
+.sed-actions {
+  flex-shrink: 0;
+}
+button.danger.small {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.sed-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sed-item {
+  background: #fff;
+  border: 1px solid #e4e6eb;
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+.sed-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.sed-item-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #7a7f88;
+  font-weight: 600;
+}
+.sed-item-time {
+  font-size: 11px;
+  color: #7a7f88;
+}
+.sed-item-body {
+  font-size: 14px;
+  line-height: 1.5;
+  color: #1a1d23;
+  white-space: pre-wrap;
+}
+.sed-item-feedback {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #f0f1f3;
+  font-size: 13px;
+  color: #4a4f57;
+  font-style: italic;
+}
+
+/* Quality / score badges for these items */
+.quality-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.quality-badge.q-vague { background: #f0f1f3; color: #4a4f57; }
+.quality-badge.q-plausible { background: #fef3c7; color: #92400e; }
+.quality-badge.q-precise { background: #dcfce7; color: #166534; }
+.quality-badge.q-unscored { background: #f0f1f3; color: #7a7f88; }
+.quality-badge.q-correct { background: #dcfce7; color: #166534; }
+.quality-badge.q-partial { background: #fef3c7; color: #92400e; }
+.quality-badge.q-incorrect { background: #fee2e2; color: #991b1b; }
+.quality-badge.q-score-correct { background: #dcfce7; color: #166534; }
+.quality-badge.q-score-partial { background: #fef3c7; color: #92400e; }
+.quality-badge.q-score-incorrect { background: #fee2e2; color: #991b1b; }
+.quality-badge.q-score-unscored { background: #f0f1f3; color: #7a7f88; }

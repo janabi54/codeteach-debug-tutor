@@ -1896,12 +1896,16 @@ let currentStudentId = null;
 function showStudentsRoster() {
   $('studentsRoster').hidden = false;
   $('studentDetailView').hidden = true;
+  const exView = $('studentExerciseDetailView');
+  if (exView) exView.hidden = true;
   currentStudentId = null;
 }
 
 function showStudentDetail() {
   $('studentsRoster').hidden = true;
   $('studentDetailView').hidden = false;
+  const exView = $('studentExerciseDetailView');
+  if (exView) exView.hidden = true;
 }
 
 async function openStudentDetail(studentId) {
@@ -2019,7 +2023,7 @@ function renderStudentDetail(data) {
         </thead>
         <tbody>
           ${data.sessionHistory.map((s) => `
-            <tr>
+            <tr class="sd-session-row" data-exercise-id="${escapeHtml(s.exerciseId)}" data-exercise-title="${escapeHtml(s.exerciseTitle)}" style="cursor:pointer;">
               <td>
                 <span class="sd-exercise-cell">${escapeHtml(s.exerciseTitle)}</span>
                 <span class="sd-exercise-slug">${escapeHtml(s.exerciseId)}</span>
@@ -2033,6 +2037,17 @@ function renderStudentDetail(data) {
         </tbody>
       </table>
     `;
+
+    // Wire session history rows
+    $('sdSessionHistory').querySelectorAll('.sd-session-row').forEach((row) => {
+      row.addEventListener('click', () => {
+        openExerciseDetail(
+          currentStudentId,
+          row.dataset.exerciseId,
+          row.dataset.exerciseTitle
+        );
+      });
+    });
   }
 }
 
@@ -2123,3 +2138,164 @@ async function loadExercisePicker() {
     }
   }
 }
+
+// ═══════════════════════════════════════════════════════════
+// Exercise detail view (within a student)
+// ═══════════════════════════════════════════════════════════
+
+let currentExerciseId = null;
+
+function showStudentDetailFromExercise() {
+  $('studentDetailView').hidden = false;
+  $('studentExerciseDetailView').hidden = true;
+  currentExerciseId = null;
+}
+
+async function openExerciseDetail(studentId, exerciseId, exerciseTitle) {
+  currentExerciseId = exerciseId;
+
+  $('studentDetailView').hidden = true;
+  $('studentExerciseDetailView').hidden = false;
+
+  // Reset view
+  $('sedExerciseTitle').textContent = exerciseTitle || exerciseId;
+  $('sedExerciseSlug').textContent = exerciseId;
+  $('sedState').textContent = '—';
+  $('sedLevel').textContent = '—';
+  $('sedAttempts').textContent = '—';
+  $('sedHypotheses').innerHTML = '<p class="empty-state">Loading...</p>';
+  $('sedPostMortems').innerHTML = '<p class="empty-state">Loading...</p>';
+
+  // Get student name from roster cache
+  const roster = window.__studentsRoster || [];
+  const student = roster.find((s) => s.studentId === studentId);
+  $('sedStudentName').textContent = student ? student.displayName : studentId;
+
+  try {
+    const res = await fetch(
+      '/api/admin/students/' + encodeURIComponent(studentId) +
+      '/exercises/' + encodeURIComponent(exerciseId)
+    );
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      $('sedHypotheses').innerHTML = '<p class="empty-state">' + escapeHtml(data.error || 'Failed to load.') + '</p>';
+      $('sedPostMortems').innerHTML = '';
+      return;
+    }
+
+    const data = await res.json();
+    renderExerciseDetail(data);
+  } catch (err) {
+    $('sedHypotheses').innerHTML = '<p class="empty-state">Failed: ' + escapeHtml(err.message) + '</p>';
+    $('sedPostMortems').innerHTML = '';
+  }
+}
+
+function renderExerciseDetail(data) {
+  // Session summary
+  const s = data.session;
+  if (s) {
+    const stateLabels = {
+      open: 'In progress',
+      resolved: 'Awaiting post-mortem',
+      complete: 'Completed',
+    };
+    $('sedState').textContent = stateLabels[s.state] || s.state;
+    $('sedState').className = 'sd-metric-value';
+    $('sedLevel').textContent = String(s.currentLevel);
+    $('sedAttempts').textContent = String(s.totalAttempts);
+  } else {
+    $('sedState').textContent = '—';
+    $('sedLevel').textContent = '—';
+    $('sedAttempts').textContent = '—';
+  }
+
+  // Hypotheses
+  if (!data.hypotheses || !data.hypotheses.length) {
+    $('sedHypotheses').innerHTML = '<p class="empty-state">No hypotheses written.</p>';
+  } else {
+    $('sedHypotheses').innerHTML = data.hypotheses.map((h) => `
+      <div class="sed-item">
+        <div class="sed-item-header">
+          <span class="sed-item-label">
+            Level ${h.level}
+            ${h.quality ? `<span class="quality-badge q-${escapeHtml(h.quality)}">${escapeHtml(h.quality)}</span>` : ''}
+          </span>
+          <span class="sed-item-time">${h.createdAt ? relativeTime(h.createdAt) : ''}</span>
+        </div>
+        <div class="sed-item-body">${escapeHtml(h.text)}</div>
+      </div>
+    `).join('');
+  }
+
+  // Post-mortems
+  if (!data.postMortems || !data.postMortems.length) {
+    $('sedPostMortems').innerHTML = '<p class="empty-state">No post-mortems written.</p>';
+  } else {
+    $('sedPostMortems').innerHTML = data.postMortems.map((p) => `
+      <div class="sed-item">
+        <div class="sed-item-header">
+          <span class="sed-item-label">
+            ${p.score ? `<span class="quality-badge q-score-${escapeHtml(p.score)}">${escapeHtml(p.score)}</span>` : ''}
+          </span>
+          <span class="sed-item-time">${p.createdAt ? relativeTime(p.createdAt) : ''}</span>
+        </div>
+        <div class="sed-item-body">${escapeHtml(p.text)}</div>
+        ${p.feedback ? `<div class="sed-item-feedback">${escapeHtml(p.feedback)}</div>` : ''}
+      </div>
+    `).join('');
+  }
+}
+
+async function resetExerciseProgress() {
+  if (!currentStudentId || !currentExerciseId) return;
+
+  const ok = confirm(
+    'Reset progress on this exercise?\n\n' +
+    'This will delete all sessions, hypotheses, post-mortems, and mistake patterns for this student on this exercise.\n\n' +
+    'This cannot be undone.'
+  );
+  if (!ok) return;
+
+  try {
+    const res = await fetch(
+      '/api/admin/students/' + encodeURIComponent(currentStudentId) +
+      '/exercises/' + encodeURIComponent(currentExerciseId) +
+      '/progress',
+      { method: 'DELETE' }
+    );
+
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || 'Reset failed.');
+      return;
+    }
+
+    alert('Progress reset. Removed ' +
+      (data.removed?.sessions ?? 0) + ' session(s), ' +
+      (data.removed?.hypotheses ?? 0) + ' hypothesis(es), ' +
+      (data.removed?.postMortems ?? 0) + ' post-mortem(s), ' +
+      (data.removed?.patterns ?? 0) + ' pattern(s).');
+
+    // Reload the exercise detail (now empty) and the roster stats
+    const exerciseTitle = $('sedExerciseTitle').textContent;
+    await openExerciseDetail(currentStudentId, currentExerciseId, exerciseTitle);
+  } catch (err) {
+    alert('Reset failed: ' + err.message);
+  }
+}
+
+// Wire the buttons
+document.addEventListener('click', (e) => {
+  const t = e.target;
+  if (!t || !t.id) return;
+
+  if (t.id === 'backToStudentBtn') {
+    showStudentDetailFromExercise();
+    // Refresh the parent student detail so session history reflects changes
+    if (currentStudentId) openStudentDetail(currentStudentId);
+  } else if (t.id === 'sedResetBtn') {
+    resetExerciseProgress();
+  }
+});
