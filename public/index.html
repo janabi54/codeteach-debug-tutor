@@ -381,6 +381,75 @@ for (let i = 0; i < arr.length; i++) {
     <div id="studentsRoster" class="card-list">
       <p class="empty-state">Loading...</p>
     </div>
+
+    <div id="studentDetailView" hidden>
+      <div class="student-detail-header">
+        <button id="backToRosterBtn" class="ghost small">← Back to students</button>
+      </div>
+
+      <div class="student-detail-top">
+        <div>
+          <h1 id="sdName" class="student-detail-name">—</h1>
+          <p class="student-detail-meta">
+            <span id="sdEmail">—</span>
+            <span class="meta-sep">·</span>
+            <span id="sdClasses">—</span>
+            <span class="meta-sep">·</span>
+            <span>joined <span id="sdJoined">—</span></span>
+          </p>
+        </div>
+        <div id="sdStatusBadge"></div>
+      </div>
+
+      <div class="sd-metrics-row">
+        <div class="sd-metric-card" id="sdReasoningCard">
+          <div class="sd-metric-label">Reasoning quality</div>
+          <div class="sd-metric-value" id="sdReasoningValue">—</div>
+          <div class="sd-metric-sub" id="sdReasoningSub">No hypotheses yet</div>
+        </div>
+        <div class="sd-metric-card" id="sdHintDepCard">
+          <div class="sd-metric-label">Hint dependency</div>
+          <div class="sd-metric-value" id="sdHintDepValue">—</div>
+          <div class="sd-metric-sub" id="sdHintDepSub">No completed sessions</div>
+        </div>
+        <div class="sd-metric-card" id="sdProgressCard">
+          <div class="sd-metric-label">Progress</div>
+          <div class="sd-metric-value" id="sdProgressValue">—</div>
+          <div class="sd-metric-sub" id="sdProgressSub">No exercises attempted</div>
+        </div>
+      </div>
+
+      <div class="sd-two-col">
+        <div class="sd-col">
+          <h3 class="sd-section-heading">Weak spots</h3>
+          <div id="sdWeakSpots" class="sd-pattern-list">
+            <p class="empty-state">Loading...</p>
+          </div>
+        </div>
+        <div class="sd-col">
+          <h3 class="sd-section-heading">Strengths</h3>
+          <div class="sd-pattern-list">
+            <p class="empty-state">Strengths analysis coming soon.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="sd-section">
+        <div class="sd-section-header">
+          <h3 class="sd-section-heading">Session history</h3>
+          <div class="sd-hint-level-legend">
+            Hint levels:
+            <span class="hint-level-chip level-1">1</span> Vague
+            <span class="hint-level-chip level-2">2</span> Specific
+            <span class="hint-level-chip level-3">3</span> Near-answer
+            <span class="hint-level-chip level-4">4</span> Scaffold
+          </div>
+        </div>
+        <div id="sdSessionHistory">
+          <p class="empty-state">Loading...</p>
+        </div>
+      </div>
+    </div>
   </div>
 </section>
 

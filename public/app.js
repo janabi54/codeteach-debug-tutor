@@ -1825,11 +1825,12 @@ async function loadStudentsRoster() {
       </table>
     `;
 
+    // Cache for the detail view
+    window.__studentsRoster = students;
+
     container.querySelectorAll('tr[data-student-id]').forEach((row) => {
       row.addEventListener('click', () => {
-        const studentId = row.dataset.studentId;
-        // Stage 3 will navigate to the detail view. For now, log it.
-        console.log('clicked student', studentId);
+        openStudentDetail(row.dataset.studentId);
       });
     });
   } catch (err) {
@@ -1865,6 +1866,7 @@ function relativeTime(iso) {
 document.querySelectorAll('.tab').forEach((tab) => {
   tab.addEventListener('click', () => {
     if (tab.dataset.tab === 'students') {
+      showStudentsRoster();
       loadStudentsRoster();
     }
   });
@@ -1873,6 +1875,172 @@ document.querySelectorAll('.tab').forEach((tab) => {
 // Range filter
 document.addEventListener('change', (e) => {
   if (e.target && e.target.id === 'studentsRange') {
+    loadStudentsRoster();
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// Student detail view
+// ═══════════════════════════════════════════════════════════
+
+let currentStudentId = null;
+
+function showStudentsRoster() {
+  $('studentsRoster').hidden = false;
+  $('studentDetailView').hidden = true;
+  currentStudentId = null;
+}
+
+function showStudentDetail() {
+  $('studentsRoster').hidden = true;
+  $('studentDetailView').hidden = false;
+}
+
+async function openStudentDetail(studentId) {
+  currentStudentId = studentId;
+  showStudentDetail();
+  clearStudentDetail();
+
+  try {
+    const res = await fetch('/api/admin/students/' + encodeURIComponent(studentId));
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || 'Could not load student.');
+      showStudentsRoster();
+      return;
+    }
+    const data = await res.json();
+    renderStudentDetail(data);
+  } catch (err) {
+    alert('Failed: ' + err.message);
+    showStudentsRoster();
+  }
+}
+
+function clearStudentDetail() {
+  $('sdName').textContent = '—';
+  $('sdEmail').textContent = '—';
+  $('sdClasses').textContent = '—';
+  $('sdJoined').textContent = '—';
+  $('sdStatusBadge').innerHTML = '';
+  $('sdReasoningValue').textContent = '—';
+  $('sdReasoningSub').textContent = 'Loading...';
+  $('sdHintDepValue').textContent = '—';
+  $('sdHintDepSub').textContent = 'Loading...';
+  $('sdProgressValue').textContent = '—';
+  $('sdProgressSub').textContent = 'Loading...';
+  $('sdWeakSpots').innerHTML = '<p class="empty-state">Loading...</p>';
+  $('sdSessionHistory').innerHTML = '<p class="empty-state">Loading...</p>';
+}
+
+function renderStudentDetail(data) {
+  // The roster row data isn't passed through, so we fetch what we can from
+  // the detail response and rely on the roster list for names.
+  const roster = window.__studentsRoster || [];
+  const rosterEntry = roster.find((s) => s.studentId === data.studentId);
+
+  if (rosterEntry) {
+    $('sdName').textContent = rosterEntry.displayName;
+    $('sdEmail').textContent = rosterEntry.email;
+    $('sdClasses').textContent = (rosterEntry.cohortNames || []).join(', ') || '—';
+    $('sdJoined').textContent = rosterEntry.joinedAt
+      ? new Date(rosterEntry.joinedAt).toLocaleDateString()
+      : '—';
+    $('sdStatusBadge').innerHTML = renderStatusBadge(rosterEntry.status);
+  }
+
+  // Reasoning quality card
+  const rq = data.metrics.reasoningQuality;
+  if (rq.total === 0) {
+    $('sdReasoningValue').textContent = '—';
+    $('sdReasoningSub').textContent = 'No hypotheses yet';
+  } else {
+    const precisePct = Math.round((rq.precise / rq.total) * 100);
+    $('sdReasoningValue').textContent = precisePct + '%';
+    $('sdReasoningSub').textContent = rq.precise + ' precise · ' + rq.plausible + ' plausible · ' + rq.vague + ' vague' +
+      (rq.unscored ? ' · ' + rq.unscored + ' unscored' : '');
+  }
+
+  // Hint dependency card
+  const hd = data.metrics.hintDependency;
+  if (hd.sessions === 0) {
+    $('sdHintDepValue').textContent = '—';
+    $('sdHintDepSub').textContent = 'No completed sessions';
+  } else {
+    $('sdHintDepValue').textContent = hd.avgHintsPerSession.toFixed(1);
+    $('sdHintDepSub').textContent = 'hints per session · ' + hd.sessions + ' completed session' + (hd.sessions === 1 ? '' : 's');
+  }
+
+  // Progress card
+  const attempted = data.sessionHistory.length;
+  const completed = data.sessionHistory.filter((s) => s.state === 'complete').length;
+  if (attempted === 0) {
+    $('sdProgressValue').textContent = '—';
+    $('sdProgressSub').textContent = 'No exercises attempted';
+  } else {
+    $('sdProgressValue').textContent = completed + ' / ' + attempted;
+    $('sdProgressSub').textContent = Math.round((completed / attempted) * 100) + '% complete';
+  }
+
+  // Weak spots
+  if (!data.weakSpots.length) {
+    $('sdWeakSpots').innerHTML = '<p class="empty-state">No patterns logged yet.</p>';
+  } else {
+    $('sdWeakSpots').innerHTML = data.weakSpots.map((w) => `
+      <div class="sd-pattern-row">
+        <span class="sd-pattern-name">${escapeHtml(w.pattern)}</span>
+        <span class="sd-pattern-count">${w.count}</span>
+      </div>
+    `).join('');
+  }
+
+  // Session history
+  if (!data.sessionHistory.length) {
+    $('sdSessionHistory').innerHTML = '<p class="empty-state">No sessions in this range.</p>';
+  } else {
+    $('sdSessionHistory').innerHTML = `
+      <table class="sd-sessions-table">
+        <thead>
+          <tr>
+            <th>Exercise</th>
+            <th>State</th>
+            <th>Hint level</th>
+            <th>Attempts</th>
+            <th>Last activity</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${data.sessionHistory.map((s) => `
+            <tr>
+              <td>
+                <span class="sd-exercise-cell">${escapeHtml(s.exerciseTitle)}</span>
+                <span class="sd-exercise-slug">${escapeHtml(s.exerciseId)}</span>
+              </td>
+              <td>${renderStateBadge(s.state)}</td>
+              <td>${s.currentLevel}</td>
+              <td>${s.totalAttempts}</td>
+              <td>${s.updatedAt ? relativeTime(s.updatedAt) : '—'}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+}
+
+function renderStateBadge(state) {
+  const labels = {
+    open: 'In progress',
+    resolved: 'Awaiting post-mortem',
+    complete: 'Completed',
+  };
+  return '<span class="state-badge ' + state + '">' + (labels[state] || state) + '</span>';
+}
+
+// Wire the back button
+document.addEventListener('click', (e) => {
+  if (e.target && e.target.id === 'backToRosterBtn') {
+    showStudentsRoster();
     loadStudentsRoster();
   }
 });
