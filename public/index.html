@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="/prism-theme.css">
 <link rel="stylesheet" href="/tagify.css">
 <link rel="stylesheet" href="/style.css">
+<link rel="icon" type="image/png" href="/favicon.png">
 </head>
 <body>
 
@@ -129,9 +130,12 @@ for (let i = 0; i < arr.length; i++) {
       <textarea id="errorOutput" spellcheck="false" placeholder="Paste any error message here...">TypeError: Cannot read properties of undefined (reading '0')</textarea>
 
       <div class="pane-header">
-        <label for="exerciseId">Exercise ID</label>
+        <label for="exerciseId">Exercise</label>
       </div>
-      <input id="exerciseId" type="text" value="ex-1" spellcheck="false" />
+      <select id="exerciseId" class="exercise-select">
+        <option value="ex-1">Loading...</option>
+      </select>
+      <p id="exerciseHint" class="field-hint" hidden></p>
 
       <button id="askBtn" class="primary">Ask the Tutor for a Hint</button>
       <button id="fixedBtn" class="primary" style="background:#059669;margin-top:8px;">I fixed it</button>

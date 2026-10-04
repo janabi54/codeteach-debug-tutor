@@ -716,8 +716,14 @@ function showAppView() {
   if (topbar) topbar.style.display = '';
 
   setTimeout(() => {
-    if (typeof loadInviteCodes === 'function') loadInviteCodes();
-    if (typeof loadHealth === 'function') loadHealth();
+    // Everyone
+    if (typeof loadExercisePicker === 'function') loadExercisePicker();
+
+    // Instructor-only
+    if (currentUser && currentUser.role === 'instructor') {
+      if (typeof loadInviteCodes === 'function') loadInviteCodes();
+      if (typeof loadHealth === 'function') loadHealth();
+    }
   }, 100);
 }
 
@@ -725,7 +731,7 @@ function applyRoleVisibility() {
   const adminTabs = ['health', 'class', 'students', 'exercises'];
   document.querySelectorAll('.tab').forEach(tab => {
     if (adminTabs.includes(tab.dataset.tab) && currentUser.role !== 'instructor') {
-      tab.style.display = 'none';
+      tab.remove();
     } else {
       tab.style.display = '';
     }
@@ -1592,6 +1598,8 @@ async function joinClass() {
     msg.hidden = false;
     $('settingsJoinCode').value = '';
     await loadSettingsClasses();
+    if (typeof loadExercisePicker === 'function') await loadExercisePicker();
+    if (typeof loadExercisePicker === 'function') await loadExercisePicker();
   } catch (err) {
     msg.textContent = 'Failed: ' + err.message;
     msg.className = 'settings-join-message error';
@@ -2044,3 +2052,74 @@ document.addEventListener('click', (e) => {
     loadStudentsRoster();
   }
 });
+
+// ═══════════════════════════════════════════════════════════
+// Exercise picker (Tutor tab)
+// ═══════════════════════════════════════════════════════════
+
+async function loadExercisePicker() {
+  const select = $('exerciseId');
+  const hint = $('exerciseHint');
+  if (!select) return;
+
+  try {
+    const res = await fetch('/api/cohorts/my-exercises');
+    if (!res.ok) {
+      select.innerHTML = '<option value="ex-1">ex-1 (no cohort)</option>';
+      if (hint) {
+        hint.textContent = 'You are not enrolled in any class yet. Ask your instructor for an enrollment code.';
+        hint.hidden = false;
+      }
+      return;
+    }
+
+    const exercises = await res.json();
+
+    if (!exercises.length) {
+      select.innerHTML = '<option value="ex-1">ex-1 (no cohort)</option>';
+      if (hint) {
+        hint.textContent = 'You are not enrolled in any class yet. Open Join Class from the top-right menu to enter a code.';
+        hint.hidden = false;
+      }
+      return;
+    }
+
+    // Group by cohort for readability
+    const byCohort = {};
+    for (const ex of exercises) {
+      if (!byCohort[ex.cohortName]) byCohort[ex.cohortName] = [];
+      byCohort[ex.cohortName].push(ex);
+    }
+
+    let html = '';
+    for (const cohortName of Object.keys(byCohort)) {
+      html += '<optgroup label="' + escapeHtml(cohortName) + '">';
+      for (const ex of byCohort[cohortName]) {
+        html += '<option value="' + escapeHtml(ex.slug) + '">' + escapeHtml(ex.title) + '</option>';
+      }
+      html += '</optgroup>';
+    }
+
+    select.innerHTML = html;
+
+    if (hint) hint.hidden = true;
+
+    // Preserve current value if it's still valid; otherwise reset to first option
+    const current = localStorage.getItem('codeteach.exerciseId');
+    const stillValid = exercises.some((e) => e.slug === current);
+    if (stillValid) {
+      select.value = current;
+    }
+
+    // Save the choice when changed
+    select.addEventListener('change', () => {
+      try { localStorage.setItem('codeteach.exerciseId', select.value); } catch (e) {}
+    });
+  } catch (err) {
+    select.innerHTML = '<option value="ex-1">ex-1</option>';
+    if (hint) {
+      hint.textContent = 'Could not load exercises: ' + err.message;
+      hint.hidden = false;
+    }
+  }
+}
