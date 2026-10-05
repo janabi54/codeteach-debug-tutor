@@ -654,6 +654,87 @@ export const db = {
     },
   },
 
+  cohortCleanup: {
+    /**
+     * Remove all of a student's work for a cohort they're leaving.
+     *
+     * Deletes rows from hint_sessions, hypotheses, post_mortems,
+     * mistake_patterns, and tutor_notes that belong to this student AND
+     * to any exercise in this cohort. Does NOT touch work in other
+     * cohorts the student belongs to.
+     *
+     * Returns counts of what was removed, for the API response.
+     */
+    removeStudentFromCohort(studentId: string, cohortId: string): {
+      sessions: number;
+      hypotheses: number;
+      postMortems: number;
+      patterns: number;
+      notes: number;
+    } {
+      const tx = sqlite.transaction(() => {
+        // Collect the exercise slugs in this cohort. Every session-like
+        // table stores the exercise *slug* (not the UUID), so we work
+        // with slugs here.
+        const exerciseRows = sqlite
+          .prepare('SELECT slug FROM exercises WHERE cohort_id = ?')
+          .all(cohortId) as Array<{ slug: string }>;
+        const slugs = exerciseRows.map((r) => r.slug);
+
+        let sessions = 0;
+        let hypotheses = 0;
+        let postMortems = 0;
+        let patterns = 0;
+
+        if (slugs.length > 0) {
+          const placeholders = slugs.map(() => '?').join(',');
+
+          const s = sqlite
+            .prepare(
+              `DELETE FROM hint_sessions
+               WHERE student_id = ? AND exercise_id IN (${placeholders})`
+            )
+            .run(studentId, ...slugs);
+          sessions = s.changes ?? 0;
+
+          const h = sqlite
+            .prepare(
+              `DELETE FROM hypotheses
+               WHERE student_id = ? AND exercise_id IN (${placeholders})`
+            )
+            .run(studentId, ...slugs);
+          hypotheses = h.changes ?? 0;
+
+          const pm = sqlite
+            .prepare(
+              `DELETE FROM post_mortems
+               WHERE student_id = ? AND exercise_id IN (${placeholders})`
+            )
+            .run(studentId, ...slugs);
+          postMortems = pm.changes ?? 0;
+
+          const mp = sqlite
+            .prepare(
+              `DELETE FROM mistake_patterns
+               WHERE student_id = ? AND exercise_id IN (${placeholders})`
+            )
+            .run(studentId, ...slugs);
+          patterns = mp.changes ?? 0;
+        }
+
+        // Tutor notes are scoped by cohort_id directly, not by exercise
+        const n = sqlite
+          .prepare('DELETE FROM tutor_notes WHERE student_id = ? AND cohort_id = ?')
+          .run(studentId, cohortId);
+        const notes = n.changes ?? 0;
+
+        return { sessions, hypotheses, postMortems, patterns, notes };
+      });
+
+      return tx();
+    },
+  },
+
   tutorNotes: {
     async create(data: {
       instructorId: string;

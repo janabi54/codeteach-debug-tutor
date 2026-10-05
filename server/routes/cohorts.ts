@@ -85,14 +85,21 @@ router.post('/join', requireAuth, async (req, res) => {
 // Student-facing. Removes the caller from the specified cohort.
 // ─────────────────────────────────────────────────────────────
 router.delete('/:cohortId/leave', requireAuth, async (req, res) => {
-  const removed = await db.cohortMembers.remove(
-    req.params.cohortId,
-    req.user!.id
-  );
-  if (!removed) {
+  const { cohortId } = req.params;
+  const userId = req.user!.id;
+
+  // Verify membership before doing anything destructive
+  const memberships = await db.cohorts.listForUser(userId);
+  if (!memberships.some((c) => c.id === cohortId)) {
     return res.status(404).json({ error: 'You are not a member of that cohort.' });
   }
-  res.json({ ok: true });
+
+  // Remove all of this student's work scoped to this cohort, then
+  // remove the membership row. Done in a transaction inside the db layer.
+  const removed = db.cohortCleanup.removeStudentFromCohort(userId, cohortId);
+  await db.cohortMembers.remove(cohortId, userId);
+
+  res.json({ ok: true, removed });
 });
 
 // ─────────────────────────────────────────────────────────────

@@ -724,6 +724,9 @@ function showAppView() {
       if (typeof loadInviteCodes === 'function') loadInviteCodes();
       if (typeof loadHealth === 'function') loadHealth();
     }
+
+    // Restore the tab from the URL hash
+    if (typeof activateTabFromHash === 'function') activateTabFromHash();
   }, 100);
 }
 
@@ -2551,3 +2554,36 @@ document.addEventListener('click', (e) => {
   else if (t.id === 'sdNotesDrawerCloseBtn') closeNotesDrawer();
   else if (t.id === 'sdNotesDrawerBackdrop') closeNotesDrawer();
 });
+
+// ═══════════════════════════════════════════════════════════
+// Tab persistence via URL hash
+// ═══════════════════════════════════════════════════════════
+
+const VALID_TABS = ['tutor', 'weak-spots', 'health', 'class', 'students', 'exercises'];
+
+function activateTabFromHash() {
+  const raw = (window.location.hash || '').replace(/^#/, '');
+  const tabName = VALID_TABS.includes(raw) ? raw : 'tutor';
+
+  const tab = document.querySelector('.tab[data-tab="' + tabName + '"]');
+  if (!tab) {
+    // Tab might be hidden for this role — fall back to tutor
+    const tutorTab = document.querySelector('.tab[data-tab="tutor"]');
+    if (tutorTab) tutorTab.click();
+    return;
+  }
+  tab.click();
+}
+
+// Update the hash whenever a tab is clicked
+document.querySelectorAll('.tab').forEach((tab) => {
+  tab.addEventListener('click', () => {
+    const name = tab.dataset.tab;
+    if (VALID_TABS.includes(name) && window.location.hash !== '#' + name) {
+      history.replaceState(null, '', '#' + name);
+    }
+  });
+});
+
+// React to back/forward navigation
+window.addEventListener('hashchange', activateTabFromHash);

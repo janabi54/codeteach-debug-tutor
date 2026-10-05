@@ -1857,3 +1857,29 @@ button.danger.small {
     display: none !important;
   }
 }
+
+/* Reopen button: fixed bottom-right, always visible when panel is collapsed */
+.sd-notes-reopen {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 50;
+  background: #4f46e5;
+  color: #fff;
+  border: 0;
+  border-radius: 999px;
+  padding: 12px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(79, 70, 229, 0.35);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.sd-notes-reopen:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(79, 70, 229, 0.45);
+}
+.sd-notes-reopen:active {
+  transform: translateY(0);
+}
