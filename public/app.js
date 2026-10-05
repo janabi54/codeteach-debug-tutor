@@ -2585,5 +2585,11 @@ document.querySelectorAll('.tab').forEach((tab) => {
   });
 });
 
-// React to back/forward navigation
-window.addEventListener('hashchange', activateTabFromHash);
+// NOTE: intentionally NOT listening for hashchange. The hash is a passive
+// label so refresh preserves the active tab, but back/forward do not
+// navigate between tabs — in-app views (student detail, exercise detail)
+// aren't part of the URL, so Back would jump unpredictably.
+//
+// If we ever want Back to mean "go back one view", we need a real router
+// with history entries for every in-app transition. See
+// docs/session-b-backlog.md.
