@@ -157,3 +157,19 @@ CREATE TABLE IF NOT EXISTS cohort_members (
 
 CREATE INDEX IF NOT EXISTS idx_cohort_members_user ON cohort_members(user_id);
 CREATE INDEX IF NOT EXISTS idx_cohort_members_cohort ON cohort_members(cohort_id);
+
+CREATE TABLE IF NOT EXISTS tutor_notes (
+  id TEXT PRIMARY KEY,
+  instructor_id TEXT NOT NULL,
+  student_id TEXT NOT NULL,
+  cohort_id TEXT NOT NULL,
+  text TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (instructor_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (cohort_id) REFERENCES cohorts(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_tutor_notes_student
+  ON tutor_notes(instructor_id, student_id, cohort_id);

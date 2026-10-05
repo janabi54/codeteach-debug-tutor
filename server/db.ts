@@ -31,6 +31,18 @@ function rowToUser(row: any): User {
   };
 }
 
+function rowToTutorNote(row: any): TutorNote {
+  return {
+    id: row.id,
+    instructorId: row.instructor_id,
+    studentId: row.student_id,
+    cohortId: row.cohort_id,
+    text: row.text,
+    createdAt: parseSqliteTimestamp(row.created_at),
+    updatedAt: parseSqliteTimestamp(row.updated_at),
+  };
+}
+
 function rowToCohort(row: any): Cohort {
   return {
     id: row.id,
@@ -149,6 +161,16 @@ if (!hasScoreSource) {
   console.log('[db] migrated: added hypotheses.score_source');
 }
 
+
+interface TutorNote {
+  id: string;
+  instructorId: string;
+  studentId: string;
+  cohortId: string;
+  text: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 interface Cohort {
   id: string;
@@ -460,6 +482,20 @@ const stmt = {
     'SELECT COUNT(*) AS n FROM exercises WHERE cohort_id = ?'
   ),
 
+  // ── Tutor notes ──
+  insertTutorNote: sqlite.prepare(
+    'INSERT INTO tutor_notes (id, instructor_id, student_id, cohort_id, text) VALUES (?, ?, ?, ?, ?)'
+  ),
+  listTutorNotes: sqlite.prepare(
+    'SELECT * FROM tutor_notes WHERE instructor_id = ? AND student_id = ? AND cohort_id = ? ORDER BY created_at DESC'
+  ),
+  findTutorNote: sqlite.prepare(
+    'SELECT * FROM tutor_notes WHERE id = ?'
+  ),
+  deleteTutorNote: sqlite.prepare(
+    'DELETE FROM tutor_notes WHERE id = ? AND instructor_id = ?'
+  ),
+
   // ── Exercises ──
   insertExercise: sqlite.prepare(
     `INSERT INTO exercises
@@ -612,6 +648,48 @@ export const db = {
     async countExercises(cohortId: string): Promise<number> {
       const row = stmt.countExercisesInCohort.get(cohortId) as any;
       return row?.n ?? 0;
+    },
+  },
+
+  tutorNotes: {
+    async create(data: {
+      instructorId: string;
+      studentId: string;
+      cohortId: string;
+      text: string;
+    }): Promise<TutorNote> {
+      const id = crypto.randomUUID();
+      stmt.insertTutorNote.run(
+        id,
+        data.instructorId,
+        data.studentId,
+        data.cohortId,
+        data.text
+      );
+      const row = stmt.findTutorNote.get(id) as any;
+      return rowToTutorNote(row);
+    },
+
+    async list(
+      instructorId: string,
+      studentId: string,
+      cohortId: string
+    ): Promise<TutorNote[]> {
+      return (stmt.listTutorNotes.all(
+        instructorId,
+        studentId,
+        cohortId
+      ) as any[]).map(rowToTutorNote);
+    },
+
+    async findById(id: string): Promise<TutorNote | null> {
+      const row = stmt.findTutorNote.get(id) as any;
+      return row ? rowToTutorNote(row) : null;
+    },
+
+    async delete(id: string, instructorId: string): Promise<boolean> {
+      const info = stmt.deleteTutorNote.run(id, instructorId);
+      return (info.changes ?? 0) > 0;
     },
   },
 
