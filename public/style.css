@@ -1605,3 +1605,255 @@ button.danger.small {
 .quality-badge.q-score-partial { background: #fef3c7; color: #92400e; }
 .quality-badge.q-score-incorrect { background: #fee2e2; color: #991b1b; }
 .quality-badge.q-score-unscored { background: #f0f1f3; color: #7a7f88; }
+
+/* ═══════════════════════════════════════════════════════════
+   Tutor notes panel
+   ═══════════════════════════════════════════════════════════ */
+
+.sd-header-actions {
+  display: flex;
+  gap: 8px;
+}
+.sd-notes-count-badge {
+  display: inline-block;
+  background: #eef2ff;
+  color: #4f46e5;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 999px;
+  margin-left: 4px;
+}
+.sd-notes-count-badge:empty {
+  display: none;
+}
+
+/* Two-column layout */
+.sd-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 28px;
+  align-items: start;
+}
+.sd-layout.collapsed {
+  grid-template-columns: minmax(0, 1fr);
+}
+.sd-layout.collapsed .sd-notes-panel {
+  display: none;
+}
+.sd-main {
+  min-width: 0; /* allow the grid child to shrink; enables horizontal scroll on tables */
+}
+
+/* Horizontal scroll for wide tables when the panel squeezes them */
+.sd-main .sd-sessions-table {
+  display: block;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.sd-main .sd-sessions-table thead,
+.sd-main .sd-sessions-table tbody {
+  display: table;
+  width: 100%;
+}
+
+/* The panel itself */
+.sd-notes-panel {
+  position: sticky;
+  top: 20px;
+  background: #fbfcff;
+  border: 1px solid #e4e6eb;
+  border-radius: 12px;
+  padding: 18px 18px 20px;
+  max-height: calc(100vh - 40px);
+  display: flex;
+  flex-direction: column;
+}
+.sd-notes-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.sd-notes-title {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #4f46e5;
+  margin: 0;
+}
+.sd-notes-collapse {
+  background: none;
+  border: 0;
+  font-size: 20px;
+  line-height: 1;
+  color: #9ca3af;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.sd-notes-collapse:hover {
+  color: #1a1d23;
+}
+.sd-notes-compose {
+  flex-shrink: 0;
+  margin-bottom: 12px;
+}
+.sd-notes-compose textarea {
+  width: 100%;
+  border: 1px solid #dfe2e7;
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 70px;
+  box-sizing: border-box;
+  background: #fff;
+}
+.sd-notes-compose textarea:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+.sd-notes-compose-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 8px;
+}
+.sd-notes-list {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+/* Individual note */
+.sd-note {
+  padding: 12px 0;
+  border-top: 1px solid #eef0f4;
+}
+.sd-note:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.sd-note-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 6px;
+  gap: 8px;
+}
+.sd-note-time {
+  font-size: 11px;
+  color: #7a7f88;
+}
+.sd-note-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.sd-note-action {
+  background: none;
+  border: 0;
+  color: #9ca3af;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0;
+  font-family: inherit;
+}
+.sd-note-action:hover {
+  color: #4f46e5;
+}
+.sd-note-action.sd-note-delete:hover {
+  color: #dc2626;
+}
+.sd-note-text {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #1a1d23;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.sd-note-edit-textarea {
+  width: 100%;
+  border: 1px solid #6366f1;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 60px;
+  box-sizing: border-box;
+}
+.sd-note-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+/* Collapsed-state reopen button */
+.sd-notes-reopen {
+  position: sticky;
+  top: 20px;
+  align-self: start;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #4f46e5;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+/* ── Mobile drawer ── */
+
+.sd-notes-drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+}
+.sd-notes-drawer-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.4);
+}
+.sd-notes-drawer-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 90%;
+  max-width: 400px;
+  background: #fff;
+  box-shadow: -8px 0 24px rgba(15, 23, 42, 0.15);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  animation: sdDrawerIn 0.2s ease-out;
+}
+@keyframes sdDrawerIn {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+/* Breakpoint: below 1000px, hide the inline panel, use the drawer */
+@media (max-width: 1000px) {
+  .sd-layout {
+    grid-template-columns: 1fr;
+  }
+  .sd-notes-panel {
+    display: none;
+  }
+  .sd-notes-reopen {
+    display: none;
+  }
+}
+@media (min-width: 1001px) {
+  .sd-notes-drawer {
+    display: none !important;
+  }
+}

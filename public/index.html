@@ -389,6 +389,11 @@ for (let i = 0; i < arr.length; i++) {
     <div id="studentDetailView" hidden>
       <div class="student-detail-header">
         <button id="backToRosterBtn" class="ghost small">← Back to students</button>
+        <div class="sd-header-actions">
+          <button id="sdNotesToggleBtn" class="ghost small" title="Toggle notes panel">
+            Notes <span id="sdNotesCount" class="sd-notes-count-badge"></span>
+          </button>
+        </div>
       </div>
 
       <div class="student-detail-top">
@@ -405,6 +410,8 @@ for (let i = 0; i < arr.length; i++) {
         <div id="sdStatusBadge"></div>
       </div>
 
+      <div class="sd-layout" id="sdLayout">
+        <div class="sd-main">
       <div class="sd-metrics-row">
         <div class="sd-metric-card" id="sdReasoningCard">
           <div class="sd-metric-label">Reasoning quality</div>
@@ -450,6 +457,44 @@ for (let i = 0; i < arr.length; i++) {
           </div>
         </div>
         <div id="sdSessionHistory">
+          <p class="empty-state">Loading...</p>
+        </div>
+      </div>
+        </div><!-- /sd-main -->
+
+        <aside class="sd-notes-panel" id="sdNotesPanel">
+          <div class="sd-notes-header">
+            <h3 class="sd-notes-title">Tutor notes</h3>
+            <button id="sdNotesCollapseBtn" class="sd-notes-collapse" title="Hide panel">×</button>
+          </div>
+          <div class="sd-notes-compose">
+            <textarea id="sdNotesInput" placeholder="Add a private note about this student..."></textarea>
+            <div class="sd-notes-compose-actions">
+              <button id="sdNotesSaveBtn" class="primary small">Save note</button>
+            </div>
+          </div>
+          <div id="sdNotesList" class="sd-notes-list">
+            <p class="empty-state">Loading...</p>
+          </div>
+        </aside>
+      </div><!-- /sd-layout -->
+    </div>
+
+    <!-- Mobile notes drawer (mirrors the desktop panel content) -->
+    <div id="sdNotesDrawer" class="sd-notes-drawer" hidden>
+      <div class="sd-notes-drawer-backdrop" id="sdNotesDrawerBackdrop"></div>
+      <div class="sd-notes-drawer-panel">
+        <div class="sd-notes-header">
+          <h3 class="sd-notes-title">Tutor notes</h3>
+          <button id="sdNotesDrawerCloseBtn" class="sd-notes-collapse" title="Close">×</button>
+        </div>
+        <div class="sd-notes-compose">
+          <textarea id="sdNotesInputMobile" placeholder="Add a private note about this student..."></textarea>
+          <div class="sd-notes-compose-actions">
+            <button id="sdNotesSaveBtnMobile" class="primary small">Save note</button>
+          </div>
+        </div>
+        <div id="sdNotesListMobile" class="sd-notes-list">
           <p class="empty-state">Loading...</p>
         </div>
       </div>

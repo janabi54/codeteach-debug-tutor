@@ -59,6 +59,7 @@ router.get('/', requireInstructor, async (req, res) => {
       displayName: user.displayName,
       email: user.email,
       cohortNames: Array.from(s.cohortNames),
+      cohortIds: Array.from(s.cohortIds),
       joinedAt: s.joinedAt,
       exercisesAttempted: stats.exercisesAttempted,
       exercisesCompleted: stats.exercisesCompleted,

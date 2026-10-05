@@ -1913,6 +1913,11 @@ async function openStudentDetail(studentId) {
   showStudentDetail();
   clearStudentDetail();
 
+  // Restore the desktop collapse state from localStorage
+  if (typeof setNotesPanelCollapsed === 'function' && !isMobileNotes()) {
+    setNotesPanelCollapsed(notesPanelCollapsed());
+  }
+
   try {
     const res = await fetch('/api/admin/students/' + encodeURIComponent(studentId));
     if (!res.ok) {
@@ -1923,6 +1928,15 @@ async function openStudentDetail(studentId) {
     }
     const data = await res.json();
     renderStudentDetail(data);
+
+    // Load tutor notes for this student. The roster cache carries
+    // cohortIds so we can scope notes to a specific cohort.
+    const rosterEntry = (window.__studentsRoster || []).find(
+      (s) => s.studentId === studentId
+    );
+    const cohortId =
+      rosterEntry && rosterEntry.cohortIds && rosterEntry.cohortIds[0];
+    await loadTutorNotes(studentId, cohortId || null);
   } catch (err) {
     alert('Failed: ' + err.message);
     showStudentsRoster();
@@ -2298,4 +2312,242 @@ document.addEventListener('click', (e) => {
   } else if (t.id === 'sedResetBtn') {
     resetExerciseProgress();
   }
+});
+
+// ═══════════════════════════════════════════════════════════
+// Tutor notes panel
+// ═══════════════════════════════════════════════════════════
+
+let currentNotesStudentId = null;
+let currentNotesCohortId = null;
+let currentNotesCache = [];
+
+function isMobileNotes() {
+  return window.innerWidth <= 1000;
+}
+
+function notesPanelCollapsed() {
+  try {
+    return localStorage.getItem('codeteach.notesCollapsed') === '1';
+  } catch { return false; }
+}
+function setNotesPanelCollapsed(v) {
+  try { localStorage.setItem('codeteach.notesCollapsed', v ? '1' : '0'); } catch {}
+  const layout = $('sdLayout');
+  if (!layout) return;
+  if (v) layout.classList.add('collapsed');
+  else layout.classList.remove('collapsed');
+
+  // Add a reopen button if collapsed and not present
+  let reopen = $('sdNotesReopenBtn');
+  if (v && !reopen) {
+    const btn = document.createElement('button');
+    btn.id = 'sdNotesReopenBtn';
+    btn.className = 'sd-notes-reopen';
+    btn.textContent = 'Show notes';
+    btn.addEventListener('click', () => setNotesPanelCollapsed(false));
+    layout.appendChild(btn);
+  } else if (!v && reopen) {
+    reopen.remove();
+  }
+}
+
+async function loadTutorNotes(studentId, cohortId) {
+  currentNotesStudentId = studentId;
+  currentNotesCohortId = cohortId || null;
+
+  const listDesktop = $('sdNotesList');
+  const listMobile = $('sdNotesListMobile');
+  const countBadge = $('sdNotesCount');
+
+  if (listDesktop) listDesktop.innerHTML = '<p class="empty-state">Loading...</p>';
+  if (listMobile) listMobile.innerHTML = '<p class="empty-state">Loading...</p>';
+  if (countBadge) countBadge.textContent = '';
+
+  try {
+    const url = '/api/admin/students/' + encodeURIComponent(studentId) + '/notes' +
+      (cohortId ? '?cohortId=' + encodeURIComponent(cohortId) : '');
+    const res = await fetch(url);
+    if (!res.ok) {
+      const msg = '<p class="empty-state">Could not load notes.</p>';
+      if (listDesktop) listDesktop.innerHTML = msg;
+      if (listMobile) listMobile.innerHTML = msg;
+      return;
+    }
+    const notes = await res.json();
+    currentNotesCache = notes;
+
+    if (countBadge) countBadge.textContent = notes.length ? String(notes.length) : '';
+
+    if (!notes.length) {
+      const msg = '<p class="empty-state">No notes yet.</p>';
+      if (listDesktop) listDesktop.innerHTML = msg;
+      if (listMobile) listMobile.innerHTML = msg;
+      return;
+    }
+
+    const html = notes.map(renderNoteRow).join('');
+    if (listDesktop) listDesktop.innerHTML = html;
+    if (listMobile) listMobile.innerHTML = html;
+    wireNoteActions();
+  } catch (err) {
+    const msg = '<p class="empty-state">Failed: ' + escapeHtml(err.message) + '</p>';
+    if (listDesktop) listDesktop.innerHTML = msg;
+    if (listMobile) listMobile.innerHTML = msg;
+  }
+}
+
+function renderNoteRow(n) {
+  const created = new Date(n.createdAt).getTime();
+  const updated = new Date(n.updatedAt).getTime();
+  const edited = updated - created > 1000; // >1s difference means edited
+
+  return `
+    <div class="sd-note" data-note-id="${escapeHtml(n.id)}">
+      <div class="sd-note-header">
+        <span class="sd-note-time">
+          ${relativeTime(n.createdAt)}${edited ? ' · edited' : ''}
+        </span>
+        <div class="sd-note-actions">
+          <button class="sd-note-action sd-note-edit" data-note-id="${escapeHtml(n.id)}">Edit</button>
+          <button class="sd-note-action sd-note-delete" data-note-id="${escapeHtml(n.id)}">Delete</button>
+        </div>
+      </div>
+      <div class="sd-note-text">${escapeHtml(n.text)}</div>
+    </div>
+  `;
+}
+
+function wireNoteActions() {
+  document.querySelectorAll('.sd-note-edit').forEach((btn) => {
+    btn.addEventListener('click', () => startEditNote(btn.dataset.noteId));
+  });
+  document.querySelectorAll('.sd-note-delete').forEach((btn) => {
+    btn.addEventListener('click', () => deleteTutorNote(btn.dataset.noteId));
+  });
+}
+
+function startEditNote(noteId) {
+  const note = currentNotesCache.find((n) => n.id === noteId);
+  if (!note) return;
+
+  const el = document.querySelector('.sd-note[data-note-id="' + noteId + '"]');
+  if (!el) return;
+
+  el.innerHTML = `
+    <textarea class="sd-note-edit-textarea" id="edit-${escapeHtml(noteId)}">${escapeHtml(note.text)}</textarea>
+    <div class="sd-note-edit-actions">
+      <button class="ghost small" data-action="cancel">Cancel</button>
+      <button class="primary small" data-action="save">Save</button>
+    </div>
+  `;
+
+  const textarea = el.querySelector('textarea');
+  textarea.focus();
+
+  el.querySelector('[data-action="cancel"]').addEventListener('click', () => {
+    loadTutorNotes(currentNotesStudentId, currentNotesCohortId);
+  });
+
+  el.querySelector('[data-action="save"]').addEventListener('click', () => {
+    saveEditNote(noteId, textarea.value);
+  });
+}
+
+async function saveEditNote(noteId, text) {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    alert('Note cannot be empty.');
+    return;
+  }
+  try {
+    const res = await fetch('/api/admin/notes/' + encodeURIComponent(noteId), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: trimmed }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || 'Could not save.');
+      return;
+    }
+    await loadTutorNotes(currentNotesStudentId, currentNotesCohortId);
+  } catch (err) {
+    alert('Failed: ' + err.message);
+  }
+}
+
+async function saveTutorNote(source) {
+  const textarea = source === 'mobile' ? $('sdNotesInputMobile') : $('sdNotesInput');
+  const btn = source === 'mobile' ? $('sdNotesSaveBtnMobile') : $('sdNotesSaveBtn');
+  if (!textarea) return;
+  const text = textarea.value.trim();
+  if (!text) return;
+  if (!currentNotesStudentId) return;
+
+  btn.disabled = true;
+  try {
+    const res = await fetch(
+      '/api/admin/students/' + encodeURIComponent(currentNotesStudentId) + '/notes',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text,
+          ...(currentNotesCohortId ? { cohortId: currentNotesCohortId } : {}),
+        }),
+      }
+    );
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || 'Could not save note.');
+      return;
+    }
+    textarea.value = '';
+    await loadTutorNotes(currentNotesStudentId, currentNotesCohortId);
+  } catch (err) {
+    alert('Failed: ' + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function deleteTutorNote(noteId) {
+  if (!confirm('Delete this note?')) return;
+  try {
+    const res = await fetch('/api/admin/notes/' + encodeURIComponent(noteId), {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || 'Could not delete.');
+      return;
+    }
+    await loadTutorNotes(currentNotesStudentId, currentNotesCohortId);
+  } catch (err) {
+    alert('Failed: ' + err.message);
+  }
+}
+
+function openNotesDrawer() {
+  $('sdNotesDrawer').hidden = false;
+}
+function closeNotesDrawer() {
+  $('sdNotesDrawer').hidden = true;
+}
+
+// Wire buttons — attached once at load
+document.addEventListener('click', (e) => {
+  const t = e.target;
+  if (!t || !t.id) return;
+
+  if (t.id === 'sdNotesSaveBtn') saveTutorNote('desktop');
+  else if (t.id === 'sdNotesSaveBtnMobile') saveTutorNote('mobile');
+  else if (t.id === 'sdNotesCollapseBtn') setNotesPanelCollapsed(true);
+  else if (t.id === 'sdNotesToggleBtn') {
+    if (isMobileNotes()) openNotesDrawer();
+    else setNotesPanelCollapsed(!notesPanelCollapsed());
+  }
+  else if (t.id === 'sdNotesDrawerCloseBtn') closeNotesDrawer();
+  else if (t.id === 'sdNotesDrawerBackdrop') closeNotesDrawer();
 });
