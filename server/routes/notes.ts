@@ -137,4 +137,43 @@ router.delete('/notes/:noteId', requireInstructor, async (req, res) => {
   res.json({ ok: true });
 });
 
+// ─────────────────────────────────────────────────────────────
+// PATCH /api/admin/notes/:noteId
+// Update the text of an existing note. Only the author can edit.
+// ─────────────────────────────────────────────────────────────
+router.patch('/notes/:noteId', requireInstructor, async (req, res) => {
+  const instructorId = req.user!.id;
+  const { noteId } = req.params;
+  const { text } = req.body ?? {};
+
+  if (typeof text !== 'string' || text.trim().length === 0) {
+    return res.status(400).json({ error: 'Note text is required.' });
+  }
+  if (text.length > MAX_NOTE_LENGTH) {
+    return res.status(400).json({ error: `Note is too long (max ${MAX_NOTE_LENGTH} characters).` });
+  }
+
+  const note = await db.tutorNotes.findById(noteId);
+  if (!note) {
+    return res.status(404).json({ error: 'Note not found.' });
+  }
+  if (note.instructorId !== instructorId) {
+    return res.status(403).json({ error: 'You can only edit your own notes.' });
+  }
+
+  const updated = await db.tutorNotes.update(noteId, instructorId, text.trim());
+  if (!updated) {
+    return res.status(500).json({ error: 'Could not update note.' });
+  }
+
+  res.json({
+    id: updated.id,
+    studentId: updated.studentId,
+    cohortId: updated.cohortId,
+    text: updated.text,
+    createdAt: updated.createdAt,
+    updatedAt: updated.updatedAt,
+  });
+});
+
 export default router;

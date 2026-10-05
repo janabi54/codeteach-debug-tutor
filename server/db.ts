@@ -495,6 +495,9 @@ const stmt = {
   deleteTutorNote: sqlite.prepare(
     'DELETE FROM tutor_notes WHERE id = ? AND instructor_id = ?'
   ),
+  updateTutorNote: sqlite.prepare(
+    "UPDATE tutor_notes SET text = ?, updated_at = datetime('now') WHERE id = ? AND instructor_id = ?"
+  ),
 
   // ── Exercises ──
   insertExercise: sqlite.prepare(
@@ -690,6 +693,13 @@ export const db = {
     async delete(id: string, instructorId: string): Promise<boolean> {
       const info = stmt.deleteTutorNote.run(id, instructorId);
       return (info.changes ?? 0) > 0;
+    },
+
+    async update(id: string, instructorId: string, text: string): Promise<TutorNote | null> {
+      const info = stmt.updateTutorNote.run(text, id, instructorId);
+      if ((info.changes ?? 0) === 0) return null;
+      const row = stmt.findTutorNote.get(id) as any;
+      return row ? rowToTutorNote(row) : null;
     },
   },
 
