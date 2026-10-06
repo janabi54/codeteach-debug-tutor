@@ -101,6 +101,45 @@ export function viewableExerciseIdsFor(
 }
 
 /**
+ * Same join as viewableExerciseIdsFor, but returns full exercise rows
+ * for the exercises an instructor can see for a given student. Used
+ * by the "recommended next action" engine.
+ */
+export function viewableExercisesFor(
+  instructorId: string,
+  studentId: string
+): Array<{ slug: string; title: string; expectedConcepts: string[] }> {
+  const rows = sqlite
+    .prepare(
+      `SELECT e.slug AS slug,
+              e.title AS title,
+              e.expected_concepts AS expectedConceptsJson
+       FROM exercises e
+       JOIN cohorts c ON c.id = e.cohort_id
+       JOIN cohort_members cm ON cm.cohort_id = c.id
+       WHERE c.instructor_id = ?
+         AND cm.user_id = ?
+       ORDER BY e.slug`
+    )
+    .all(instructorId, studentId) as Array<{
+      slug: string;
+      title: string;
+      expectedConceptsJson: string;
+    }>;
+
+  return rows.map((r) => {
+    let concepts: string[] = [];
+    try {
+      const parsed = JSON.parse(r.expectedConceptsJson || '[]');
+      if (Array.isArray(parsed)) concepts = parsed.filter((x) => typeof x === 'string');
+    } catch {
+      concepts = [];
+    }
+    return { slug: r.slug, title: r.title, expectedConcepts: concepts };
+  });
+}
+
+/**
  * For the roster: returns every (student, cohort) pair the instructor can
  * see — i.e., students who are members of any cohort the instructor teaches.
  */

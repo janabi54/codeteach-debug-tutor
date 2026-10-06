@@ -1863,6 +1863,47 @@ function renderStatusBadge(status, reasons) {
   return '<span class="status-badge ' + (status || '') + '"' + titleAttr + '>' + escapeHtml(label) + '</span>';
 }
 
+/**
+ * Render the "Recommended next action" banner. Only visible when
+ * `nextAction` is present. Clickable (opens exercise detail) only
+ * when nextAction.clickable === true.
+ */
+function renderNextAction(nextAction) {
+  const el = $('sdNextAction');
+  if (!el) return;
+
+  if (!nextAction || nextAction.kind === 'none') {
+    el.style.display = 'none';
+    el.innerHTML = '';
+    return;
+  }
+
+  el.className = 'sd-next-action sd-next-action-' + nextAction.kind;
+  el.style.display = 'block';
+  el.innerHTML =
+    '<div class="sd-next-action-title">' + escapeHtml(nextAction.title) + '</div>' +
+    '<div class="sd-next-action-detail">' + escapeHtml(nextAction.detail) + '</div>';
+
+  if (nextAction.clickable && nextAction.exerciseId) {
+    el.style.cursor = 'pointer';
+    el.setAttribute('role', 'button');
+    el.setAttribute('tabindex', '0');
+    const go = () => openExerciseDetail(
+      currentStudentId,
+      nextAction.exerciseId,
+      nextAction.exerciseTitle || nextAction.exerciseId
+    );
+    el.addEventListener('click', go);
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); }
+    });
+  } else {
+    el.style.cursor = 'default';
+    el.removeAttribute('role');
+    el.removeAttribute('tabindex');
+  }
+}
+
 function relativeTime(iso) {
   const then = new Date(iso).getTime();
   if (isNaN(then)) return '—';
@@ -1970,6 +2011,7 @@ function clearStudentDetail() {
   $('sdWeakSpots').innerHTML = '<p class="empty-state">Loading...</p>';
   $('sdSessionHistory').innerHTML = '<p class="empty-state">Loading...</p>';
   var st = $('sdStrengths'); if (st) st.innerHTML = '<p class="empty-state">Loading...</p>';
+  var na = $('sdNextAction'); if (na) { na.style.display = 'none'; na.innerHTML = ''; }
 }
 
 function renderStudentDetail(data) {
@@ -1997,6 +2039,9 @@ function renderStudentDetail(data) {
   const status = data.status || rosterEntry?.status;
   const statusReasons = data.statusReasons || rosterEntry?.statusReasons || [];
   $('sdStatusBadge').innerHTML = status ? renderStatusBadge(status, statusReasons) : '';
+
+  // Recommended next action banner
+  renderNextAction(data.nextAction);
 
   // Reasoning quality card
   const rq = data.metrics.reasoningQuality;

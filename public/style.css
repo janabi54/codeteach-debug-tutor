@@ -1964,3 +1964,47 @@ button.danger.small {
   font-size: 12px;
   color: #7a7f88;
 }
+
+/* ── Recommended next action banner (2.3) ── */
+.sd-next-action {
+  margin: 4px 0 16px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  border-left: 4px solid #cbd5e1;
+  background: #f8fafc;
+}
+.sd-next-action-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1d23;
+  margin-bottom: 2px;
+}
+.sd-next-action-detail {
+  font-size: 13px;
+  color: #4b5563;
+}
+.sd-next-action-reach-out {
+  border-left-color: #dc2626;
+  background: #fef2f2;
+}
+.sd-next-action-reach-out .sd-next-action-title { color: #991b1b; }
+.sd-next-action-nudge {
+  border-left-color: #f59e0b;
+  background: #fffbeb;
+}
+.sd-next-action-nudge .sd-next-action-title { color: #92400e; }
+.sd-next-action-re-engage {
+  border-left-color: #3b82f6;
+  background: #eff6ff;
+}
+.sd-next-action-re-engage .sd-next-action-title { color: #1e40af; }
+.sd-next-action-assign {
+  border-left-color: #6366f1;
+  background: #eef2ff;
+}
+.sd-next-action-assign .sd-next-action-title { color: #3730a3; }
+.sd-next-action-celebrate {
+  border-left-color: #059669;
+  background: #ecfdf5;
+}
+.sd-next-action-celebrate .sd-next-action-title { color: #065f46; }

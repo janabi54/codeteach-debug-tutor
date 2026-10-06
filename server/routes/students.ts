@@ -4,8 +4,10 @@ import { requireInstructor } from '../middleware/requireAuth.js';
 import {
   rosterFor,
   viewableExerciseIdsFor,
+  viewableExercisesFor,
   canInstructorViewStudentOnExercise,
 } from '../auth/authorization.js';
+import { deriveNextAction } from '../util/nextAction.js';
 import { deriveRosterStatus, escalateWithTrends } from '../util/status.js';
 
 const router = express.Router();
@@ -113,6 +115,16 @@ router.get('/:studentId', requireInstructor, async (req, res) => {
   });
   const statusResult = escalateWithTrends(rosterStatus, detail.trends);
 
+  const viewableExercises = viewableExercisesFor(instructorId, studentId);
+  const nextAction = deriveNextAction({
+    status: statusResult.status,
+    statusReasons: statusResult.reasons,
+    studentName: user.displayName,
+    viewableExercises,
+    sessionHistory: detail.sessionHistory,
+    weakSpots: detail.weakSpots,
+  });
+
   res.json({
     ...detail,
     name: user.displayName,
@@ -121,6 +133,7 @@ router.get('/:studentId', requireInstructor, async (req, res) => {
     classes: db.students.cohortNamesFor(studentId),
     status: statusResult.status,
     statusReasons: statusResult.reasons,
+    nextAction,
   });
 });
 
