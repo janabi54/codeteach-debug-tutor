@@ -832,6 +832,23 @@ export const db = {
     },
 
     /**
+     * Names of all cohorts a student is a member of.
+     * Used to enrich the student detail payload so the client
+     * doesn't have to rely on the roster cache.
+     */
+    cohortNamesFor(studentId: string): string[] {
+      return (sqlite
+        .prepare(
+          `SELECT c.name AS name
+           FROM cohort_members cm
+           JOIN cohorts c ON c.id = cm.cohort_id
+           WHERE cm.user_id = ?
+           ORDER BY c.name`
+        )
+        .all(studentId) as Array<{ name: string }>).map((r) => r.name);
+    },
+
+    /**
      * Full student detail: metrics, weak spots, session history.
      * Scoped to exerciseIds the viewing instructor is allowed to see.
      */

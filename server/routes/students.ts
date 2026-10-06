@@ -6,6 +6,7 @@ import {
   viewableExerciseIdsFor,
   canInstructorViewStudentOnExercise,
 } from '../auth/authorization.js';
+import { deriveRosterStatus, escalateWithTrends } from '../util/status.js';
 
 const router = express.Router();
 
@@ -64,7 +65,14 @@ router.get('/', requireInstructor, async (req, res) => {
       exercisesAttempted: stats.exercisesAttempted,
       exercisesCompleted: stats.exercisesCompleted,
       lastActiveAt: stats.lastActiveAt,
-      status: deriveStatus(stats),
+      ...(() => {
+        const r = deriveRosterStatus({
+          exercisesAttempted: stats.exercisesAttempted,
+          exercisesCompleted: stats.exercisesCompleted,
+          lastActiveAt: stats.lastActiveAt,
+        });
+        return { status: r.status, statusReasons: r.reasons };
+      })(),
     });
   }
 
@@ -78,18 +86,6 @@ router.get('/', requireInstructor, async (req, res) => {
 
   res.json(students);
 });
-
-function deriveStatus(stats: {
-  exercisesAttempted: number;
-  lastActiveAt: string | null;
-}): 'on-track' | 'needs-attention' | 'inactive' | 'new' {
-  if (stats.exercisesAttempted === 0) return 'new';
-  if (!stats.lastActiveAt) return 'inactive';
-  const daysSinceActive = (Date.now() - new Date(stats.lastActiveAt).getTime()) / (1000 * 60 * 60 * 24);
-  if (daysSinceActive > 14) return 'inactive';
-  if (daysSinceActive > 7) return 'needs-attention';
-  return 'on-track';
-}
 
 // ─────────────────────────────────────────────────────────────
 // GET /api/admin/students/:studentId
@@ -107,7 +103,25 @@ router.get('/:studentId', requireInstructor, async (req, res) => {
     return res.status(403).json({ error: 'You do not teach this student.' });
   }
 
-  res.json(db.students.detailFor(studentId, exerciseIds));
+  const detail = db.students.detailFor(studentId, exerciseIds);
+  const stats = db.students.statsFor(studentId, exerciseIds);
+
+  const rosterStatus = deriveRosterStatus({
+    exercisesAttempted: stats.exercisesAttempted,
+    exercisesCompleted: stats.exercisesCompleted,
+    lastActiveAt: stats.lastActiveAt,
+  });
+  const statusResult = escalateWithTrends(rosterStatus, detail.trends);
+
+  res.json({
+    ...detail,
+    name: user.displayName,
+    email: user.email,
+    joinedAt: user.createdAt ? user.createdAt.toISOString() : null,
+    classes: db.students.cohortNamesFor(studentId),
+    status: statusResult.status,
+    statusReasons: statusResult.reasons,
+  });
 });
 
 // ─────────────────────────────────────────────────────────────

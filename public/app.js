@@ -1829,7 +1829,7 @@ async function loadStudentsRoster() {
               <td>${s.exercisesAttempted}</td>
               <td>${s.exercisesCompleted}</td>
               <td>${s.lastActiveAt ? relativeTime(s.lastActiveAt) : '—'}</td>
-              <td>${renderStatusBadge(s.status)}</td>
+              <td>${renderStatusBadge(s.status, s.statusReasons)}</td>
             </tr>
           `).join('')}
         </tbody>
@@ -1849,14 +1849,18 @@ async function loadStudentsRoster() {
   }
 }
 
-function renderStatusBadge(status) {
+function renderStatusBadge(status, reasons) {
   const labels = {
     'on-track': 'On track',
-    'needs-attention': 'Needs attention',
-    'inactive': 'Inactive',
+    'slipping': 'Slipping',
+    'at-risk': 'At-risk',
     'new': 'New',
   };
-  return '<span class="status-badge ' + status + '">' + (labels[status] || status) + '</span>';
+  const label = labels[status] || status || '';
+  const titleAttr = (reasons && reasons.length)
+    ? ' title="' + escapeHtml(reasons.join(' · ')) + '"'
+    : '';
+  return '<span class="status-badge ' + (status || '') + '"' + titleAttr + '>' + escapeHtml(label) + '</span>';
 }
 
 function relativeTime(iso) {
@@ -1970,18 +1974,28 @@ function clearStudentDetail() {
 function renderStudentDetail(data) {
   // The roster row data isn't passed through, so we fetch what we can from
   // the detail response and rely on the roster list for names.
+  // Identity — prefer the detail payload (which now carries name/email/
+  // joinedAt/classes), fall back to the roster cache for older servers.
   const roster = window.__studentsRoster || [];
   const rosterEntry = roster.find((s) => s.studentId === data.studentId);
 
-  if (rosterEntry) {
-    $('sdName').textContent = rosterEntry.displayName;
-    $('sdEmail').textContent = rosterEntry.email;
-    $('sdClasses').textContent = (rosterEntry.cohortNames || []).join(', ') || '—';
-    $('sdJoined').textContent = rosterEntry.joinedAt
-      ? new Date(rosterEntry.joinedAt).toLocaleDateString()
-      : '—';
-    $('sdStatusBadge').innerHTML = renderStatusBadge(rosterEntry.status);
-  }
+  const displayName = data.name || rosterEntry?.displayName || '—';
+  const email = data.email || rosterEntry?.email || '—';
+  const classes = (Array.isArray(data.classes) && data.classes.length)
+    ? data.classes.join(', ')
+    : ((rosterEntry?.cohortNames || []).join(', ') || '—');
+  const joinedAt = data.joinedAt || rosterEntry?.joinedAt || null;
+
+  $('sdName').textContent = displayName;
+  $('sdEmail').textContent = email;
+  $('sdClasses').textContent = classes;
+  $('sdJoined').textContent = joinedAt
+    ? new Date(joinedAt).toLocaleDateString()
+    : '—';
+
+  const status = data.status || rosterEntry?.status;
+  const statusReasons = data.statusReasons || rosterEntry?.statusReasons || [];
+  $('sdStatusBadge').innerHTML = status ? renderStatusBadge(status, statusReasons) : '';
 
   // Reasoning quality card
   const rq = data.metrics.reasoningQuality;
@@ -2735,28 +2749,31 @@ function renderOneTrend(trendElId, subElId, trend, opts) {
   const points = trend.points || [];
   const validCount = points.filter((p) => p.value !== null).length;
 
-  // No data at all: leave the container empty, let the existing sub-text stand.
-  if (validCount === 0) {
-    trendEl.innerHTML = '';
-    if (subEl) subEl.textContent = opts.emptyLabel;
+  // 0 or 1 valid point: there is no direction to describe, so leave the
+  // sub-label set by renderStudentDetail() intact (it carries the actual
+  // metric description). Only render the sparkline if we have 1 point,
+  // and clear it if we have none.
+  if (validCount < 2) {
+    if (validCount === 1) {
+      trendEl.innerHTML = renderSparkline(points, {
+        classification: trend.classification,
+        width: 88,
+        height: 24,
+      });
+    } else {
+      trendEl.innerHTML = '';
+    }
     return;
   }
 
-  // Some data: render the sparkline (empty string if only 1 valid point).
-  const svg = renderSparkline(points, {
+  // 2+ valid points: render sparkline and replace sub-label with the
+  // trend summary "Improving · 45% → 62%".
+  trendEl.innerHTML = renderSparkline(points, {
     classification: trend.classification,
     width: 88,
     height: 24,
   });
-  trendEl.innerHTML = svg;
 
-  // Sub-text: sparse (1 point) vs full trend label
-  if (validCount < 2) {
-    if (subEl) subEl.textContent = opts.sparseLabel;
-    return;
-  }
-
-  // Full label: "Improving · 45% → 62%"
   const first = points.find((p) => p.value !== null);
   const last = [...points].reverse().find((p) => p.value !== null);
 
