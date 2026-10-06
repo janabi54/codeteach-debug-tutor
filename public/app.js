@@ -1827,7 +1827,7 @@ async function loadStudentsRoster() {
               </td>
               <td>${s.cohortNames.map((n) => escapeHtml(n)).join(', ')}</td>
               <td>${s.exercisesAttempted}</td>
-              <td>${s.exercisesCompleted}</td>
+              <td>${renderCompactProgress(s.exercisesCompleted, s.assigned)}</td>
               <td>${s.lastActiveAt ? relativeTime(s.lastActiveAt) : '—'}</td>
               <td>${renderStatusBadge(s.status, s.statusReasons)}</td>
             </tr>
@@ -1847,6 +1847,52 @@ async function loadStudentsRoster() {
   } catch (err) {
     container.innerHTML = '<p class="empty-state">Failed: ' + escapeHtml(err.message) + '</p>';
   }
+}
+
+/**
+ * Threshold-based color class for a progress value (0–1).
+ * green >= 0.8, amber >= 0.4, red < 0.4
+ */
+function progressClass(percent) {
+  if (percent >= 0.8) return 'progress-good';
+  if (percent >= 0.4) return 'progress-warn';
+  return 'progress-low';
+}
+
+/**
+ * Compact progress bar for the roster's Completed cell.
+ * @param completed  number of completed exercises
+ * @param assigned   number of assigned exercises
+ */
+function renderCompactProgress(completed, assigned) {
+  if (!assigned || assigned <= 0) {
+    return '<span class="progress-empty">—</span>';
+  }
+  const pct = Math.min(1, completed / assigned);
+  const cls = progressClass(pct);
+  return (
+    '<div class="progress-cell">' +
+      '<span class="progress-cell-count">' + completed + ' / ' + assigned + '</span>' +
+      '<div class="progress-bar-sm">' +
+        '<div class="progress-bar-sm-fill ' + cls + '" style="width:' + Math.round(pct * 100) + '%"></div>' +
+      '</div>' +
+    '</div>'
+  );
+}
+
+/**
+ * Full-width progress bar for the detail page Progress card.
+ */
+function renderFullProgress(completed, assigned, percent) {
+  if (!assigned || assigned <= 0) {
+    return '';
+  }
+  const cls = progressClass(percent);
+  return (
+    '<div class="sd-progress-bar-lg">' +
+      '<div class="sd-progress-bar-lg-fill ' + cls + '" style="width:' + Math.round(percent * 100) + '%"></div>' +
+    '</div>'
+  );
 }
 
 function renderStatusBadge(status, reasons) {
@@ -2065,15 +2111,25 @@ function renderStudentDetail(data) {
     $('sdHintDepSub').textContent = 'hints per session · ' + hd.sessions + ' completed session' + (hd.sessions === 1 ? '' : 's');
   }
 
-  // Progress card
-  const attempted = data.sessionHistory.length;
-  const completed = data.sessionHistory.filter((s) => s.state === 'complete').length;
-  if (attempted === 0) {
-    $('sdProgressValue').textContent = '—';
-    $('sdProgressSub').textContent = 'No exercises attempted';
+  // Progress card — prefer server-computed { completed, assigned, percent }
+  const prog = data.progress || null;
+  if (prog && prog.assigned > 0) {
+    $('sdProgressValue').textContent = prog.completed + ' / ' + prog.assigned;
+    $('sdProgressSub').innerHTML =
+      renderFullProgress(prog.completed, prog.assigned, prog.percent) +
+      '<div class="sd-progress-caption">' +
+        Math.round(prog.percent * 100) + '% of assigned exercises complete' +
+      '</div>';
   } else {
-    $('sdProgressValue').textContent = completed + ' / ' + attempted;
-    $('sdProgressSub').textContent = Math.round((completed / attempted) * 100) + '% complete';
+    const attempted = (data.sessionHistory || []).length;
+    const completed = (data.sessionHistory || []).filter((s) => s.state === 'complete').length;
+    if (attempted === 0) {
+      $('sdProgressValue').textContent = '—';
+      $('sdProgressSub').textContent = 'No exercises attempted';
+    } else {
+      $('sdProgressValue').textContent = completed + ' / ' + attempted;
+      $('sdProgressSub').textContent = Math.round((completed / attempted) * 100) + '% complete';
+    }
   }
 
   // Weak spots

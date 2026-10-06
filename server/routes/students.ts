@@ -75,6 +75,7 @@ router.get('/', requireInstructor, async (req, res) => {
         });
         return { status: r.status, statusReasons: r.reasons };
       })(),
+      assigned: exerciseIds.length,
     });
   }
 
@@ -125,6 +126,20 @@ router.get('/:studentId', requireInstructor, async (req, res) => {
     weakSpots: detail.weakSpots,
   });
 
+  // Progress: completed / assigned (assigned = count of viewable exercises)
+  const completedSlugs = new Set(
+    detail.sessionHistory
+      .filter((s) => s.state === 'complete')
+      .map((s) => s.exerciseId)
+  );
+  const assigned = viewableExercises.length;
+  const completed = viewableExercises.filter((e) => completedSlugs.has(e.slug)).length;
+  const progress = {
+    completed,
+    assigned,
+    percent: assigned > 0 ? completed / assigned : 0,
+  };
+
   res.json({
     ...detail,
     name: user.displayName,
@@ -134,6 +149,7 @@ router.get('/:studentId', requireInstructor, async (req, res) => {
     status: statusResult.status,
     statusReasons: statusResult.reasons,
     nextAction,
+    progress,
   });
 });
 

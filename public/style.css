@@ -2008,3 +2008,55 @@ button.danger.small {
   background: #ecfdf5;
 }
 .sd-next-action-celebrate .sd-next-action-title { color: #065f46; }
+
+/* ── Progress bars (2.5) ── */
+
+/* Compact roster cell */
+.progress-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 72px;
+}
+.progress-cell-count {
+  font-size: 13px;
+  color: #1a1d23;
+  font-variant-numeric: tabular-nums;
+}
+.progress-bar-sm {
+  height: 4px;
+  background: #eef0f3;
+  border-radius: 2px;
+  overflow: hidden;
+}
+.progress-bar-sm-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.2s ease;
+}
+.progress-empty {
+  color: #b0b5bd;
+}
+
+/* Large detail card bar */
+.sd-progress-bar-lg {
+  height: 8px;
+  background: #eef0f3;
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 8px 0 6px;
+}
+.sd-progress-bar-lg-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.2s ease;
+}
+.sd-progress-caption {
+  font-size: 12px;
+  color: #7a7f88;
+}
+
+/* Threshold colors — shared by both sizes */
+.progress-good { background: #059669; }
+.progress-warn { background: #f59e0b; }
+.progress-low  { background: #dc2626; }
