@@ -1969,6 +1969,7 @@ function clearStudentDetail() {
   var pt = $('sdProgressTrend'); if (pt) pt.innerHTML = '';
   $('sdWeakSpots').innerHTML = '<p class="empty-state">Loading...</p>';
   $('sdSessionHistory').innerHTML = '<p class="empty-state">Loading...</p>';
+  var st = $('sdStrengths'); if (st) st.innerHTML = '<p class="empty-state">Loading...</p>';
 }
 
 function renderStudentDetail(data) {
@@ -2038,6 +2039,19 @@ function renderStudentDetail(data) {
       <div class="sd-pattern-row">
         <span class="sd-pattern-name">${escapeHtml(w.pattern)}</span>
         <span class="sd-pattern-count">${w.count}</span>
+      </div>
+    `).join('');
+  }
+
+  // Strengths
+  const strengths = data.strengths || [];
+  if (!strengths.length) {
+    $('sdStrengths').innerHTML = '<p class="empty-state">No strengths identified yet.</p>';
+  } else {
+    $('sdStrengths').innerHTML = strengths.map((st) => `
+      <div class="sd-strength-row" data-key="${escapeHtml(st.key)}">
+        <div class="sd-strength-label">${escapeHtml(st.label)}</div>
+        <div class="sd-strength-detail">${escapeHtml(st.detail)}</div>
       </div>
     `).join('');
   }

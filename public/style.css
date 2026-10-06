@@ -1943,3 +1943,24 @@ button.danger.small {
   background: #fee2e2;
   color: #991b1b;
 }
+
+/* ── Strengths list (2.1) ── */
+.sd-strength-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f1f3;
+}
+.sd-strength-row:last-child {
+  border-bottom: 0;
+}
+.sd-strength-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #059669;
+}
+.sd-strength-detail {
+  font-size: 12px;
+  color: #7a7f88;
+}

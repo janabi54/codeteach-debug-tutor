@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { fillWeeks, lastNWeekStarts, classifyTrend } from './util/weeks.js';
+import { deriveStrengths, type Strength } from './util/strengths.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -353,6 +354,9 @@ const stmt = {
   ),
   postMortemStatsByStudent: sqlite.prepare(
     "SELECT pattern, COALESCE(score, 'unscored') AS score, COUNT(*) AS n FROM post_mortems WHERE student_id = ? AND pattern IS NOT NULL GROUP BY pattern, score"
+  ),
+  postMortemScoreCounts: sqlite.prepare(
+    "SELECT COALESCE(score, 'unscored') AS score, COUNT(*) AS n FROM post_mortems WHERE student_id = ? GROUP BY score"
   ),
 
   // ── Auth: users ──
@@ -872,6 +876,7 @@ export const db = {
         hintDependency: { points: Array<{ weekStart: string; value: number | null; sample: number }>; classification: 'improving' | 'worsening' | 'stable' };
         progress: { points: Array<{ weekStart: string; value: number | null; sample: number }>; classification: 'improving' | 'worsening' | 'stable' };
       };
+      strengths: Strength[];
     } {
       if (exerciseIds.length === 0) {
         const weekStarts = lastNWeekStarts(12);
@@ -891,6 +896,7 @@ export const db = {
             hintDependency: emptyTrend,
             progress: emptyTrend,
           },
+          strengths: [],
         };
       }
       const placeholders = exerciseIds.map(() => '?').join(',');
@@ -989,6 +995,51 @@ export const db = {
         weekStarts
       );
 
+      // Post-mortem score counts, scoped to viewable exercises
+      const pmRows = sqlite
+        .prepare(
+          `SELECT COALESCE(score, 'unscored') AS score, COUNT(*) AS n
+           FROM post_mortems
+           WHERE student_id = ? AND exercise_id IN (${placeholders})
+           GROUP BY score`
+        )
+        .all(studentId, ...exerciseIds) as Array<{
+          score: string;
+          n: number;
+        }>;
+      const postMortemScores = { strong: 0, partial: 0, weak: 0, unscored: 0 };
+      for (const r of pmRows) {
+        if (r.score === 'strong') postMortemScores.strong = r.n;
+        else if (r.score === 'partial') postMortemScores.partial = r.n;
+        else if (r.score === 'weak') postMortemScores.weak = r.n;
+        else postMortemScores.unscored += r.n;
+      }
+      const postMortemTotal =
+        postMortemScores.strong +
+        postMortemScores.partial +
+        postMortemScores.weak +
+        postMortemScores.unscored;
+
+      const reasoningClassification = classifyTrend(reasoningTrend);
+      const hintDepClassification = classifyTrend(hintDepTrend, {
+        lowerIsBetter: true,
+        threshold: 0.3,
+      });
+
+      const strengths = deriveStrengths({
+        reasoning,
+        reasoningTrend: { classification: reasoningClassification },
+        hintDependency: {
+          sessions,
+          totalHints,
+          avgHintsPerSession: sessions > 0 ? totalHints / sessions : 0,
+        },
+        sessionsAttempted: sessionRows.length,
+        sessionsCompleted: sessionRows.filter((r) => r.state === 'complete').length,
+        postMortemStrongCount: postMortemScores.strong,
+        postMortemTotal,
+      });
+
       return {
         metrics: {
           reasoningQuality: reasoning,
@@ -1003,20 +1054,18 @@ export const db = {
         trends: {
           reasoningQuality: {
             points: reasoningTrend,
-            classification: classifyTrend(reasoningTrend),
+            classification: reasoningClassification,
           },
           hintDependency: {
             points: hintDepTrend,
-            classification: classifyTrend(hintDepTrend, {
-              lowerIsBetter: true,
-              threshold: 0.3,
-            }),
+            classification: hintDepClassification,
           },
           progress: {
             points: progressTrend,
             classification: classifyTrend(progressTrend),
           },
         },
+        strengths,
       };
     },
 
