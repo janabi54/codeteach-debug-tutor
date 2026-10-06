@@ -146,7 +146,10 @@ const sessInsert = db.prepare(
            datetime('now', ?), datetime('now', ?))`
 );
 const sessionDefs = [
-  { level: 1, attempts: 3, daysAgo: 21 },
+  // Only the first entry is used — hint_sessions has UNIQUE(student_id, exercise_id),
+  // so all entries would need distinct exercises. Placed 2 days back so the
+  // status derivation sees recent activity (avoids at-risk / slipping flags).
+  { level: 1, attempts: 3, daysAgo: 2 },
   { level: 2, attempts: 4, daysAgo: 10 },
   { level: 2, attempts: 5, daysAgo: 3 },
 ];
