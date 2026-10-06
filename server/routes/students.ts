@@ -5,8 +5,10 @@ import {
   rosterFor,
   viewableExerciseIdsFor,
   viewableExercisesFor,
+  cohortPeersFor,
   canInstructorViewStudentOnExercise,
 } from '../auth/authorization.js';
+import { median, type CohortComparison } from '../util/cohortComparison.js';
 import { deriveNextAction } from '../util/nextAction.js';
 import { deriveRosterStatus, escalateWithTrends } from '../util/status.js';
 
@@ -140,6 +142,52 @@ router.get('/:studentId', requireInstructor, async (req, res) => {
     percent: assigned > 0 ? completed / assigned : 0,
   };
 
+  // Cohort comparison: same-cohort peers only
+  const { peerIds, cohortNames } = cohortPeersFor(instructorId, studentId);
+  let cohortComparison: CohortComparison | null = null;
+  if (peerIds.length > 0) {
+    const peerRows = db.students.cohortPeerMetricsFor(peerIds, exerciseIds);
+
+    const reasoningValues = peerRows
+      .map((r) => r.reasoningQuality)
+      .filter((v): v is number => v !== null);
+    const hintValues = peerRows
+      .map((r) => r.hintDependency)
+      .filter((v): v is number => v !== null);
+    const progressValues = peerRows
+      .map((r) => r.progress)
+      .filter((v): v is number => v !== null);
+
+    cohortComparison = {
+      cohortNames,
+      peerCount: peerRows.length,
+      metrics: {
+        reasoningQuality: {
+          student: detail.metrics.reasoningQuality.total > 0
+            ? detail.metrics.reasoningQuality.precise / detail.metrics.reasoningQuality.total
+            : null,
+          median: median(reasoningValues),
+          higherIsBetter: true,
+          unit: '% precise',
+        },
+        hintDependency: {
+          student: detail.metrics.hintDependency.sessions > 0
+            ? detail.metrics.hintDependency.avgHintsPerSession
+            : null,
+          median: median(hintValues),
+          higherIsBetter: false,
+          unit: 'hints / session',
+        },
+        progress: {
+          student: assigned > 0 ? completed / assigned : null,
+          median: median(progressValues),
+          higherIsBetter: true,
+          unit: '% complete',
+        },
+      },
+    };
+  }
+
   res.json({
     ...detail,
     name: user.displayName,
@@ -150,6 +198,7 @@ router.get('/:studentId', requireInstructor, async (req, res) => {
     statusReasons: statusResult.reasons,
     nextAction,
     progress,
+    cohortComparison,
   });
 });
 

@@ -140,6 +140,45 @@ export function viewableExercisesFor(
 }
 
 /**
+ * For the cohort comparison panel: given a target student and an
+ * instructor, return the IDs of other students in the cohorts they
+ * share (excluding the target student), plus the names of those
+ * cohorts.
+ *
+ * We deliberately do NOT cross cohorts — same-cohort peers only.
+ */
+export function cohortPeersFor(
+  instructorId: string,
+  studentId: string
+): { peerIds: string[]; cohortNames: string[] } {
+  const rows = sqlite
+    .prepare(
+      `SELECT DISTINCT cm.user_id AS peerId, c.name AS cohortName
+       FROM cohort_members cm_target
+       JOIN cohorts c ON c.id = cm_target.cohort_id
+       JOIN cohort_members cm ON cm.cohort_id = c.id
+       WHERE cm_target.user_id = ?
+         AND c.instructor_id = ?
+         AND cm.user_id != ?`
+    )
+    .all(studentId, instructorId, studentId) as Array<{
+      peerId: string;
+      cohortName: string;
+    }>;
+
+  const peerSet = new Set<string>();
+  const cohortSet = new Set<string>();
+  for (const r of rows) {
+    peerSet.add(r.peerId);
+    cohortSet.add(r.cohortName);
+  }
+  return {
+    peerIds: Array.from(peerSet),
+    cohortNames: Array.from(cohortSet),
+  };
+}
+
+/**
  * For the roster: returns every (student, cohort) pair the instructor can
  * see — i.e., students who are members of any cohort the instructor teaches.
  */

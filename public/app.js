@@ -1950,6 +1950,85 @@ function renderNextAction(nextAction) {
   }
 }
 
+/**
+ * Render the "Compared with <cohort>" panel. Hidden when the student
+ * has no same-cohort peers (peerCount === 0) or when there is no data.
+ */
+function renderCohortComparison(cc) {
+  const el = $('sdCohortComparison');
+  if (!el) return;
+
+  if (!cc || cc.peerCount === 0) {
+    el.style.display = 'none';
+    el.innerHTML = '';
+    return;
+  }
+
+  const cohortLabel = (cc.cohortNames || []).join(', ') || 'your cohort';
+
+  // Row renderer for one metric
+  function row(label, metric, formatValue, formatPct) {
+    // formatPct(v) → 0..100 for bar width; formatValue(v) → display string
+    const sPct = metric.student === null ? null : formatPct(metric.student);
+    const mPct = metric.median === null ? null : formatPct(metric.median);
+    const sCls = sPct === null ? 'progress-empty' : progressClass(sPct / 100);
+    const mCls = mPct === null ? 'progress-empty' : progressClass(mPct / 100);
+    const sVal = metric.student === null ? '—' : formatValue(metric.student);
+    const mVal = metric.median === null ? '—' : formatValue(metric.median);
+
+    // For "lower is better" metrics, invert the bar so a smaller
+    // value still renders as a smaller bar (semantically correct).
+    const sWidth = sPct === null ? 0 : Math.min(100, Math.max(0, sPct));
+    const mWidth = mPct === null ? 0 : Math.min(100, Math.max(0, mPct));
+
+    return (
+      '<div class="sd-cc-row">' +
+        '<div class="sd-cc-label">' + escapeHtml(label) +
+          (metric.higherIsBetter ? '' : ' <span class="sd-cc-hint">(lower is better)</span>') +
+        '</div>' +
+        '<div class="sd-cc-bars">' +
+          '<div class="sd-cc-bar-line">' +
+            '<span class="sd-cc-bar-name">This student</span>' +
+            '<div class="sd-cc-bar"><div class="sd-cc-bar-fill ' + sCls + '" style="width:' + sWidth + '%"></div></div>' +
+            '<span class="sd-cc-bar-value">' + escapeHtml(sVal) + '</span>' +
+          '</div>' +
+          '<div class="sd-cc-bar-line">' +
+            '<span class="sd-cc-bar-name">Class median</span>' +
+            '<div class="sd-cc-bar"><div class="sd-cc-bar-fill ' + mCls + '" style="width:' + mWidth + '%"></div></div>' +
+            '<span class="sd-cc-bar-value">' + escapeHtml(mVal) + '</span>' +
+          '</div>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  el.style.display = 'block';
+  el.innerHTML =
+    '<h3 class="sd-section-heading">Compared with ' + escapeHtml(cohortLabel) + '</h3>' +
+    row(
+      'Reasoning quality',
+      cc.metrics.reasoningQuality,
+      (v) => Math.round(v * 100) + '%',
+      (v) => v * 100
+    ) +
+    row(
+      'Hint dependency',
+      cc.metrics.hintDependency,
+      (v) => v.toFixed(1),
+      // Normalize hints-per-session to 0..100 for the bar. Use 5 as a
+      // soft ceiling — above that the bar caps out.
+      (v) => Math.min(100, (v / 5) * 100)
+    ) +
+    row(
+      'Progress',
+      cc.metrics.progress,
+      (v) => Math.round(v * 100) + '%',
+      (v) => v * 100
+    ) +
+    '<div class="sd-cc-footer">Based on ' + cc.peerCount + ' other student' +
+      (cc.peerCount === 1 ? '' : 's') + ' in this cohort.</div>';
+}
+
 function relativeTime(iso) {
   const then = new Date(iso).getTime();
   if (isNaN(then)) return '—';
@@ -2058,6 +2137,7 @@ function clearStudentDetail() {
   $('sdSessionHistory').innerHTML = '<p class="empty-state">Loading...</p>';
   var st = $('sdStrengths'); if (st) st.innerHTML = '<p class="empty-state">Loading...</p>';
   var na = $('sdNextAction'); if (na) { na.style.display = 'none'; na.innerHTML = ''; }
+  var cc = $('sdCohortComparison'); if (cc) { cc.style.display = 'none'; cc.innerHTML = ''; }
 }
 
 function renderStudentDetail(data) {
@@ -2088,6 +2168,9 @@ function renderStudentDetail(data) {
 
   // Recommended next action banner
   renderNextAction(data.nextAction);
+
+  // Cohort comparison panel
+  renderCohortComparison(data.cohortComparison);
 
   // Reasoning quality card
   const rq = data.metrics.reasoningQuality;

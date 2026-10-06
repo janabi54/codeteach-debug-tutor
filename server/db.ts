@@ -853,6 +853,113 @@ export const db = {
     },
 
     /**
+     * Aggregate metrics for a set of peer students — used by the cohort
+     * comparison panel. Returns one row per student with:
+     *   - reasoning: precise / total (as a 0..1 ratio, or null if no data)
+     *   - hintDependency: hints / session (or null)
+     *   - progress: completed / assigned (0..1, or null if 0 assigned)
+     *
+     * All three are computed with a single query per metric via GROUP BY.
+     * Assigned exercises are provided by the caller (already scoped to
+     * the viewing instructor).
+     */
+    cohortPeerMetricsFor(
+      peerIds: string[],
+      exerciseIds: string[]
+    ): Array<{
+      studentId: string;
+      reasoningQuality: number | null;
+      hintDependency: number | null;
+      progress: number | null;
+    }> {
+      if (peerIds.length === 0 || exerciseIds.length === 0) return [];
+
+      const studentPlaceholders = peerIds.map(() => '?').join(',');
+      const exercisePlaceholders = exerciseIds.map(() => '?').join(',');
+
+      // Reasoning: precise / total per student
+      const reasoningRows = sqlite
+        .prepare(
+          `SELECT student_id AS studentId,
+                  COUNT(*) AS total,
+                  SUM(CASE WHEN quality = 'precise' THEN 1 ELSE 0 END) AS precise
+           FROM hypotheses
+           WHERE student_id IN (${studentPlaceholders})
+             AND exercise_id IN (${exercisePlaceholders})
+             AND quality IS NOT NULL
+           GROUP BY student_id`
+        )
+        .all(...peerIds, ...exerciseIds) as Array<{
+          studentId: string;
+          total: number;
+          precise: number;
+        }>;
+
+      const reasoningMap = new Map<string, number>();
+      for (const r of reasoningRows) {
+        if (r.total > 0) reasoningMap.set(r.studentId, r.precise / r.total);
+      }
+
+      // Hint dependency: total hints / session count per student
+      const hintRows = sqlite
+        .prepare(
+          `SELECT hs.student_id AS studentId,
+                  COUNT(DISTINCT hs.id) AS sessions,
+                  COALESCE(SUM((
+                    SELECT COUNT(*) FROM telemetry t
+                    WHERE t.student_id = hs.student_id
+                      AND t.exercise_id = hs.exercise_id
+                      AND t.type = 'hint-served'
+                      AND t.recorded_at >= hs.created_at
+                      AND t.recorded_at <= hs.updated_at
+                  )), 0) AS hints
+           FROM hint_sessions hs
+           WHERE hs.student_id IN (${studentPlaceholders})
+             AND hs.exercise_id IN (${exercisePlaceholders})
+             AND hs.state IN ('resolved', 'complete')
+           GROUP BY hs.student_id`
+        )
+        .all(...peerIds, ...exerciseIds) as Array<{
+          studentId: string;
+          sessions: number;
+          hints: number;
+        }>;
+
+      const hintMap = new Map<string, number>();
+      for (const r of hintRows) {
+        if (r.sessions > 0) hintMap.set(r.studentId, r.hints / r.sessions);
+      }
+
+      // Progress: completed / assigned per student
+      const progressRows = sqlite
+        .prepare(
+          `SELECT student_id AS studentId,
+                  COUNT(DISTINCT CASE WHEN state = 'complete' THEN exercise_id END) AS completed
+           FROM hint_sessions
+           WHERE student_id IN (${studentPlaceholders})
+             AND exercise_id IN (${exercisePlaceholders})
+           GROUP BY student_id`
+        )
+        .all(...peerIds, ...exerciseIds) as Array<{
+          studentId: string;
+          completed: number;
+        }>;
+
+      const progressMap = new Map<string, number>();
+      const assigned = exerciseIds.length;
+      for (const r of progressRows) {
+        progressMap.set(r.studentId, assigned > 0 ? r.completed / assigned : 0);
+      }
+
+      return peerIds.map((studentId) => ({
+        studentId,
+        reasoningQuality: reasoningMap.has(studentId) ? reasoningMap.get(studentId)! : null,
+        hintDependency: hintMap.has(studentId) ? hintMap.get(studentId)! : null,
+        progress: progressMap.has(studentId) ? progressMap.get(studentId)! : 0,
+      }));
+    },
+
+    /**
      * Full student detail: metrics, weak spots, session history.
      * Scoped to exerciseIds the viewing instructor is allowed to see.
      */
