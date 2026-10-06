@@ -1883,3 +1883,43 @@ button.danger.small {
 .sd-notes-reopen:active {
   transform: translateY(0);
 }
+
+/* ── Sparklines on metric cards ── */
+
+.sd-metric-trend {
+  margin: 8px 0 6px;
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+}
+.sd-metric-trend:empty {
+  display: none;
+}
+.sparkline {
+  display: block;
+  overflow: visible;
+}
+.sparkline .spark-line {
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.sparkline .spark-line.improving { stroke: #059669; }
+.sparkline .spark-line.worsening { stroke: #dc2626; }
+.sparkline .spark-line.stable   { stroke: #4f46e5; }
+.sparkline .spark-dot {
+  stroke: #fff;
+  stroke-width: 1.5;
+}
+.sparkline .spark-dot.improving { fill: #059669; }
+.sparkline .spark-dot.worsening { fill: #dc2626; }
+.sparkline .spark-dot.stable   { fill: #4f46e5; }
+
+.sd-trend-label {
+  font-size: 12px;
+  margin-top: 2px;
+}
+.sd-trend-label.improving { color: #059669; font-weight: 600; }
+.sd-trend-label.worsening { color: #dc2626; font-weight: 600; }
+.sd-trend-label.stable   { color: #7a7f88; }

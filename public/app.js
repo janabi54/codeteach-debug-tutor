@@ -1931,6 +1931,7 @@ async function openStudentDetail(studentId) {
     }
     const data = await res.json();
     renderStudentDetail(data);
+    if (typeof renderTrends === 'function') renderTrends(data);
 
     // Load tutor notes for this student. The roster cache carries
     // cohortIds so we can scope notes to a specific cohort.
@@ -1958,6 +1959,10 @@ function clearStudentDetail() {
   $('sdHintDepSub').textContent = 'Loading...';
   $('sdProgressValue').textContent = '—';
   $('sdProgressSub').textContent = 'Loading...';
+  // Clear sparkline containers so switching students doesn't show stale trends
+  var rt = $('sdReasoningTrend'); if (rt) rt.innerHTML = '';
+  var ht = $('sdHintDepTrend'); if (ht) ht.innerHTML = '';
+  var pt = $('sdProgressTrend'); if (pt) pt.innerHTML = '';
   $('sdWeakSpots').innerHTML = '<p class="empty-state">Loading...</p>';
   $('sdSessionHistory').innerHTML = '<p class="empty-state">Loading...</p>';
 }
@@ -2593,3 +2598,184 @@ document.querySelectorAll('.tab').forEach((tab) => {
 // If we ever want Back to mean "go back one view", we need a real router
 // with history entries for every in-app transition. See
 // docs/session-b-backlog.md.
+
+// ═══════════════════════════════════════════════════════════
+// Sparkline renderer
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Render a small line chart as inline SVG.
+ *
+ * @param points  Array of { value: number | null }. Nulls break the line.
+ * @param opts    { width, height, classification, showLastDot }
+ * @returns SVG string. Returns '' when fewer than 2 non-null points exist.
+ */
+function renderSparkline(points, opts) {
+  opts = opts || {};
+  const width = opts.width || 88;
+  const height = opts.height || 24;
+  const padding = 3;
+  const classification = opts.classification || 'stable';
+  const showLastDot = opts.showLastDot !== false;
+
+  const valid = points.filter((p) => p.value !== null);
+  if (valid.length < 2) return '';
+
+  const values = valid.map((p) => p.value);
+  const min = Math.min.apply(null, values);
+  const max = Math.max.apply(null, values);
+  const range = max - min || 1;
+
+  const stepX = (width - padding * 2) / Math.max(1, points.length - 1);
+
+  // Build segments, breaking on nulls
+  const segments = [];
+  let current = [];
+
+  points.forEach((p, i) => {
+    if (p.value === null) {
+      if (current.length) segments.push(current);
+      current = [];
+      return;
+    }
+    const x = padding + i * stepX;
+    const y = height - padding - ((p.value - min) / range) * (height - padding * 2);
+    current.push({ x: x, y: y, last: false });
+  });
+  if (current.length) segments.push(current);
+
+  // Mark the last point of the last segment
+  if (segments.length) {
+    const lastSeg = segments[segments.length - 1];
+    if (lastSeg.length) lastSeg[lastSeg.length - 1].last = true;
+  }
+
+  const linePaths = segments
+    .filter((seg) => seg.length >= 2)
+    .map((seg) =>
+      'M ' + seg.map((pt) => pt.x.toFixed(1) + ' ' + pt.y.toFixed(1)).join(' L ')
+    )
+    .join(' ');
+
+  if (!linePaths) return '';
+
+  const dots = showLastDot
+    ? segments
+        .filter((seg) => seg.length)
+        .map((seg) => {
+          const pt = seg[seg.length - 1];
+          return '<circle class="spark-dot ' + classification + '" cx="' + pt.x.toFixed(1) + '" cy="' + pt.y.toFixed(1) + '" r="2.5" />';
+        })
+        .join('')
+    : '';
+
+  return (
+    '<svg class="sparkline" width="' + width + '" height="' + height +
+    '" viewBox="0 0 ' + width + ' ' + height + '" aria-hidden="true">' +
+    '<path class="spark-line ' + classification + '" d="' + linePaths + '" />' +
+    dots +
+    '</svg>'
+  );
+}
+
+/**
+ * Format a metric value for display based on the metric's "kind":
+ *   - 'percent': 0-1 range → "45%"
+ *   - 'ratio': plain number with 1 decimal → "3.2"
+ */
+function formatTrendValue(value, kind) {
+  if (value === null || value === undefined) return '—';
+  if (kind === 'percent') return Math.round(value * 100) + '%';
+  return (Math.round(value * 10) / 10).toFixed(1);
+}
+
+// ═══════════════════════════════════════════════════════════
+// Render trend sparklines on the student detail page
+// ═══════════════════════════════════════════════════════════
+
+function renderTrends(data) {
+  if (!data || !data.trends) return;
+
+  const { reasoningQuality, hintDependency, progress } = data.trends;
+
+  renderOneTrend('sdReasoningTrend', 'sdReasoningSub', reasoningQuality, {
+    kind: 'percent',
+    currentValue: data.metrics.reasoningQuality,
+    currentIsPrecisePct: true,
+    emptyLabel: 'No hypotheses yet',
+    sparseLabel: 'Started this week',
+  });
+
+  renderOneTrend('sdHintDepTrend', 'sdHintDepSub', hintDependency, {
+    kind: 'ratio',
+    currentValue: data.metrics.hintDependency,
+    currentIsHintsPerSession: true,
+    emptyLabel: 'No completed sessions',
+    sparseLabel: 'Started this week',
+  });
+
+  // Progress trend uses session counts, not a metric from data.metrics
+  renderOneTrend('sdProgressTrend', 'sdProgressSub', progress, {
+    kind: 'percent',
+    currentValue: null,
+    sessionCounts: {
+      attempted: data.sessionHistory.length,
+      completed: data.sessionHistory.filter((s) => s.state === 'complete').length,
+    },
+    emptyLabel: 'No exercises attempted',
+    sparseLabel: 'Started this week',
+  });
+}
+
+function renderOneTrend(trendElId, subElId, trend, opts) {
+  const trendEl = $(trendElId);
+  const subEl = $(subElId);
+  if (!trendEl) return;
+
+  const points = trend.points || [];
+  const validCount = points.filter((p) => p.value !== null).length;
+
+  // No data at all: leave the container empty, let the existing sub-text stand.
+  if (validCount === 0) {
+    trendEl.innerHTML = '';
+    if (subEl) subEl.textContent = opts.emptyLabel;
+    return;
+  }
+
+  // Some data: render the sparkline (empty string if only 1 valid point).
+  const svg = renderSparkline(points, {
+    classification: trend.classification,
+    width: 88,
+    height: 24,
+  });
+  trendEl.innerHTML = svg;
+
+  // Sub-text: sparse (1 point) vs full trend label
+  if (validCount < 2) {
+    if (subEl) subEl.textContent = opts.sparseLabel;
+    return;
+  }
+
+  // Full label: "Improving · 45% → 62%"
+  const first = points.find((p) => p.value !== null);
+  const last = [...points].reverse().find((p) => p.value !== null);
+
+  const firstFmt = formatTrendValue(first.value, opts.kind);
+  const lastFmt = formatTrendValue(last.value, opts.kind);
+
+  const label = classificationLabel(trend.classification);
+  const labelClass = trend.classification;
+
+  if (subEl) {
+    subEl.innerHTML =
+      '<span class="sd-trend-label ' + labelClass + '">' + label + '</span>' +
+      ' · ' + firstFmt + ' → ' + lastFmt;
+  }
+}
+
+
+function classificationLabel(c) {
+  if (c === 'improving') return 'Improving';
+  if (c === 'worsening') return 'Worsening';
+  return 'Stable';
+}
