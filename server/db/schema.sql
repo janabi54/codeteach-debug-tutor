@@ -173,3 +173,22 @@ CREATE TABLE IF NOT EXISTS tutor_notes (
 
 CREATE INDEX IF NOT EXISTS idx_tutor_notes_student
   ON tutor_notes(instructor_id, student_id, cohort_id);
+
+CREATE TABLE IF NOT EXISTS tutor_feedback (
+  id TEXT PRIMARY KEY,
+  instructor_id TEXT NOT NULL,
+  student_id TEXT NOT NULL,
+  target_type TEXT NOT NULL,      -- 'hypothesis' | 'post_mortem'
+  target_id TEXT NOT NULL,        -- stringified id of the target row
+  text TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (instructor_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_tutor_feedback_target
+  ON tutor_feedback(target_type, target_id);
+
+CREATE INDEX IF NOT EXISTS idx_tutor_feedback_student
+  ON tutor_feedback(student_id, created_at);

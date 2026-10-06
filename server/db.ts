@@ -33,6 +33,20 @@ function rowToUser(row: any): User {
   };
 }
 
+function rowToTutorFeedback(row: any): TutorFeedback {
+  return {
+    id: row.id,
+    instructorId: row.instructor_id,
+    instructorName: row.instructor_name ?? null,
+    studentId: row.student_id,
+    targetType: row.target_type,
+    targetId: row.target_id,
+    text: row.text,
+    createdAt: parseSqliteTimestamp(row.created_at),
+    updatedAt: parseSqliteTimestamp(row.updated_at),
+  };
+}
+
 function rowToTutorNote(row: any): TutorNote {
   return {
     id: row.id,
@@ -163,6 +177,18 @@ if (!hasScoreSource) {
   console.log('[db] migrated: added hypotheses.score_source');
 }
 
+
+export interface TutorFeedback {
+  id: string;
+  instructorId: string;
+  instructorName: string | null;
+  studentId: string;
+  targetType: 'hypothesis' | 'post_mortem';
+  targetId: string;
+  text: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 interface TutorNote {
   id: string;
@@ -357,6 +383,32 @@ const stmt = {
   ),
   postMortemScoreCounts: sqlite.prepare(
     "SELECT COALESCE(score, 'unscored') AS score, COUNT(*) AS n FROM post_mortems WHERE student_id = ? GROUP BY score"
+  ),
+  tutorFeedbackByExercise: sqlite.prepare(
+    `SELECT tf.id, tf.instructor_id, tf.student_id, tf.target_type, tf.target_id,
+            tf.text, tf.created_at, tf.updated_at, u.display_name AS instructor_name
+     FROM tutor_feedback tf
+     LEFT JOIN users u ON u.id = tf.instructor_id
+     WHERE tf.student_id = ?
+       AND tf.target_id IN (
+         SELECT CAST(h.id AS TEXT) FROM hypotheses h
+         WHERE h.student_id = ? AND h.exercise_id = ?
+         UNION
+         SELECT CAST(pm.id AS TEXT) FROM post_mortems pm
+         WHERE pm.student_id = ? AND pm.exercise_id = ?
+       )
+     ORDER BY tf.created_at ASC`
+  ),
+  insertTutorFeedback: sqlite.prepare(
+    `INSERT INTO tutor_feedback
+       (id, instructor_id, student_id, target_type, target_id, text)
+     VALUES (?, ?, ?, ?, ?, ?)`
+  ),
+  deleteTutorFeedback: sqlite.prepare(
+    `DELETE FROM tutor_feedback WHERE id = ? AND instructor_id = ?`
+  ),
+  findTutorFeedbackById: sqlite.prepare(
+    `SELECT * FROM tutor_feedback WHERE id = ?`
   ),
 
   // ── Auth: users ──
@@ -1187,8 +1239,22 @@ export const db = {
         createdAt: string;
         updatedAt: string;
       } | null;
-      hypotheses: Array<{ level: number; text: string; quality: string | null; createdAt: string }>;
-      postMortems: Array<{ text: string; score: string; feedback: string; createdAt: string }>;
+      hypotheses: Array<{
+        id: number;
+        level: number;
+        text: string;
+        quality: string | null;
+        createdAt: string;
+        tutorFeedback: TutorFeedback[];
+      }>;
+      postMortems: Array<{
+        id: number;
+        text: string;
+        score: string;
+        feedback: string;
+        createdAt: string;
+        tutorFeedback: TutorFeedback[];
+      }>;
     } | null {
       const sessionRow = sqlite
         .prepare(
@@ -1202,7 +1268,7 @@ export const db = {
 
       const hypotheses = sqlite
         .prepare(
-          `SELECT hint_level AS level, text, quality, recorded_at AS createdAt
+          `SELECT id, hint_level AS level, text, quality, recorded_at AS createdAt
            FROM hypotheses
            WHERE student_id = ? AND exercise_id = ?
            ORDER BY recorded_at ASC`
@@ -1211,7 +1277,7 @@ export const db = {
 
       const postMortems = sqlite
         .prepare(
-          `SELECT text, score, feedback, recorded_at AS createdAt
+          `SELECT id, text, score, feedback, recorded_at AS createdAt
            FROM post_mortems
            WHERE student_id = ? AND exercise_id = ?
            ORDER BY recorded_at DESC`
@@ -1222,10 +1288,34 @@ export const db = {
         return null;
       }
 
+      // Attach tutor feedback to each hypothesis and post-mortem.
+      const feedbackRows = stmt.tutorFeedbackByExercise.all(
+        studentId,
+        studentId,
+        exerciseId,
+        studentId,
+        exerciseId
+      ) as any[];
+      const feedbackByTarget = new Map<string, TutorFeedback[]>();
+      for (const row of feedbackRows) {
+        const key = row.target_type + ':' + row.target_id;
+        if (!feedbackByTarget.has(key)) feedbackByTarget.set(key, []);
+        feedbackByTarget.get(key)!.push(rowToTutorFeedback(row));
+      }
+
+      const hypothesesWithFeedback = hypotheses.map((h) => ({
+        ...h,
+        tutorFeedback: feedbackByTarget.get('hypothesis:' + String(h.id)) || [],
+      }));
+      const postMortemsWithFeedback = postMortems.map((pm) => ({
+        ...pm,
+        tutorFeedback: feedbackByTarget.get('post_mortem:' + String(pm.id)) || [],
+      }));
+
       return {
         session: sessionRow ?? null,
-        hypotheses,
-        postMortems,
+        hypotheses: hypothesesWithFeedback,
+        postMortems: postMortemsWithFeedback,
       };
     },
 
@@ -1485,6 +1575,48 @@ export const db = {
           cohortId: row.cohortId,
           cohortName: row.cohortName,
         }));
+    },
+  },
+
+  tutorFeedback: {
+    create(data: {
+      instructorId: string;
+      studentId: string;
+      targetType: 'hypothesis' | 'post_mortem';
+      targetId: string;
+      text: string;
+    }): TutorFeedback {
+      const id = randomUUID();
+      stmt.insertTutorFeedback.run(
+        id,
+        data.instructorId,
+        data.studentId,
+        data.targetType,
+        data.targetId,
+        data.text
+      );
+      const row = stmt.findTutorFeedbackById.get(id) as any;
+      return rowToTutorFeedback(row);
+    },
+
+    delete(id: string, instructorId: string): boolean {
+      const result = stmt.deleteTutorFeedback.run(id, instructorId);
+      return result.changes > 0;
+    },
+
+    /**
+     * List all feedback attached to any hypothesis or post-mortem
+     * for a given (student, exercise) pair.
+     */
+    listForExercise(studentId: string, exerciseId: string): TutorFeedback[] {
+      const rows = stmt.tutorFeedbackByExercise.all(
+        studentId,
+        studentId,
+        exerciseId,
+        studentId,
+        exerciseId
+      ) as any[];
+      return rows.map(rowToTutorFeedback);
     },
   },
 

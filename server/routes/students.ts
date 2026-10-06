@@ -242,4 +242,72 @@ router.delete(
   }
 );
 
+// ─────────────────────────────────────────────────────────────
+// POST /api/admin/students/:studentId/exercises/:exerciseId/feedback
+// Create tutor feedback on a hypothesis or post-mortem.
+// ─────────────────────────────────────────────────────────────
+router.post(
+  '/:studentId/exercises/:exerciseId/feedback',
+  requireInstructor,
+  async (req, res) => {
+    const instructorId = req.user!.id;
+    const { studentId, exerciseId } = req.params;
+    const { targetType, targetId, text } = req.body as {
+      targetType?: string;
+      targetId?: string | number;
+      text?: string;
+    };
+
+    if (!canInstructorViewStudentOnExercise(instructorId, studentId, exerciseId)) {
+      return res.status(403).json({ error: 'You do not teach this student on this exercise.' });
+    }
+
+    if (targetType !== 'hypothesis' && targetType !== 'post_mortem') {
+      return res.status(400).json({ error: 'targetType must be "hypothesis" or "post_mortem".' });
+    }
+    if (targetId === undefined || targetId === null || String(targetId).length === 0) {
+      return res.status(400).json({ error: 'targetId is required.' });
+    }
+    const trimmed = (text ?? '').trim();
+    if (trimmed.length === 0) {
+      return res.status(400).json({ error: 'text is required.' });
+    }
+    if (trimmed.length > 2000) {
+      return res.status(400).json({ error: 'text must be 2000 characters or fewer.' });
+    }
+
+    const feedback = db.tutorFeedback.create({
+      instructorId,
+      studentId,
+      targetType,
+      targetId: String(targetId),
+      text: trimmed,
+    });
+    res.status(201).json(feedback);
+  }
+);
+
+// ─────────────────────────────────────────────────────────────
+// DELETE /api/admin/students/:studentId/exercises/:exerciseId/feedback/:id
+// Only the author can delete their own feedback.
+// ─────────────────────────────────────────────────────────────
+router.delete(
+  '/:studentId/exercises/:exerciseId/feedback/:id',
+  requireInstructor,
+  async (req, res) => {
+    const instructorId = req.user!.id;
+    const { studentId, exerciseId, id } = req.params;
+
+    if (!canInstructorViewStudentOnExercise(instructorId, studentId, exerciseId)) {
+      return res.status(403).json({ error: 'You do not teach this student on this exercise.' });
+    }
+
+    const ok = db.tutorFeedback.delete(id, instructorId);
+    if (!ok) {
+      return res.status(404).json({ error: 'Feedback not found, or you are not its author.' });
+    }
+    res.json({ ok: true });
+  }
+);
+
 export default router;

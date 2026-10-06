@@ -52,3 +52,4 @@ Thumbs.db
 *.broken
 *.orig
 *.rej
+verify-feedback.ts
