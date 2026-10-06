@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { fillWeeks, lastNWeekStarts, classifyTrend } from './util/weeks.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -733,6 +734,7 @@ export const db = {
 
       return tx();
     },
+
   },
 
   tutorNotes: {
@@ -848,8 +850,18 @@ export const db = {
         createdAt: string;
         updatedAt: string;
       }>;
+      trends: {
+        reasoningQuality: { points: Array<{ weekStart: string; value: number | null; sample: number }>; classification: 'improving' | 'worsening' | 'stable' };
+        hintDependency: { points: Array<{ weekStart: string; value: number | null; sample: number }>; classification: 'improving' | 'worsening' | 'stable' };
+        progress: { points: Array<{ weekStart: string; value: number | null; sample: number }>; classification: 'improving' | 'worsening' | 'stable' };
+      };
     } {
       if (exerciseIds.length === 0) {
+        const weekStarts = lastNWeekStarts(12);
+        const emptyTrend = {
+          points: weekStarts.map((weekStart) => ({ weekStart, value: null, sample: 0 })),
+          classification: 'stable' as const,
+        };
         return {
           metrics: {
             reasoningQuality: { total: 0, vague: 0, plausible: 0, precise: 0, unscored: 0 },
@@ -857,6 +869,11 @@ export const db = {
           },
           weakSpots: [],
           sessionHistory: [],
+          trends: {
+            reasoningQuality: emptyTrend,
+            hintDependency: emptyTrend,
+            progress: emptyTrend,
+          },
         };
       }
       const placeholders = exerciseIds.map(() => '?').join(',');
@@ -939,6 +956,22 @@ export const db = {
           updatedAt: string;
         }>;
 
+      // Weekly trends for the last 12 weeks
+      const weekStarts = lastNWeekStarts(12);
+
+      const reasoningTrend = fillWeeks(
+        db.students.reasoningTrendFor(studentId, exerciseIds),
+        weekStarts
+      );
+      const hintDepTrend = fillWeeks(
+        db.students.hintDependencyTrendFor(studentId, exerciseIds),
+        weekStarts
+      );
+      const progressTrend = fillWeeks(
+        db.students.progressTrendFor(studentId, exerciseIds),
+        weekStarts
+      );
+
       return {
         metrics: {
           reasoningQuality: reasoning,
@@ -950,6 +983,23 @@ export const db = {
         },
         weakSpots: weakRows.map((r) => ({ pattern: r.pattern, count: r.n })),
         sessionHistory: sessionRows,
+        trends: {
+          reasoningQuality: {
+            points: reasoningTrend,
+            classification: classifyTrend(reasoningTrend),
+          },
+          hintDependency: {
+            points: hintDepTrend,
+            classification: classifyTrend(hintDepTrend, {
+              lowerIsBetter: true,
+              threshold: 0.3,
+            }),
+          },
+          progress: {
+            points: progressTrend,
+            classification: classifyTrend(progressTrend),
+          },
+        },
       };
     },
 
@@ -1031,6 +1081,138 @@ export const db = {
       });
       return tx();
     },
+    /**
+     * Weekly reasoning-quality trend for the last N weeks, scoped to
+     * the given exercise IDs. Returns one row per week that has data;
+     * the caller fills missing weeks.
+     *
+     * Value = precise_count / total_scored_count for that week.
+     */
+    reasoningTrendFor(
+      studentId: string,
+      exerciseIds: string[],
+      weeks = 12
+    ): Array<{ week_start: string; value: number | null; sample: number }> {
+      if (exerciseIds.length === 0) return [];
+      const placeholders = exerciseIds.map(() => '?').join(',');
+      const since = new Date(Date.now() - weeks * 7 * 24 * 60 * 60 * 1000)
+        .toISOString().slice(0, 10);
+
+      const rows = sqlite
+        .prepare(
+          `SELECT
+             date(recorded_at, 'weekday 1', '-7 days') AS week_start,
+             COUNT(*) AS total,
+             SUM(CASE WHEN quality = 'precise' THEN 1 ELSE 0 END) AS precise
+           FROM hypotheses
+           WHERE student_id = ?
+             AND exercise_id IN (${placeholders})
+             AND quality IS NOT NULL
+             AND recorded_at >= ?
+           GROUP BY week_start
+           ORDER BY week_start`
+        )
+        .all(studentId, ...exerciseIds, since) as Array<{
+          week_start: string;
+          total: number;
+          precise: number;
+        }>;
+
+      return rows.map((r) => ({
+        week_start: r.week_start,
+        value: r.total > 0 ? r.precise / r.total : null,
+        sample: r.total,
+      }));
+    },
+
+    /**
+     * Weekly hint-dependency trend. Value = hints_served / completed_sessions
+     * for sessions resolved or completed in that week.
+     */
+    hintDependencyTrendFor(
+      studentId: string,
+      exerciseIds: string[],
+      weeks = 12
+    ): Array<{ week_start: string; value: number | null; sample: number }> {
+      if (exerciseIds.length === 0) return [];
+      const placeholders = exerciseIds.map(() => '?').join(',');
+      const since = new Date(Date.now() - weeks * 7 * 24 * 60 * 60 * 1000)
+        .toISOString().slice(0, 10);
+
+      const rows = sqlite
+        .prepare(
+          `SELECT
+             date(hs.updated_at, 'weekday 1', '-7 days') AS week_start,
+             COUNT(DISTINCT hs.id) AS sessions,
+             COALESCE(SUM((
+               SELECT COUNT(*) FROM telemetry t
+               WHERE t.student_id = hs.student_id
+                 AND t.exercise_id = hs.exercise_id
+                 AND t.type = 'hint-served'
+                 AND t.recorded_at >= hs.created_at
+                 AND t.recorded_at <= hs.updated_at
+             )), 0) AS hints
+           FROM hint_sessions hs
+           WHERE hs.student_id = ?
+             AND hs.exercise_id IN (${placeholders})
+             AND hs.state IN ('resolved', 'complete')
+             AND hs.updated_at >= ?
+           GROUP BY week_start
+           ORDER BY week_start`
+        )
+        .all(studentId, ...exerciseIds, since) as Array<{
+          week_start: string;
+          sessions: number;
+          hints: number;
+        }>;
+
+      return rows.map((r) => ({
+        week_start: r.week_start,
+        value: r.sessions > 0 ? r.hints / r.sessions : null,
+        sample: r.sessions,
+      }));
+    },
+
+    /**
+     * Weekly progress trend. Value = completed_sessions / attempted_sessions
+     * for sessions first created in that week.
+     */
+    progressTrendFor(
+      studentId: string,
+      exerciseIds: string[],
+      weeks = 12
+    ): Array<{ week_start: string; value: number | null; sample: number }> {
+      if (exerciseIds.length === 0) return [];
+      const placeholders = exerciseIds.map(() => '?').join(',');
+      const since = new Date(Date.now() - weeks * 7 * 24 * 60 * 60 * 1000)
+        .toISOString().slice(0, 10);
+
+      const rows = sqlite
+        .prepare(
+          `SELECT
+             date(created_at, 'weekday 1', '-7 days') AS week_start,
+             COUNT(*) AS attempted,
+             SUM(CASE WHEN state = 'complete' THEN 1 ELSE 0 END) AS completed
+           FROM hint_sessions
+           WHERE student_id = ?
+             AND exercise_id IN (${placeholders})
+             AND created_at >= ?
+           GROUP BY week_start
+           ORDER BY week_start`
+        )
+        .all(studentId, ...exerciseIds, since) as Array<{
+          week_start: string;
+          attempted: number;
+          completed: number;
+        }>;
+
+      return rows.map((r) => ({
+        week_start: r.week_start,
+        value: r.attempted > 0 ? r.completed / r.attempted : null,
+        sample: r.attempted,
+      }));
+    },
+
   },
 
   exercises: {
