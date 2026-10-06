@@ -2420,6 +2420,9 @@ async function openExerciseDetail(studentId, exerciseId, exerciseTitle) {
 
     const data = await res.json();
     renderExerciseDetail(data);
+    if (typeof wireTutorFeedbackHandlers === 'function') {
+      wireTutorFeedbackHandlers();
+    }
   } catch (err) {
     $('sedHypotheses').innerHTML = '<p class="empty-state">Failed: ' + escapeHtml(err.message) + '</p>';
     $('sedPostMortems').innerHTML = '';
@@ -2445,12 +2448,12 @@ function renderExerciseDetail(data) {
     $('sedAttempts').textContent = '—';
   }
 
-  // Hypotheses
+  // Hypotheses (with tutor feedback)
   if (!data.hypotheses || !data.hypotheses.length) {
     $('sedHypotheses').innerHTML = '<p class="empty-state">No hypotheses written.</p>';
   } else {
     $('sedHypotheses').innerHTML = data.hypotheses.map((h) => `
-      <div class="sed-item">
+      <div class="sed-item" data-target-type="hypothesis" data-target-id="${h.id}">
         <div class="sed-item-header">
           <span class="sed-item-label">
             Level ${h.level}
@@ -2459,27 +2462,148 @@ function renderExerciseDetail(data) {
           <span class="sed-item-time">${h.createdAt ? relativeTime(h.createdAt) : ''}</span>
         </div>
         <div class="sed-item-body">${escapeHtml(h.text)}</div>
+        ${renderTutorFeedback(h.tutorFeedback)}
       </div>
     `).join('');
   }
 
-  // Post-mortems
+  // Post-mortems (with scorer feedback + tutor feedback)
   if (!data.postMortems || !data.postMortems.length) {
     $('sedPostMortems').innerHTML = '<p class="empty-state">No post-mortems written.</p>';
   } else {
-    $('sedPostMortems').innerHTML = data.postMortems.map((p) => `
-      <div class="sed-item">
+    $('sedPostMortems').innerHTML = data.postMortems.map((pm) => `
+      <div class="sed-item" data-target-type="post_mortem" data-target-id="${pm.id}">
         <div class="sed-item-header">
           <span class="sed-item-label">
-            ${p.score ? `<span class="quality-badge q-score-${escapeHtml(p.score)}">${escapeHtml(p.score)}</span>` : ''}
+            ${pm.score ? `<span class="quality-badge q-score-${escapeHtml(pm.score)}">${escapeHtml(pm.score)}</span>` : ''}
           </span>
-          <span class="sed-item-time">${p.createdAt ? relativeTime(p.createdAt) : ''}</span>
+          <span class="sed-item-time">${pm.createdAt ? relativeTime(pm.createdAt) : ''}</span>
         </div>
-        <div class="sed-item-body">${escapeHtml(p.text)}</div>
-        ${p.feedback ? `<div class="sed-item-feedback">${escapeHtml(p.feedback)}</div>` : ''}
+        <div class="sed-item-body">${escapeHtml(pm.text)}</div>
+        ${pm.scorerFeedback ? `<div class="sed-item-feedback">${escapeHtml(pm.scorerFeedback)}</div>` : ''}
+        ${renderTutorFeedback(pm.tutorFeedback)}
       </div>
     `).join('');
   }
+}
+
+/**
+ * Render tutor feedback (list + add button) for one work item.
+ * `items` is an array of TutorFeedback objects (possibly empty).
+ */
+function renderTutorFeedback(items) {
+  const list = (items || []).map((fb) => `
+    <div class="sed-tutor-feedback-item" data-feedback-id="${escapeHtml(fb.id)}">
+      <div class="sed-tutor-feedback-meta">
+        <span class="sed-tutor-feedback-author">${escapeHtml(fb.instructorName || 'Instructor')}</span>
+        <span class="sed-tutor-feedback-time">${fb.createdAt ? relativeTime(fb.createdAt) : ''}</span>
+        <button class="sed-tutor-feedback-delete" title="Delete feedback" data-feedback-id="${escapeHtml(fb.id)}">×</button>
+      </div>
+      <div class="sed-tutor-feedback-text">${escapeHtml(fb.text)}</div>
+    </div>
+  `).join('');
+
+  return `
+    <div class="sed-tutor-feedback">
+      ${list}
+      <div class="sed-tutor-feedback-composer" hidden>
+        <textarea class="sed-tutor-feedback-input" rows="2" placeholder="Leave feedback on this item…"></textarea>
+        <div class="sed-tutor-feedback-actions">
+          <button class="ghost small sed-tutor-feedback-cancel">Cancel</button>
+          <button class="primary small sed-tutor-feedback-save">Save</button>
+        </div>
+      </div>
+      <button class="sed-tutor-feedback-add ghost small">+ Add feedback</button>
+    </div>
+  `;
+}
+
+/**
+ * Wire the feedback add/save/cancel/delete handlers on the exercise detail view.
+ * Called once after renderExerciseDetail populates the DOM.
+ */
+function wireTutorFeedbackHandlers() {
+  const root = document.getElementById('studentExerciseDetailView');
+  if (!root) return;
+
+  root.querySelectorAll('.sed-tutor-feedback-add').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const wrapper = btn.closest('.sed-tutor-feedback');
+      const composer = wrapper.querySelector('.sed-tutor-feedback-composer');
+      composer.hidden = false;
+      btn.hidden = true;
+      composer.querySelector('textarea').focus();
+    });
+  });
+
+  root.querySelectorAll('.sed-tutor-feedback-cancel').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const composer = btn.closest('.sed-tutor-feedback-composer');
+      const wrapper = composer.closest('.sed-tutor-feedback');
+      composer.hidden = true;
+      composer.querySelector('textarea').value = '';
+      wrapper.querySelector('.sed-tutor-feedback-add').hidden = false;
+    });
+  });
+
+  root.querySelectorAll('.sed-tutor-feedback-save').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const composer = btn.closest('.sed-tutor-feedback-composer');
+      const item = composer.closest('.sed-item');
+      const targetType = item.dataset.targetType;
+      const targetId = item.dataset.targetId;
+      const text = composer.querySelector('textarea').value.trim();
+      if (!text) return;
+
+      btn.disabled = true;
+      try {
+        const res = await fetch(
+          '/api/admin/students/' + encodeURIComponent(currentStudentId) +
+          '/exercises/' + encodeURIComponent(currentExerciseId) +
+          '/feedback',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ targetType, targetId, text }),
+          }
+        );
+        const data = await res.json();
+        if (!res.ok) {
+          alert(data.error || 'Could not save feedback.');
+          return;
+        }
+        // Re-render the exercise detail to pick up the new feedback
+        await openExerciseDetail(currentStudentId, currentExerciseId, $('sedExerciseTitle').textContent);
+      } catch (err) {
+        alert('Failed: ' + err.message);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  });
+
+  root.querySelectorAll('.sed-tutor-feedback-delete').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const feedbackId = btn.dataset.feedbackId;
+      if (!confirm('Delete this feedback?')) return;
+      try {
+        const res = await fetch(
+          '/api/admin/students/' + encodeURIComponent(currentStudentId) +
+          '/exercises/' + encodeURIComponent(currentExerciseId) +
+          '/feedback/' + encodeURIComponent(feedbackId),
+          { method: 'DELETE' }
+        );
+        const data = await res.json();
+        if (!res.ok) {
+          alert(data.error || 'Could not delete feedback.');
+          return;
+        }
+        await openExerciseDetail(currentStudentId, currentExerciseId, $('sedExerciseTitle').textContent);
+      } catch (err) {
+        alert('Failed: ' + err.message);
+      }
+    });
+  });
 }
 
 async function resetExerciseProgress() {

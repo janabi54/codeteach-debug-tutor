@@ -1251,7 +1251,7 @@ export const db = {
         id: number;
         text: string;
         score: string;
-        feedback: string;
+        scorerFeedback: string;
         createdAt: string;
         tutorFeedback: TutorFeedback[];
       }>;
@@ -1277,7 +1277,7 @@ export const db = {
 
       const postMortems = sqlite
         .prepare(
-          `SELECT id, text, score, feedback, recorded_at AS createdAt
+          `SELECT id, text, score, feedback AS scorerFeedback, recorded_at AS createdAt
            FROM post_mortems
            WHERE student_id = ? AND exercise_id = ?
            ORDER BY recorded_at DESC`

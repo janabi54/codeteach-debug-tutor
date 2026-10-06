@@ -2131,3 +2131,77 @@ button.danger.small {
   padding-top: 10px;
   border-top: 1px solid #f0f1f3;
 }
+
+/* ── Tutor feedback on work items (2.2) ── */
+.sed-tutor-feedback {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed #e4e6eb;
+}
+.sed-tutor-feedback-item {
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  border-left: 3px solid #4f46e5;
+  background: #f5f6ff;
+  border-radius: 4px;
+}
+.sed-tutor-feedback-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+  font-size: 11px;
+  color: #7a7f88;
+}
+.sed-tutor-feedback-author {
+  font-weight: 600;
+  color: #4f46e5;
+}
+.sed-tutor-feedback-time {
+  color: #b0b5bd;
+}
+.sed-tutor-feedback-delete {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: #b0b5bd;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+}
+.sed-tutor-feedback-delete:hover {
+  color: #dc2626;
+}
+.sed-tutor-feedback-text {
+  font-size: 13px;
+  color: #1a1d23;
+  white-space: pre-wrap;
+}
+.sed-tutor-feedback-add {
+  font-size: 12px;
+}
+.sed-tutor-feedback-composer {
+  margin-top: 8px;
+}
+.sed-tutor-feedback-input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 13px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+.sed-tutor-feedback-input:focus {
+  outline: none;
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+.sed-tutor-feedback-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
