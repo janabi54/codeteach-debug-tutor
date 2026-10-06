@@ -1923,3 +1923,23 @@ button.danger.small {
 .sd-trend-label.improving { color: #059669; font-weight: 600; }
 .sd-trend-label.worsening { color: #dc2626; font-weight: 600; }
 .sd-trend-label.stable   { color: #7a7f88; }
+
+/* ── Refined status badges (1.2) ── */
+
+.status-badge.slipping {
+  background: #fef3c7;
+  color: #92400e;
+}
+.status-badge.at-risk {
+  background: #fee2e2;
+  color: #991b1b;
+}
+/* Legacy labels — kept for any cached responses */
+.status-badge.needs-attention {
+  background: #fef3c7;
+  color: #92400e;
+}
+.status-badge.inactive {
+  background: #fee2e2;
+  color: #991b1b;
+}
