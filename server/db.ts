@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { fillWeeks, lastNWeekStarts, classifyTrend } from './util/weeks.js';
 import { deriveStrengths, type Strength } from './util/strengths.js';
 import { buildActivitySummary, type ActivitySummary } from './util/activity.js';
+import { deriveTimeMetrics, type TimeMetrics } from './util/timeMetrics.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -1102,7 +1103,10 @@ export const db = {
         totalAttempts: number;
         createdAt: string;
         updatedAt: string;
+        struggleMinutes: number;
+        durationMinutes: number | null;
       }>;
+      timeMetrics: TimeMetrics;
       trends: {
         reasoningQuality: { points: Array<{ weekStart: string; value: number | null; sample: number }>; classification: 'improving' | 'worsening' | 'stable' };
         hintDependency: { points: Array<{ weekStart: string; value: number | null; sample: number }>; classification: 'improving' | 'worsening' | 'stable' };
@@ -1123,6 +1127,7 @@ export const db = {
           },
           weakSpots: [],
           sessionHistory: [],
+          timeMetrics: deriveTimeMetrics([]),
           trends: {
             reasoningQuality: emptyTrend,
             hintDependency: emptyTrend,
@@ -1195,7 +1200,9 @@ export const db = {
              hs.current_level AS currentLevel,
              hs.total_attempts AS totalAttempts,
              hs.created_at AS createdAt,
-             hs.updated_at AS updatedAt
+             hs.updated_at AS updatedAt,
+             hs.struggle_minutes AS struggleMinutes,
+             CAST(ROUND((julianday(hs.updated_at) - julianday(hs.created_at)) * 24 * 60) AS INTEGER) AS durationMinutes
            FROM hint_sessions hs
            LEFT JOIN exercises e ON e.id = hs.exercise_id OR e.slug = hs.exercise_id
            WHERE hs.student_id = ? AND hs.exercise_id IN (${placeholders})
@@ -1209,6 +1216,8 @@ export const db = {
           totalAttempts: number;
           createdAt: string;
           updatedAt: string;
+          struggleMinutes: number;
+          durationMinutes: number | null;
         }>;
 
       // Weekly trends for the last 12 weeks
@@ -1272,6 +1281,15 @@ export const db = {
         postMortemTotal,
       });
 
+      const timeMetrics = deriveTimeMetrics(
+        sessionRows.map((r) => ({
+          exerciseId: r.exerciseId,
+          exerciseTitle: r.exerciseTitle,
+          struggleMinutes: r.struggleMinutes || 0,
+          durationMinutes: r.durationMinutes,
+        }))
+      );
+
       return {
         metrics: {
           reasoningQuality: reasoning,
@@ -1283,6 +1301,7 @@ export const db = {
         },
         weakSpots: weakRows.map((r) => ({ pattern: r.pattern, count: r.n })),
         sessionHistory: sessionRows,
+        timeMetrics,
         trends: {
           reasoningQuality: {
             points: reasoningTrend,

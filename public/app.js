@@ -2336,6 +2336,8 @@ function clearStudentDetail() {
   var na = $('sdNextAction'); if (na) { na.style.display = 'none'; na.innerHTML = ''; }
   var cc = $('sdCohortComparison'); if (cc) { cc.style.display = 'none'; cc.innerHTML = ''; }
   var ac = $('sdActivity'); if (ac) { ac.style.display = 'none'; ac.innerHTML = ''; }
+  $('sdTimeValue').textContent = '—';
+  $('sdTimeSub').textContent = 'Loading...';
 }
 
 function renderStudentDetail(data) {
@@ -2416,6 +2418,23 @@ function renderStudentDetail(data) {
     }
   }
 
+  // Time on task card
+  const tm = data.timeMetrics;
+  if (!tm || tm.sessionsWithTime === 0) {
+    $('sdTimeValue').textContent = '—';
+    $('sdTimeSub').textContent = 'No timed sessions yet';
+  } else {
+    $('sdTimeValue').textContent = tm.totalStruggleMinutes + ' min';
+    const parts = [
+      tm.sessionsWithTime + ' session' + (tm.sessionsWithTime === 1 ? '' : 's'),
+      tm.avgStruggleMinutes + 'm avg',
+    ];
+    if (tm.longestStruggle) {
+      parts.push('longest ' + tm.longestStruggle.minutes + 'm');
+    }
+    $('sdTimeSub').textContent = parts.join(' · ');
+  }
+
   // Weak spots
   if (!data.weakSpots.length) {
     $('sdWeakSpots').innerHTML = '<p class="empty-state">No patterns logged yet.</p>';
@@ -2453,6 +2472,7 @@ function renderStudentDetail(data) {
             <th>State</th>
             <th>Hint level</th>
             <th>Attempts</th>
+            <th>Time</th>
             <th>Last activity</th>
           </tr>
         </thead>
@@ -2466,6 +2486,7 @@ function renderStudentDetail(data) {
               <td>${renderStateBadge(s.state)}</td>
               <td>${s.currentLevel}</td>
               <td>${s.totalAttempts}</td>
+              <td>${renderTimeCell(s)}</td>
               <td>${s.updatedAt ? relativeTime(s.updatedAt) : '—'}</td>
             </tr>
           `).join('')}
@@ -2484,6 +2505,27 @@ function renderStudentDetail(data) {
       });
     });
   }
+}
+
+/**
+ * Render the Time cell in the session history table.
+ * Shows struggle minutes (primary) + session duration (secondary).
+ */
+function renderTimeCell(session) {
+  const struggle = session.struggleMinutes;
+  const duration = session.durationMinutes;
+  if ((!struggle || struggle <= 0) && (!duration || duration <= 0)) {
+    return '<span class="sd-time-empty">—</span>';
+  }
+  let html = '';
+  if (struggle && struggle > 0) {
+    html += '<span class="sd-time-struggle">' + struggle + ' min</span>';
+  }
+  if (duration && duration > 0 && duration < 24 * 60) {
+    // Only show duration if it's plausibly a real session (< 24h)
+    html += '<span class="sd-time-duration"> · ' + duration + 'm</span>';
+  }
+  return html || '<span class="sd-time-empty">—</span>';
 }
 
 function renderStateBadge(state) {

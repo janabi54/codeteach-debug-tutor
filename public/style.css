@@ -1343,7 +1343,7 @@ button.ghost.small {
 
 .sd-metrics-row {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 16px;
   margin-bottom: 32px;
 }
@@ -1643,18 +1643,6 @@ button.danger.small {
 }
 .sd-main {
   min-width: 0; /* allow the grid child to shrink; enables horizontal scroll on tables */
-}
-
-/* Horizontal scroll for wide tables when the panel squeezes them */
-.sd-main .sd-sessions-table {
-  display: block;
-  overflow-x: auto;
-  white-space: nowrap;
-}
-.sd-main .sd-sessions-table thead,
-.sd-main .sd-sessions-table tbody {
-  display: table;
-  width: 100%;
 }
 
 /* The panel itself */
@@ -2302,4 +2290,18 @@ button.danger.small {
   color: #4f46e5;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+}
+
+/* ── Time metrics (Tier 3.2) ── */
+.sd-time-struggle {
+  color: #1a1d23;
+  font-variant-numeric: tabular-nums;
+}
+.sd-time-duration {
+  color: #7a7f88;
+  font-size: 11px;
+  margin-left: 2px;
+}
+.sd-time-empty {
+  color: #b0b5bd;
 }

@@ -41,30 +41,40 @@ const PEERS = [
     email: 'aisha@' + DEMO_EMAIL_DOMAIN,
     displayName: 'Aisha',
     // Strong: mostly precise, many hints avoided (few hints), most sessions done
-    profile: { precise: 8, plausible: 2, vague: 0, sessions: 5, completed: 4, hintsPerSession: 0.2, lastActiveDaysAgo: 1 },
+    profile: { precise: 8, plausible: 2, vague: 0, sessions: 5, completed: 4, hintsPerSession: 0.2, lastActiveDaysAgo: 1, sessionMinutes: 60, strugglePerSession: 10 },
   },
   {
     id: '22222222-2222-4222-8222-222222222222',
     email: 'ben@' + DEMO_EMAIL_DOMAIN,
     displayName: 'Ben',
     // Average: half precise, moderate hints, mid progress
-    profile: { precise: 4, plausible: 4, vague: 2, sessions: 4, completed: 3, hintsPerSession: 1.0, lastActiveDaysAgo: 3 },
+    profile: { precise: 4, plausible: 4, vague: 2, sessions: 4, completed: 3, hintsPerSession: 1.0, lastActiveDaysAgo: 3, sessionMinutes: 90, strugglePerSession: 25 },
   },
   {
     id: '33333333-3333-4333-8333-333333333333',
     email: 'carla@' + DEMO_EMAIL_DOMAIN,
     displayName: 'Carla',
     // Struggling: mostly vague, heavy hints, low progress, quiet
-    profile: { precise: 1, plausible: 2, vague: 7, sessions: 2, completed: 1, hintsPerSession: 3.0, lastActiveDaysAgo: 12 },
+    profile: { precise: 1, plausible: 2, vague: 7, sessions: 2, completed: 1, hintsPerSession: 3.0, lastActiveDaysAgo: 12, sessionMinutes: 180, strugglePerSession: 65 },
   },
   {
     id: '44444444-4444-4444-8444-444444444444',
     email: 'dev@' + DEMO_EMAIL_DOMAIN,
     displayName: 'Dev',
     // New: just started, a little of everything
-    profile: { precise: 2, plausible: 2, vague: 1, sessions: 1, completed: 1, hintsPerSession: 0.5, lastActiveDaysAgo: 2 },
+    profile: { precise: 2, plausible: 2, vague: 1, sessions: 1, completed: 1, hintsPerSession: 0.5, lastActiveDaysAgo: 2, sessionMinutes: 45, strugglePerSession: 15 },
   },
 ];
+
+/**
+ * Compute a SQLite-compatible timestamp string (YYYY-MM-DD HH:MM:SS, UTC)
+ * offset from now by `days` ago, then minus `minutes` further back.
+ * e.g. offsetTimestamp(2, 90) → "2026-10-05 12:39:20" (2 days + 90 min ago).
+ */
+function offsetTimestamp(days, minutes) {
+  const ms = Date.now() - days * 86400000 - minutes * 60000;
+  return new Date(ms).toISOString().replace('T', ' ').slice(0, 19);
+}
 
 // ── Open DB ───────────────────────────────────────────────────────────
 const db = new Database('codeteach.db');
@@ -179,8 +189,10 @@ async function main() {
   db.prepare(
     `INSERT INTO hint_sessions
        (id, student_id, exercise_id, state, current_level, total_attempts,
-        resolved, hypothesis_pending, created_at, updated_at)
-     VALUES (?, ?, ?, 'complete', 1, 3, 1, 0, datetime('now', '-2 days'), datetime('now', '-1 days'))`
+        resolved, hypothesis_pending, struggle_minutes, created_at, updated_at)
+     VALUES (?, ?, ?, 'complete', 1, 3, 1, 0, 28,
+             datetime('now', '-2 days', '-90 minutes'),
+             datetime('now', '-2 days'))`
   ).run(`seed-sess-jiro-${exercise.slug}`, STUDENT_ID, exercise.slug);
   console.log('Jiro: inserted 1 hint_session');
 
@@ -234,8 +246,8 @@ async function main() {
   const peerSessInsert = db.prepare(
     `INSERT INTO hint_sessions
        (id, student_id, exercise_id, state, current_level, total_attempts,
-        resolved, hypothesis_pending, created_at, updated_at)
-     VALUES (?, ?, ?, ?, 1, 3, 1, 0, datetime('now', ?), datetime('now', ?))`
+        resolved, hypothesis_pending, struggle_minutes, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 1, 3, 1, 0, ?, ?, ?)`
   );
   const peerTelInsert = db.prepare(
     `INSERT INTO telemetry (type, student_id, exercise_id, latency_ms, recorded_at)
@@ -289,16 +301,21 @@ async function main() {
     for (let s = 0; s < profile.sessions; s++) {
       const slug = SLUG_CYCLE[s % SLUG_CYCLE.length];
       const state = s < profile.completed ? 'complete' : 'open';
-      const createdDaysAgo = daysBase + (profile.sessions - 1 - s) * 5;
-      const updatedDaysAgo = createdDaysAgo - 1;
+      // Each session ends `updatedDaysAgo` days ago; started `sessionMinutes` earlier.
+      const updatedDaysAgo = daysBase + (profile.sessions - 1 - s) * 5;
+      const createdTs = offsetTimestamp(updatedDaysAgo, profile.sessionMinutes);
+      const updatedTs = offsetTimestamp(updatedDaysAgo, 0);
+      // Struggle grows slightly for later sessions
+      const struggle = profile.strugglePerSession + Math.floor(s * 1.5);
       const sessId = `peer-sess-${id.slice(0, 8)}-${slug}`;
       peerSessInsert.run(
         sessId,
         id,
         slug,
         state,
-        `-${createdDaysAgo} days`,
-        `-${updatedDaysAgo} days`
+        struggle,
+        createdTs,
+        updatedTs
       );
 
       // 5. Telemetry: N 'hint-served' rows inside this session's window
