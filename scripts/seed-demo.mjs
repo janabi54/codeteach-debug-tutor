@@ -28,6 +28,34 @@ const WIPE_ONLY = process.argv.includes('--wipe');
 const DEMO_PASSWORD = 'demo-pass-123';
 const DEMO_EMAIL_DOMAIN = 'demo.local';
 
+// ── Deterministic outcomes ────────────────────────────────────────────
+// Outcomes are picked by (quality, index) so re-runs produce identical
+// data. Spread across all three values + occasional untested (null) so
+// the demo has a realistic distribution.
+//
+// Index is `i % 10` for each hypothesis, so the pattern cycles if a
+// student has more than 10 hypotheses at one quality level.
+const OUTCOME_PATTERNS = {
+  precise: [
+    'confirmed', 'confirmed', 'confirmed', 'unclear', null,
+    'confirmed', 'refuted', 'confirmed', 'unclear', 'confirmed',
+  ],
+  plausible: [
+    'unclear', 'refuted', 'confirmed', null, 'refuted',
+    'confirmed', 'unclear', 'refuted', 'confirmed', 'unclear',
+  ],
+  vague: [
+    'refuted', 'refuted', 'unclear', 'refuted', 'refuted',
+    null, 'refuted', 'refuted', 'unclear', 'confirmed',
+  ],
+};
+
+function pickOutcome(quality, index) {
+  const pattern = OUTCOME_PATTERNS[quality];
+  if (!pattern) return null;
+  return pattern[index % pattern.length];
+}
+
 // ── Config ────────────────────────────────────────────────────────────
 const STUDENT_ID = '75987245-0755-4efe-a264-03b799761a1b'; // Jiro
 const COHORT_NAME = 'CS101 Fall 2026';
@@ -168,8 +196,8 @@ async function main() {
 
   // ── Seed Jiro (existing logic) ──────────────────────────────────────
   const hypInsert = db.prepare(
-    `INSERT INTO hypotheses (student_id, exercise_id, hint_level, text, quality, recorded_at)
-     VALUES (?, ?, ?, ?, ?, datetime('now', ?))`
+    `INSERT INTO hypotheses (student_id, exercise_id, hint_level, text, quality, outcome, recorded_at)
+     VALUES (?, ?, ?, ?, ?, ?, datetime('now', ?))`
   );
   const qualities = ['vague', 'vague', 'plausible', 'plausible', 'plausible', 'precise', 'precise', 'precise', 'precise'];
   for (let i = 0; i < 9; i++) {
@@ -180,6 +208,7 @@ async function main() {
       (i % 3) + 1,
       `[seed] Synthetic hypothesis #${i + 1}`,
       qualities[i],
+      pickOutcome(qualities[i], i),
       `-${weeksAgo * 7} days`
     );
   }
@@ -240,8 +269,8 @@ async function main() {
     `INSERT INTO cohort_members (cohort_id, user_id) VALUES (?, ?)`
   );
   const peerHypInsert = db.prepare(
-    `INSERT INTO hypotheses (student_id, exercise_id, hint_level, text, quality, recorded_at)
-     VALUES (?, ?, 1, ?, ?, datetime('now', ?))`
+    `INSERT INTO hypotheses (student_id, exercise_id, hint_level, text, quality, outcome, recorded_at)
+     VALUES (?, ?, 1, ?, ?, ?, datetime('now', ?))`
   );
   const peerSessInsert = db.prepare(
     `INSERT INTO hint_sessions
@@ -292,6 +321,7 @@ async function main() {
         slug,
         `[peer-${displayName.toLowerCase()}] hypothesis #${i + 1}`,
         qDist[i],
+        pickOutcome(qDist[i], i),
         `-${weeksAgo * 7} days`
       );
     }
