@@ -2535,3 +2535,183 @@ body.privacy-open main {
 body.privacy-open .privacy-view {
   overflow: visible;
 }
+
+/* ── Confirm-by-typing modal ── */
+.confirm-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+.confirm-modal {
+  background: #fff;
+  border-radius: 10px;
+  max-width: 520px;
+  width: 90%;
+  padding: 24px 28px;
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.25);
+}
+.confirm-modal-title {
+  margin: 0 0 12px;
+  font-size: 18px;
+  color: #991b1b;
+}
+.confirm-modal-message {
+  font-size: 13px;
+  color: #4b5563;
+  line-height: 1.55;
+  margin-bottom: 16px;
+}
+.confirm-modal-message p { margin: 0 0 8px; }
+.confirm-modal-message .confirm-modal-warn {
+  color: #92400e;
+  background: #fef3c7;
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+.confirm-modal-label {
+  display: block;
+  font-size: 13px;
+  color: #4b5563;
+  margin-bottom: 6px;
+}
+.confirm-modal-label strong { color: #1a1d23; }
+.confirm-modal-input {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  box-sizing: border-box;
+}
+.confirm-modal-input:focus {
+  outline: none;
+  border-color: #dc2626;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.15);
+}
+.confirm-modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+.confirm-modal-actions .danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Student danger zone ── */
+.sd-danger-zone {
+  margin-top: 32px;
+  padding: 20px 24px;
+  border: 1px solid #fecaca;
+  background: #fef2f2;
+  border-radius: 10px;
+}
+.sd-danger-heading {
+  margin: 0 0 12px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #991b1b;
+  font-weight: 600;
+}
+.sd-danger-body {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.sd-danger-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #7f1d1d;
+  margin-bottom: 4px;
+}
+.sd-danger-detail {
+  font-size: 12px;
+  color: #7c2d12;
+  max-width: 60ch;
+  line-height: 1.5;
+}
+.sd-danger-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* ── Confirm modal: button alignment ── */
+.confirm-modal-actions {
+  align-items: center;
+}
+.confirm-modal-actions .ghost,
+.confirm-modal-actions .danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+  font-size: 13px;
+  line-height: 1;
+  min-height: 34px;
+  box-sizing: border-box;
+}
+
+/* Force the two confirm-modal action buttons to the exact same box */
+.confirm-modal-actions button {
+  height: 34px;
+  min-height: 34px;
+  max-height: 34px;
+  padding: 0 16px;
+  font-size: 13px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  vertical-align: middle;
+}
+
+/* Force both action buttons onto the exact same baseline */
+.confirm-modal-actions {
+  align-items: center !important;
+}
+.confirm-modal-actions > button {
+  align-self: center;
+  margin: 0;
+  vertical-align: middle;
+}
+
+/* Zero out margins on the confirm-modal action buttons so both sit on
+   the same baseline. The .ghost class was carrying a stray margin-top. */
+.confirm-modal-actions > button {
+  margin: 0;
+}
+
+/* ── Button alignment fixes for stacked action rows ──
+   The .ghost class carries a stray margin-top: 8px that misaligns buttons
+   when mixed with .danger buttons in the same row. Zero it out where we
+   want a clean horizontal baseline. */
+
+/* Danger zone actions (Export CSV first / Delete all data) */
+.sd-danger-actions > button,
+.sd-danger-actions > a {
+  margin: 0;
+  align-self: center;
+}
+.sd-danger-actions {
+  align-items: center;
+}
+
+/* Confirm modal actions (Cancel / Delete all data) */
+.confirm-modal-actions > button {
+  margin: 0;
+  align-self: center;
+}
+.confirm-modal-actions {
+  align-items: center !important;
+}

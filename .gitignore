@@ -54,3 +54,8 @@ Thumbs.db
 *.rej
 verify-feedback.ts
 verify-activity.ts
+
+# DB backups — never commit these
+*.backup-*
+*.backup
+codeteach.db.backup-*

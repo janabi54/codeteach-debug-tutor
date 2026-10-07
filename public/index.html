@@ -466,6 +466,24 @@ for (let i = 0; i < arr.length; i++) {
         </div>
       </div>
 
+      <div id="sdDangerZone" class="sd-danger-zone" style="display:none;">
+        <h3 class="sd-danger-heading">Danger zone</h3>
+        <div class="sd-danger-body">
+          <div>
+            <div class="sd-danger-title">Delete all data for this student</div>
+            <div class="sd-danger-detail">
+              Permanently erases their sessions, hypotheses, post-mortems, mistake
+              patterns, and telemetry for exercises in your class. Their account
+              and enrollment are preserved. This cannot be undone.
+            </div>
+          </div>
+          <div class="sd-danger-actions">
+            <button id="sdDangerExportBtn" class="ghost small">Export CSV first</button>
+            <button id="sdDangerDeleteBtn" class="danger small">Delete all data</button>
+          </div>
+        </div>
+      </div>
+
       <div class="sd-section">
         <div class="sd-section-header">
           <h3 class="sd-section-heading">Session history</h3>
@@ -572,6 +590,22 @@ for (let i = 0; i < arr.length; i++) {
     </div>
   </div>
 </section>
+
+<!-- CONFIRM-BY-TYPING MODAL -->
+<div id="confirmModal" class="confirm-modal-backdrop" hidden>
+  <div class="confirm-modal">
+    <h2 id="confirmModalTitle" class="confirm-modal-title">Confirm</h2>
+    <div id="confirmModalMessage" class="confirm-modal-message"></div>
+    <label class="confirm-modal-label">
+      Type <strong id="confirmModalRequired"></strong> to confirm:
+    </label>
+    <input id="confirmModalInput" class="confirm-modal-input" type="text" autocomplete="off" />
+    <div class="confirm-modal-actions" style="display:flex; align-items:center; gap:8px; justify-content:flex-end;">
+      <button id="confirmModalCancel" class="ghost small">Cancel</button>
+      <button id="confirmModalSubmit" class="danger small" disabled>Delete</button>
+    </div>
+  </div>
+</div>
 
 
 <!-- PRIVACY VIEW -->

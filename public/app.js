@@ -2372,6 +2372,11 @@ function renderStudentDetail(data) {
   // Recommended next action banner
   renderNextAction(data.nextAction);
 
+  // Danger zone (delete student data)
+  wireStudentDangerZone({
+    displayName: displayName,
+  });
+
   // Cohort comparison panel
   renderCohortComparison(data.cohortComparison);
 
@@ -2977,6 +2982,179 @@ async function resetExerciseProgress() {
  * We don't touch the URL hash (v1), but returning restores the previous
  * view based on auth state.
  */
+/**
+ * Open the confirm-by-typing modal.
+ * @param opts.title         modal heading
+ * @param opts.message       HTML string for the body (trusted, sanitize caller-side)
+ * @param opts.requiredText  the user must type this (case-sensitive)
+ * @param opts.confirmLabel  label for the confirm button (default: "Delete")
+ * @param opts.onConfirm     async callback; return false to keep modal open
+ */
+function showConfirmModal(opts) {
+  const modal = $('confirmModal');
+  if (!modal) return;
+
+  $('confirmModalTitle').textContent = opts.title || 'Confirm';
+  $('confirmModalMessage').innerHTML = opts.message || '';
+  $('confirmModalRequired').textContent = opts.requiredText || '';
+  $('confirmModalSubmit').textContent = opts.confirmLabel || 'Delete';
+  $('confirmModalSubmit').disabled = true;
+
+  modal.hidden = false;
+  modal.__onConfirm = opts.onConfirm || null;
+  modal.__requiredText = opts.requiredText || '';
+
+  // ── Wire input + buttons on EVERY open, so we never depend on
+  //    script-load order (the earlier IIFE was exiting early because
+  //    the modal HTML wasn't in the DOM yet when app.js loaded). ──
+
+  // Input: enable submit only when the value matches the required text
+  const inputEl = $('confirmModalInput');
+  if (inputEl) {
+    // Clone-and-replace to strip any stale listeners from prior opens
+    const freshInput = inputEl.cloneNode(true);
+    inputEl.parentNode.replaceChild(freshInput, inputEl);
+    freshInput.value = '';
+    freshInput.addEventListener('input', () => {
+      $('confirmModalSubmit').disabled =
+        freshInput.value !== (modal.__requiredText || '');
+    });
+    // Focus after the modal is on screen
+    setTimeout(() => freshInput.focus(), 30);
+  }
+
+  // Cancel button: clone-and-replace too, to avoid stacking listeners
+  const cancelBtn = $('confirmModalCancel');
+  if (cancelBtn) {
+    const freshCancel = cancelBtn.cloneNode(true);
+    cancelBtn.parentNode.replaceChild(freshCancel, cancelBtn);
+    freshCancel.addEventListener('click', () => closeConfirmModal());
+  }
+
+  // Submit button
+  const submitBtn = $('confirmModalSubmit');
+  if (submitBtn) {
+    const freshSubmit = submitBtn.cloneNode(true);
+    submitBtn.parentNode.replaceChild(freshSubmit, submitBtn);
+    freshSubmit.disabled = true;
+    freshSubmit.addEventListener('click', async () => {
+      const onConfirm = modal.__onConfirm;
+      if (!onConfirm) {
+        closeConfirmModal();
+        return;
+      }
+      freshSubmit.disabled = true;
+      try {
+        const keepOpen = await onConfirm();
+        if (keepOpen) freshSubmit.disabled = false;
+        else closeConfirmModal();
+      } catch (err) {
+        alert('Failed: ' + err.message);
+        freshSubmit.disabled = false;
+      }
+    });
+  }
+
+  // Backdrop click + Escape close the modal (attach once per modal element)
+  if (!modal.__backdropWired) {
+    modal.__backdropWired = true;
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeConfirmModal();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && isConfirmModalOpen()) closeConfirmModal();
+    });
+  }
+}
+
+function closeConfirmModal() {
+  const modal = $('confirmModal');
+  if (modal) {
+    modal.hidden = true;
+    modal.__onConfirm = null;
+    modal.__requiredText = '';
+  }
+}
+
+function isConfirmModalOpen() {
+  const modal = $('confirmModal');
+  return modal && !modal.hidden;
+}
+
+/**
+ * Danger zone: wire up delete + export buttons. Called from
+ * renderStudentDetail so the button only appears when a student is open.
+ */
+function wireStudentDangerZone(student) {
+  const zone = $('sdDangerZone');
+  if (!zone) return;
+  if (!student) {
+    zone.style.display = 'none';
+    return;
+  }
+  zone.style.display = 'block';
+
+  const exportBtn = $('sdDangerExportBtn');
+  const deleteBtn = $('sdDangerDeleteBtn');
+
+  // Replace listeners by cloning
+  if (exportBtn) {
+    const fresh = exportBtn.cloneNode(true);
+    exportBtn.parentNode.replaceChild(fresh, exportBtn);
+    fresh.addEventListener('click', () => {
+      if (currentStudentId) {
+        window.location = '/api/admin/students/' + encodeURIComponent(currentStudentId) + '/export.csv';
+      }
+    });
+  }
+
+  if (deleteBtn) {
+    const fresh = deleteBtn.cloneNode(true);
+    deleteBtn.parentNode.replaceChild(fresh, deleteBtn);
+    fresh.addEventListener('click', () => {
+      if (!currentStudentId) return;
+      showConfirmModal({
+        title: 'Delete all data for ' + student.displayName + '?',
+        message:
+          '<p>This will permanently erase the student\'s debug history ' +
+          '(sessions, hypotheses, post-mortems, mistake patterns, telemetry) ' +
+          'for exercises in your class.</p>' +
+          '<p class="confirm-modal-warn">Their account and enrollment are <b>not</b> affected.</p>' +
+          '<p>This action cannot be undone.</p>',
+        requiredText: student.displayName,
+        confirmLabel: 'Delete all data',
+        onConfirm: async () => {
+          try {
+            const res = await fetch(
+              '/api/admin/students/' + encodeURIComponent(currentStudentId) + '/data',
+              { method: 'DELETE' }
+            );
+            const data = await res.json();
+            if (!res.ok) {
+              alert(data.error || 'Deletion failed.');
+              return false;
+            }
+            const r = data.removed || {};
+            const parts = [];
+            for (const k of ['hypotheses','hint_sessions','post_mortems','mistake_patterns','telemetry']) {
+              if (r[k]) parts.push(r[k] + ' ' + k.replace(/_/g,' '));
+            }
+            alert('Deleted: ' + (parts.join(', ') || 'no rows') + '.');
+            // Reload the student detail so counts reset
+            if (typeof openStudentDetail === 'function') {
+              await openStudentDetail(currentStudentId);
+            }
+            return true;
+          } catch (err) {
+            alert('Failed: ' + err.message);
+            return false;
+          }
+        },
+      });
+    });
+  }
+}
+
 function showPrivacy() {
   // Hide every top-level section AND remove .active from tab-panels — the
   // .tab-panel.active rule sets display: block and would otherwise override
