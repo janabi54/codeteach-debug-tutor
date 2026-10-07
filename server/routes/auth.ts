@@ -17,6 +17,7 @@ import {
   clearLimit,
   clientIp,
 } from '../middleware/rateLimit.js';
+import { requireAuth } from '../middleware/requireAuth.js';
 
 const router = express.Router();
 
@@ -186,6 +187,45 @@ router.post('/logout', async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 // GET /api/auth/me
 // ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// DELETE /api/auth/me/account
+// Self-service account deletion. Instructors must not own any
+// cohorts (they have to delete or transfer them first). Students
+// can delete freely. Also kills any active auth sessions.
+// ─────────────────────────────────────────────────────────────
+router.delete('/me/account', requireAuth, async (req, res) => {
+  const user = req.user!;
+  const userId = user.id;
+
+  // If the user is an instructor, block if they still own cohorts.
+  if (user.role === 'instructor') {
+    const owned = await db.cohorts.listByInstructor(userId);
+    if (owned.length > 0) {
+      return res.status(409).json({
+        error: 'You still own ' + owned.length + ' cohort' + (owned.length === 1 ? '' : 's') +
+          '. Delete or transfer them before deleting your account.',
+        cohorts: owned.map((c) => ({ id: c.id, name: c.name })),
+      });
+    }
+  }
+
+  const counts = db.deletion.purgeAccount(userId);
+
+  db.deletion.recordAudit({
+    actorId: userId,
+    actorEmail: user.email ?? null,
+    scope: 'account',
+    targetId: userId,
+    targetLabel: user.displayName ?? null,
+    counts,
+  });
+
+  // Clear the session cookie so the client knows we're logged out.
+  clearSessionCookie(res);
+
+  res.json({ ok: true, removed: counts });
+});
+
 router.get('/me', async (req, res) => {
   const token = getSessionTokenFromRequest(req);
   if (!token) {

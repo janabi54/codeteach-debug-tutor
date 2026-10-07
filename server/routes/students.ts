@@ -321,6 +321,41 @@ router.get('/:studentId', requireInstructor, async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────
+// DELETE /api/admin/students/:studentId/data
+// Permanently delete all work data for one student, scoped to
+// exercises the calling instructor teaches. The user row and
+// cohort membership are preserved — the student stays enrolled.
+//
+// Runs through a single transaction (via db.deletion) so a failure
+// rolls back cleanly, then writes an audit row.
+// ─────────────────────────────────────────────────────────────
+router.delete('/:studentId/data', requireInstructor, async (req, res) => {
+  const instructorId = req.user!.id;
+  const { studentId } = req.params;
+
+  const user = await db.users.findById(studentId);
+  if (!user) return res.status(404).json({ error: 'Student not found.' });
+
+  const exerciseIds = viewableExerciseIdsFor(instructorId, studentId);
+  if (exerciseIds.length === 0) {
+    return res.status(403).json({ error: 'You do not teach this student.' });
+  }
+
+  const counts = db.deletion.purgeStudentData(studentId, exerciseIds);
+
+  db.deletion.recordAudit({
+    actorId: instructorId,
+    actorEmail: req.user!.email ?? null,
+    scope: 'student',
+    targetId: studentId,
+    targetLabel: user.displayName,
+    counts,
+  });
+
+  res.json({ ok: true, removed: counts });
+});
+
+// ─────────────────────────────────────────────────────────────
 // GET /api/admin/students/:studentId/export.csv
 // Download a per-student CSV: identity + metrics summary,
 // then a session-history table.

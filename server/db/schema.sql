@@ -192,3 +192,20 @@ CREATE INDEX IF NOT EXISTS idx_tutor_feedback_target
 
 CREATE INDEX IF NOT EXISTS idx_tutor_feedback_student
   ON tutor_feedback(student_id, created_at);
+
+CREATE TABLE IF NOT EXISTS deletion_audit (
+  id TEXT PRIMARY KEY,
+  actor_id TEXT NOT NULL,          -- who triggered the deletion
+  actor_email TEXT,                -- denormalized for history (survives actor delete)
+  scope TEXT NOT NULL,             -- 'student' | 'cohort' | 'account'
+  target_id TEXT NOT NULL,         -- student id / cohort id / actor id
+  target_label TEXT,               -- human-readable (student name / cohort name)
+  counts_json TEXT NOT NULL,       -- { hypotheses: 9, sessions: 1, ... }
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_deletion_audit_time
+  ON deletion_audit(created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_deletion_audit_actor
+  ON deletion_audit(actor_id, created_at DESC);

@@ -84,6 +84,41 @@ router.post('/join', requireAuth, async (req, res) => {
 // DELETE /api/cohorts/:cohortId/leave
 // Student-facing. Removes the caller from the specified cohort.
 // ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// DELETE /api/cohorts/:cohortId/data
+// Permanently delete a cohort and ALL of its data:
+//   - every student's work on that cohort's exercises
+//   - cohort_members, cohort tutor notes, cohort exercises
+//   - the cohort row itself
+// Only the cohort's PRIMARY instructor (cohorts.instructor_id) may
+// trigger this. Irreversible. Writes a deletion_audit row.
+// ─────────────────────────────────────────────────────────────
+router.delete('/:cohortId/data', requireInstructor, async (req, res) => {
+  const instructorId = req.user!.id;
+  const { cohortId } = req.params;
+
+  const cohort = await db.cohorts.findById(cohortId);
+  if (!cohort) {
+    return res.status(404).json({ error: 'Cohort not found.' });
+  }
+  if (cohort.instructorId !== instructorId) {
+    return res.status(403).json({ error: 'Only the cohort instructor can delete its data.' });
+  }
+
+  const counts = db.deletion.purgeCohortData(cohortId);
+
+  db.deletion.recordAudit({
+    actorId: instructorId,
+    actorEmail: req.user!.email ?? null,
+    scope: 'cohort',
+    targetId: cohortId,
+    targetLabel: cohort.name,
+    counts,
+  });
+
+  res.json({ ok: true, removed: counts });
+});
+
 router.delete('/:cohortId/leave', requireAuth, async (req, res) => {
   const { cohortId } = req.params;
   const userId = req.user!.id;

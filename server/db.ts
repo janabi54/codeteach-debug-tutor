@@ -186,6 +186,17 @@ if (!hasOutcome) {
 }
 
 
+export interface DeletionAudit {
+  id: string;
+  actorId: string;
+  actorEmail: string | null;
+  scope: 'student' | 'cohort' | 'account';
+  targetId: string;
+  targetLabel: string | null;
+  countsJson: string;
+  createdAt: Date;
+}
+
 export interface TutorFeedback {
   id: string;
   instructorId: string;
@@ -388,6 +399,11 @@ const stmt = {
   ),
   postMortemStatsByStudent: sqlite.prepare(
     "SELECT pattern, COALESCE(score, 'unscored') AS score, COUNT(*) AS n FROM post_mortems WHERE student_id = ? AND pattern IS NOT NULL GROUP BY pattern, score"
+  ),
+  insertDeletionAudit: sqlite.prepare(
+    `INSERT INTO deletion_audit
+       (id, actor_id, actor_email, scope, target_id, target_label, counts_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
   ),
   updateHypothesisOutcome: sqlite.prepare(
     `UPDATE hypotheses SET outcome = ? WHERE id = ? AND student_id = ? AND exercise_id = ?`
@@ -1738,6 +1754,256 @@ export const db = {
           cohortId: row.cohortId,
           cohortName: row.cohortName,
         }));
+    },
+  },
+
+  deletion: {
+    /**
+     * Purge a student's work data, scoped to the given exerciseIds.
+     * Only rows for exercises the calling instructor can see are removed.
+     * The user row and cohort_membership are preserved.
+     *
+     * Everything runs inside one SQLite transaction — any failure rolls
+     * back the entire purge.
+     */
+    purgeStudentData(
+      studentId: string,
+      exerciseIds: string[]
+    ): {
+      hypotheses: number;
+      hint_sessions: number;
+      post_mortems: number;
+      mistake_patterns: number;
+      telemetry: number;
+      tutor_notes: number;
+      tutor_feedback: number;
+    } {
+      if (exerciseIds.length === 0) {
+        return {
+          hypotheses: 0, hint_sessions: 0, post_mortems: 0,
+          mistake_patterns: 0, telemetry: 0, tutor_notes: 0, tutor_feedback: 0,
+        };
+      }
+      const placeholders = exerciseIds.map(() => '?').join(',');
+
+      const run = sqlite.transaction(() => {
+        // Content tables — scoped by student + exercise set
+        const h = sqlite
+          .prepare(`DELETE FROM hypotheses WHERE student_id = ? AND exercise_id IN (${placeholders})`)
+          .run(studentId, ...exerciseIds);
+        const hs = sqlite
+          .prepare(`DELETE FROM hint_sessions WHERE student_id = ? AND exercise_id IN (${placeholders})`)
+          .run(studentId, ...exerciseIds);
+        const pm = sqlite
+          .prepare(`DELETE FROM post_mortems WHERE student_id = ? AND exercise_id IN (${placeholders})`)
+          .run(studentId, ...exerciseIds);
+        const mp = sqlite
+          .prepare(`DELETE FROM mistake_patterns WHERE student_id = ? AND exercise_id IN (${placeholders})`)
+          .run(studentId, ...exerciseIds);
+        const tel = sqlite
+          .prepare(`DELETE FROM telemetry WHERE student_id = ? AND exercise_id IN (${placeholders})`)
+          .run(studentId, ...exerciseIds);
+
+        // Tutor notes / feedback: student-authored only. Notes are
+        // per-cohort, not per-exercise — so we only delete notes that the
+        // *student* authored (there are none in practice, but be precise).
+        // Tutor notes ABOUT the student are left intact for the audit trail;
+        // their author (instructor) can delete them manually.
+        const tn = sqlite
+          .prepare(`DELETE FROM tutor_notes WHERE student_id = ? AND instructor_id = ?`)
+          .run(studentId, studentId);
+        const tf = sqlite
+          .prepare(`DELETE FROM tutor_feedback WHERE student_id = ? AND instructor_id = ?`)
+          .run(studentId, studentId);
+
+        return {
+          hypotheses: h.changes ?? 0,
+          hint_sessions: hs.changes ?? 0,
+          post_mortems: pm.changes ?? 0,
+          mistake_patterns: mp.changes ?? 0,
+          telemetry: tel.changes ?? 0,
+          tutor_notes: tn.changes ?? 0,
+          tutor_feedback: tf.changes ?? 0,
+        };
+      });
+
+      return run();
+    },
+
+    /**
+     * Purge a cohort: all work data for every student in the cohort,
+     * then the cohort's exercises, cohort_members rows, cohort tutor_notes,
+     * and finally the cohort row itself.
+     *
+     * Requires the caller to have already verified the actor is the
+     * cohort's primary instructor.
+     */
+    purgeCohortData(cohortId: string): {
+      students_cleared: number;
+      hypotheses: number;
+      hint_sessions: number;
+      post_mortems: number;
+      mistake_patterns: number;
+      telemetry: number;
+      tutor_notes: number;
+      tutor_feedback: number;
+      cohort_members: number;
+      exercises: number;
+      cohort: number;
+    } {
+      // Gather all exercise slugs for this cohort up front
+      const exercises = sqlite
+        .prepare('SELECT slug FROM exercises WHERE cohort_id = ?')
+        .all(cohortId) as Array<{ slug: string }>;
+      const slugs = exercises.map((e) => e.slug);
+
+      // Gather all student IDs in the cohort
+      const students = sqlite
+        .prepare('SELECT user_id AS id FROM cohort_members WHERE cohort_id = ?')
+        .all(cohortId) as Array<{ id: string }>;
+      const studentIds = students.map((s) => s.id);
+
+      const run = sqlite.transaction(() => {
+        let h = 0, hs = 0, pm = 0, mp = 0, tel = 0, tn = 0, tf = 0;
+
+        if (studentIds.length > 0 && slugs.length > 0) {
+          const sP = studentIds.map(() => '?').join(',');
+          const eP = slugs.map(() => '?').join(',');
+          h = sqlite.prepare(`DELETE FROM hypotheses WHERE student_id IN (${sP}) AND exercise_id IN (${eP})`).run(...studentIds, ...slugs).changes ?? 0;
+          hs = sqlite.prepare(`DELETE FROM hint_sessions WHERE student_id IN (${sP}) AND exercise_id IN (${eP})`).run(...studentIds, ...slugs).changes ?? 0;
+          pm = sqlite.prepare(`DELETE FROM post_mortems WHERE student_id IN (${sP}) AND exercise_id IN (${eP})`).run(...studentIds, ...slugs).changes ?? 0;
+          mp = sqlite.prepare(`DELETE FROM mistake_patterns WHERE student_id IN (${sP}) AND exercise_id IN (${eP})`).run(...studentIds, ...slugs).changes ?? 0;
+          tel = sqlite.prepare(`DELETE FROM telemetry WHERE student_id IN (${sP}) AND exercise_id IN (${eP})`).run(...studentIds, ...slugs).changes ?? 0;
+        }
+
+        // Tutor notes attached to this cohort (per the schema, tutor_notes has a cohort_id)
+        tn = sqlite.prepare('DELETE FROM tutor_notes WHERE cohort_id = ?').run(cohortId).changes ?? 0;
+
+        // Tutor feedback authored *about* students in this cohort for exercises in this cohort
+        if (studentIds.length > 0 && slugs.length > 0) {
+          const sP = studentIds.map(() => '?').join(',');
+          const eP = slugs.map(() => '?').join(',');
+          // Feedback targets hypotheses / post-mortems — those are gone now,
+          // but rows remain if their target_id is orphaned. Best-effort cleanup:
+          tf = sqlite.prepare(`DELETE FROM tutor_feedback WHERE student_id IN (${sP})`).run(...studentIds).changes ?? 0;
+        }
+
+        // Cohort members
+        const cm = sqlite.prepare('DELETE FROM cohort_members WHERE cohort_id = ?').run(cohortId).changes ?? 0;
+
+        // Exercises belonging to the cohort
+        const ex = sqlite.prepare('DELETE FROM exercises WHERE cohort_id = ?').run(cohortId).changes ?? 0;
+
+        // The cohort itself
+        const c = sqlite.prepare('DELETE FROM cohorts WHERE id = ?').run(cohortId).changes ?? 0;
+
+        return {
+          students_cleared: studentIds.length,
+          hypotheses: h, hint_sessions: hs, post_mortems: pm,
+          mistake_patterns: mp, telemetry: tel,
+          tutor_notes: tn, tutor_feedback: tf,
+          cohort_members: cm, exercises: ex, cohort: c,
+        };
+      });
+
+      return run();
+    },
+
+    /**
+     * Purge a user account. Not scoped — removes everything owned by
+     * the user across all cohorts (their content rows, their membership
+     * rows, their auth sessions, notes + feedback they authored).
+     *
+     * Callers must verify: instructors cannot self-delete if they own
+     * any cohort. This function does NOT check that — it's the route's job.
+     */
+    purgeAccount(userId: string): {
+      hypotheses: number;
+      hint_sessions: number;
+      post_mortems: number;
+      mistake_patterns: number;
+      telemetry: number;
+      tutor_notes: number;
+      tutor_feedback: number;
+      cohort_members: number;
+      auth_sessions: number;
+      user: number;
+    } {
+      const run = sqlite.transaction(() => {
+        const h = sqlite.prepare('DELETE FROM hypotheses WHERE student_id = ?').run(userId).changes ?? 0;
+        const hs = sqlite.prepare('DELETE FROM hint_sessions WHERE student_id = ?').run(userId).changes ?? 0;
+        const pm = sqlite.prepare('DELETE FROM post_mortems WHERE student_id = ?').run(userId).changes ?? 0;
+        const mp = sqlite.prepare('DELETE FROM mistake_patterns WHERE student_id = ?').run(userId).changes ?? 0;
+        const tel = sqlite.prepare('DELETE FROM telemetry WHERE student_id = ?').run(userId).changes ?? 0;
+        // Notes / feedback they authored
+        const tn = sqlite.prepare('DELETE FROM tutor_notes WHERE instructor_id = ? OR student_id = ?').run(userId, userId).changes ?? 0;
+        const tf = sqlite.prepare('DELETE FROM tutor_feedback WHERE instructor_id = ? OR student_id = ?').run(userId, userId).changes ?? 0;
+        // Membership + sessions + user row
+        const cm = sqlite.prepare('DELETE FROM cohort_members WHERE user_id = ?').run(userId).changes ?? 0;
+        const as = sqlite.prepare('DELETE FROM auth_sessions WHERE user_id = ?').run(userId).changes ?? 0;
+        const u = sqlite.prepare('DELETE FROM users WHERE id = ?').run(userId).changes ?? 0;
+        return {
+          hypotheses: h, hint_sessions: hs, post_mortems: pm,
+          mistake_patterns: mp, telemetry: tel,
+          tutor_notes: tn, tutor_feedback: tf,
+          cohort_members: cm, auth_sessions: as, user: u,
+        };
+      });
+      return run();
+    },
+
+    /**
+     * Record an audit entry. Called by routes after a successful purge.
+     */
+    recordAudit(data: {
+      actorId: string;
+      actorEmail: string | null;
+      scope: 'student' | 'cohort' | 'account';
+      targetId: string;
+      targetLabel: string | null;
+      counts: Record<string, number>;
+    }): DeletionAudit {
+      const id = randomUUID();
+      stmt.insertDeletionAudit.run(
+        id,
+        data.actorId,
+        data.actorEmail,
+        data.scope,
+        data.targetId,
+        data.targetLabel,
+        JSON.stringify(data.counts)
+      );
+      const row = sqlite.prepare('SELECT * FROM deletion_audit WHERE id = ?').get(id) as any;
+      return {
+        id: row.id,
+        actorId: row.actor_id,
+        actorEmail: row.actor_email,
+        scope: row.scope,
+        targetId: row.target_id,
+        targetLabel: row.target_label,
+        countsJson: row.counts_json,
+        createdAt: parseSqliteTimestamp(row.created_at),
+      };
+    },
+
+    /**
+     * List recent audit entries for a given actor (used by a future
+     * admin page). Not currently wired to the UI.
+     */
+    listAuditForActor(actorId: string, limit = 50): DeletionAudit[] {
+      const rows = sqlite
+        .prepare('SELECT * FROM deletion_audit WHERE actor_id = ? ORDER BY created_at DESC LIMIT ?')
+        .all(actorId, limit) as any[];
+      return rows.map((row) => ({
+        id: row.id,
+        actorId: row.actor_id,
+        actorEmail: row.actor_email,
+        scope: row.scope,
+        targetId: row.target_id,
+        targetLabel: row.target_label,
+        countsJson: row.counts_json,
+        createdAt: parseSqliteTimestamp(row.created_at),
+      }));
     },
   },
 
