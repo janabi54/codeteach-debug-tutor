@@ -741,6 +741,13 @@ function applyRoleVisibility() {
   });
   const nameEl = $('currentUserName');
   if (nameEl) nameEl.textContent = currentUser.displayName;
+
+  // The user-menu label adapts to role: instructors manage classes,
+  // students join/leave them.
+  const menuBtn = $('openSettingsBtn');
+  if (menuBtn) {
+    menuBtn.textContent = currentUser.role === 'instructor' ? 'My classes' : 'Classes';
+  }
 }
 
 function setLoginMode(mode) {
@@ -1497,13 +1504,34 @@ async function openSettings() {
   toggleUserMenu(false);
   $('settingsModal').hidden = false;
 
+  const isInstructor = currentUser && currentUser.role === 'instructor';
+
   if (currentUser) {
     const line = $('settingsAccountLine');
     if (line) {
-      const role = currentUser.role === 'instructor' ? 'Instructor' : 'Student';
+      const role = isInstructor ? 'Instructor' : 'Student';
       line.textContent = 'Signed in as ' + (currentUser.email || 'unknown') + ' (' + role + ')';
     }
   }
+
+  // Modal badge + heading adapt to role
+  const badge = document.querySelector('#settingsModal .modal-badge');
+  if (badge) badge.textContent = isInstructor ? 'Classes' : 'Join Class';
+  const title = document.querySelector('#settingsModal .modal-title');
+  if (title) title.textContent = 'Classes';
+
+  // Section heading — "Classes you teach" for instructors, "Your classes" for students
+  const classHeading = document.querySelector('#settingsClassList')
+    ?.closest('.settings-section')
+    ?.querySelector('.settings-heading');
+  if (classHeading) {
+    classHeading.textContent = isInstructor ? 'Classes you teach' : 'Your classes';
+  }
+
+  // Hide "Join a class" for instructors — they never join their own cohorts.
+  const joinBtn = $('settingsJoinBtn');
+  const joinSection = joinBtn ? joinBtn.closest('.settings-section') : null;
+  if (joinSection) joinSection.hidden = isInstructor;
 
   $('settingsJoinCode').value = '';
   $('settingsJoinMessage').hidden = true;
@@ -1529,24 +1557,132 @@ async function loadSettingsClasses() {
       return;
     }
 
-    list.innerHTML = cohorts.map((c) => `
-      <div class="settings-class-row">
-        <div>
-          <div class="settings-class-name">${escapeHtml(c.name)}</div>
-          <span class="settings-class-meta">joined ${new Date(c.joinedAt).toLocaleDateString()}</span>
+    const isInstructor = currentUser && currentUser.role === 'instructor';
+
+    list.innerHTML = cohorts.map((c) => {
+      const actionButton = isInstructor
+        ? `<button class="settings-delete-cohort-btn" data-cohort-id="${escapeHtml(c.id)}" data-cohort-name="${escapeHtml(c.name)}">Delete cohort</button>`
+        : `<button class="settings-leave-btn" data-cohort-id="${escapeHtml(c.id)}" data-cohort-name="${escapeHtml(c.name)}">Leave</button>`;
+      const metaLine = isInstructor || !c.joinedAt
+        ? ''
+        : `<span class="settings-class-meta">joined ${new Date(c.joinedAt).toLocaleDateString()}</span>`;
+      return `
+        <div class="settings-class-row">
+          <div>
+            <div class="settings-class-name">${escapeHtml(c.name)}</div>
+            ${metaLine}
+          </div>
+          ${actionButton}
         </div>
-        <button class="settings-leave-btn" data-cohort-id="${escapeHtml(c.id)}" data-cohort-name="${escapeHtml(c.name)}">Leave</button>
-      </div>
-    `).join('');
+      `;
+    }).join('');
 
     list.querySelectorAll('.settings-leave-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         leaveClass(btn.dataset.cohortId, btn.dataset.cohortName);
       });
     });
+
+    list.querySelectorAll('.settings-delete-cohort-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        deleteCohortData(btn.dataset.cohortId, btn.dataset.cohortName);
+      });
+    });
   } catch (err) {
     list.innerHTML = '<p class="empty-state">Failed: ' + escapeHtml(err.message) + '</p>';
   }
+}
+
+/**
+ * Instructor-only: permanently delete a cohort and all of its data.
+ * Uses the confirm-by-typing modal — the instructor must type the
+ * cohort name exactly.
+ */
+function deleteCohortData(cohortId, cohortName) {
+  showConfirmModal({
+    title: 'Delete "' + cohortName + '"?',
+    message:
+      '<p>This will permanently erase:</p>' +
+      '<ul style="margin:6px 0 10px 20px;padding:0;">' +
+      '<li>Every student\'s sessions, hypotheses, post-mortems, ' +
+      'mistake patterns, and telemetry for exercises in this cohort</li>' +
+      '<li>The cohort\'s exercises</li>' +
+      '<li>All cohort membership and tutor notes</li>' +
+      '<li>The cohort itself</li>' +
+      '</ul>' +
+      '<p class="confirm-modal-warn">Students\' accounts are <b>not</b> deleted — they remain registered but unenrolled.</p>' +
+      '<p>This action cannot be undone.</p>',
+    requiredText: cohortName,
+    confirmLabel: 'Delete cohort',
+    onConfirm: async () => {
+      try {
+        const res = await fetch('/api/cohorts/' + encodeURIComponent(cohortId) + '/data', {
+          method: 'DELETE',
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          alert(data.error || 'Deletion failed.');
+          return false;
+        }
+        const r = data.removed || {};
+        const parts = [];
+        for (const k of Object.keys(r)) {
+          if (r[k]) parts.push(r[k] + ' ' + k.replace(/_/g,' '));
+        }
+        alert('Deleted: ' + (parts.join(', ') || 'no rows') + '.');
+        await loadSettingsClasses();
+        return true;
+      } catch (err) {
+        alert('Failed: ' + err.message);
+        return false;
+      }
+    },
+  });
+}
+
+/**
+ * Self-service account deletion. Instructors with cohorts get a
+ * 409 with the list of blockers, which we show inline.
+ */
+function deleteMyAccount() {
+  const user = currentUser;
+  const requiredText = 'DELETE';
+  showConfirmModal({
+    title: 'Delete your account?',
+    message:
+      '<p>This will permanently erase your account and everything associated with it:</p>' +
+      '<ul style="margin:6px 0 10px 20px;padding:0;">' +
+      '<li>Your profile (name, email)</li>' +
+      '<li>All of your work</li>' +
+      '<li>Any tutor notes or feedback you have authored</li>' +
+      '</ul>' +
+      '<p class="confirm-modal-warn">If you are an instructor, you must delete or transfer your cohorts first.</p>' +
+      '<p>This action cannot be undone.</p>',
+    requiredText,
+    confirmLabel: 'Delete my account',
+    onConfirm: async () => {
+      try {
+        const res = await fetch('/api/auth/me/account', { method: 'DELETE' });
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 409) {
+          const names = (data.cohorts || []).map((c) => c.name).join(', ');
+          alert('You still own these cohorts: ' + names + '.\n\nDelete them first, then try again.');
+          return false;
+        }
+        if (!res.ok) {
+          alert(data.error || 'Account deletion failed.');
+          return false;
+        }
+        alert('Your account has been deleted. You will be signed out.');
+        // Logout and reload
+        window.location.href = '/';
+        return true;
+      } catch (err) {
+        alert('Failed: ' + err.message);
+        return false;
+      }
+    },
+  });
 }
 
 async function leaveClass(cohortId, cohortName) {
@@ -3203,6 +3339,8 @@ document.addEventListener('click', (e) => {
     if (currentStudentId) {
       window.location = '/api/admin/students/' + encodeURIComponent(currentStudentId) + '/export.csv';
     }
+  } else if (t.id === 'deleteAccountBtn') {
+    deleteMyAccount();
   } else if (t.id === 'openPrivacyBtn') {
     showPrivacy();
   } else if (t.id === 'backFromPrivacyBtn') {

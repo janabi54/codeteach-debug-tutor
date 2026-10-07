@@ -143,7 +143,26 @@ router.delete('/:cohortId/leave', requireAuth, async (req, res) => {
 // the caller belongs to.
 // ─────────────────────────────────────────────────────────────
 router.get('/mine', requireAuth, async (req, res) => {
-  const cohorts = await db.cohorts.listForUser(req.user!.id);
+  const user = req.user!;
+
+  // Instructors: cohorts they OWN (cohorts.instructor_id). They never
+  // appear in cohort_members for their own cohorts.
+  if (user.role === 'instructor') {
+    const owned = await db.cohorts.listByInstructor(user.id);
+    return res.json(
+      owned.map((c) => ({
+        id: c.id,
+        name: c.name,
+        // Instructors don't "join" — expose the cohort's timestamp so the
+        // client has something to render. Client hides the joined label
+        // for instructors anyway.
+        joinedAt: null,
+      }))
+    );
+  }
+
+  // Students: cohorts they are a member of.
+  const cohorts = await db.cohorts.listForUser(user.id);
   res.json(
     cohorts.map((c) => ({
       id: c.id,

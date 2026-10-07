@@ -2715,3 +2715,36 @@ body.privacy-open .privacy-view {
 .confirm-modal-actions {
   align-items: center !important;
 }
+
+/* ── Settings modal: danger section + cohort delete button ── */
+.settings-danger-section {
+  border-top: 1px solid #fee2e2;
+  background: #fffafa;
+  margin-top: 12px;
+  padding-top: 16px;
+}
+.settings-heading-danger {
+  color: #991b1b;
+}
+.settings-danger-section .settings-hint {
+  color: #7c2d12;
+}
+.settings-danger-section #deleteAccountBtn {
+  margin-top: 10px;
+}
+
+.settings-delete-cohort-btn {
+  background: transparent;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: #991b1b;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.settings-delete-cohort-btn:hover {
+  background: #fef2f2;
+  border-color: #dc2626;
+}

@@ -62,7 +62,7 @@
         <span class="user-menu-caret">▾</span>
       </button>
       <div id="userMenuDropdown" class="user-menu-dropdown" hidden>
-        <button id="openSettingsBtn" class="user-menu-item">Join Class</button>
+        <button id="openSettingsBtn" class="user-menu-item">Classes</button>
         <button id="openPrivacyBtn" class="user-menu-item">Privacy notice</button>
         <button id="logoutBtn" class="user-menu-item">Log out</button>
       </div>
@@ -704,6 +704,16 @@ for (let i = 0; i < arr.length; i++) {
         <button id="settingsJoinBtn" class="primary small">Join</button>
       </div>
       <p id="settingsJoinMessage" class="settings-join-message" hidden></p>
+    </div>
+
+    <div class="settings-section settings-danger-section">
+      <h3 class="settings-heading settings-heading-danger">Danger zone</h3>
+      <p class="settings-hint">
+        Deleting your account permanently removes your profile and all of your
+        work — sessions, hypotheses, post-mortems, mistake patterns, and
+        telemetry. Instructors must delete or transfer their cohorts first.
+      </p>
+      <button id="deleteAccountBtn" class="danger small">Delete my account</button>
     </div>
 
     <div class="modal-footer">
