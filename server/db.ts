@@ -179,6 +179,12 @@ if (!hasScoreSource) {
   console.log('[db] migrated: added hypotheses.score_source');
 }
 
+const hasOutcome = hypothesisColumns.some((c) => c.name === 'outcome');
+if (!hasOutcome) {
+  sqlite.exec('ALTER TABLE hypotheses ADD COLUMN outcome TEXT');
+  console.log('[db] migrated: added hypotheses.outcome');
+}
+
 
 export interface TutorFeedback {
   id: string;
@@ -382,6 +388,9 @@ const stmt = {
   ),
   postMortemStatsByStudent: sqlite.prepare(
     "SELECT pattern, COALESCE(score, 'unscored') AS score, COUNT(*) AS n FROM post_mortems WHERE student_id = ? AND pattern IS NOT NULL GROUP BY pattern, score"
+  ),
+  updateHypothesisOutcome: sqlite.prepare(
+    `UPDATE hypotheses SET outcome = ? WHERE id = ? AND student_id = ? AND exercise_id = ?`
   ),
   postMortemScoreCounts: sqlite.prepare(
     "SELECT COALESCE(score, 'unscored') AS score, COUNT(*) AS n FROM post_mortems WHERE student_id = ? GROUP BY score"
@@ -1107,6 +1116,13 @@ export const db = {
         durationMinutes: number | null;
       }>;
       timeMetrics: TimeMetrics;
+      hypothesisOutcomes: {
+        confirmed: number;
+        refuted: number;
+        unclear: number;
+        untested: number;
+        confirmationRate: number | null;
+      };
       trends: {
         reasoningQuality: { points: Array<{ weekStart: string; value: number | null; sample: number }>; classification: 'improving' | 'worsening' | 'stable' };
         hintDependency: { points: Array<{ weekStart: string; value: number | null; sample: number }>; classification: 'improving' | 'worsening' | 'stable' };
@@ -1128,6 +1144,10 @@ export const db = {
           weakSpots: [],
           sessionHistory: [],
           timeMetrics: deriveTimeMetrics([]),
+          hypothesisOutcomes: {
+            confirmed: 0, refuted: 0, unclear: 0, untested: 0,
+            confirmationRate: null,
+          },
           trends: {
             reasoningQuality: emptyTrend,
             hintDependency: emptyTrend,
@@ -1290,6 +1310,28 @@ export const db = {
         }))
       );
 
+      // Hypothesis outcomes summary
+      const outcomeRows = sqlite
+        .prepare(
+          `SELECT COALESCE(outcome, 'untested') AS outcome, COUNT(*) AS n
+           FROM hypotheses
+           WHERE student_id = ? AND exercise_id IN (${placeholders})
+           GROUP BY outcome`
+        )
+        .all(studentId, ...exerciseIds) as Array<{ outcome: string; n: number }>;
+      const ho = { confirmed: 0, refuted: 0, unclear: 0, untested: 0 };
+      for (const r of outcomeRows) {
+        if (r.outcome === 'confirmed') ho.confirmed = r.n;
+        else if (r.outcome === 'refuted') ho.refuted = r.n;
+        else if (r.outcome === 'unclear') ho.unclear = r.n;
+        else ho.untested += r.n;
+      }
+      const tested = ho.confirmed + ho.refuted;
+      const hypothesisOutcomes = {
+        ...ho,
+        confirmationRate: tested > 0 ? ho.confirmed / tested : null,
+      };
+
       return {
         metrics: {
           reasoningQuality: reasoning,
@@ -1302,6 +1344,7 @@ export const db = {
         weakSpots: weakRows.map((r) => ({ pattern: r.pattern, count: r.n })),
         sessionHistory: sessionRows,
         timeMetrics,
+        hypothesisOutcomes,
         trends: {
           reasoningQuality: {
             points: reasoningTrend,
@@ -1336,6 +1379,7 @@ export const db = {
         level: number;
         text: string;
         quality: string | null;
+        outcome: string | null;
         createdAt: string;
         tutorFeedback: TutorFeedback[];
       }>;
@@ -1360,7 +1404,7 @@ export const db = {
 
       const hypotheses = sqlite
         .prepare(
-          `SELECT id, hint_level AS level, text, quality, recorded_at AS createdAt
+          `SELECT id, hint_level AS level, text, quality, outcome, recorded_at AS createdAt
            FROM hypotheses
            WHERE student_id = ? AND exercise_id = ?
            ORDER BY recorded_at ASC`
@@ -1409,6 +1453,33 @@ export const db = {
         hypotheses: hypothesesWithFeedback,
         postMortems: postMortemsWithFeedback,
       };
+    },
+
+    /**
+     * Set or clear a hypothesis outcome. Only three values allowed
+     * plus null (which clears).
+     */
+    updateHypothesisOutcome(
+      studentId: string,
+      exerciseId: string,
+      hypothesisId: number,
+      outcome: 'confirmed' | 'refuted' | 'unclear' | null
+    ): boolean {
+      if (
+        outcome !== null &&
+        outcome !== 'confirmed' &&
+        outcome !== 'refuted' &&
+        outcome !== 'unclear'
+      ) {
+        throw new Error('Invalid outcome value.');
+      }
+      const result = stmt.updateHypothesisOutcome.run(
+        outcome,
+        hypothesisId,
+        studentId,
+        exerciseId
+      );
+      return result.changes > 0;
     },
 
     /**

@@ -2322,10 +2322,13 @@ function clearStudentDetail() {
   $('sdStatusBadge').innerHTML = '';
   $('sdReasoningValue').textContent = '—';
   $('sdReasoningSub').textContent = 'Loading...';
+  var rqm = $('sdReasoningMeta'); if (rqm) rqm.innerHTML = '';
   $('sdHintDepValue').textContent = '—';
   $('sdHintDepSub').textContent = 'Loading...';
+  var hdm = $('sdHintDepMeta'); if (hdm) hdm.innerHTML = '';
   $('sdProgressValue').textContent = '—';
   $('sdProgressSub').textContent = 'Loading...';
+  var pgm = $('sdProgressMeta'); if (pgm) pgm.innerHTML = '';
   // Clear sparkline containers so switching students doesn't show stale trends
   var rt = $('sdReasoningTrend'); if (rt) rt.innerHTML = '';
   var ht = $('sdHintDepTrend'); if (ht) ht.innerHTML = '';
@@ -2376,45 +2379,68 @@ function renderStudentDetail(data) {
   renderActivity(data.activity);
 
   // Reasoning quality card
+  // NOTE: sdReasoningSub is owned by renderTrends (writes the trend label).
+  // We write the metric breakdown + outcomes summary into sdReasoningMeta,
+  // which renderTrends never touches.
   const rq = data.metrics.reasoningQuality;
+  const rqMeta = $('sdReasoningMeta');
   if (rq.total === 0) {
     $('sdReasoningValue').textContent = '—';
-    $('sdReasoningSub').textContent = 'No hypotheses yet';
+    if (rqMeta) rqMeta.textContent = 'No hypotheses yet';
   } else {
     const precisePct = Math.round((rq.precise / rq.total) * 100);
     $('sdReasoningValue').textContent = precisePct + '%';
-    $('sdReasoningSub').textContent = rq.precise + ' precise · ' + rq.plausible + ' plausible · ' + rq.vague + ' vague' +
+    let meta = rq.precise + ' precise · ' + rq.plausible + ' plausible · ' + rq.vague + ' vague' +
       (rq.unscored ? ' · ' + rq.unscored + ' unscored' : '');
+    const ho = data.hypothesisOutcomes;
+    if (ho && (ho.confirmed + ho.refuted + ho.unclear + ho.untested) > 0) {
+      const parts = [];
+      if (ho.confirmed) parts.push(ho.confirmed + ' ✓');
+      if (ho.refuted) parts.push(ho.refuted + ' ✗');
+      if (ho.unclear) parts.push(ho.unclear + ' ?');
+      if (ho.untested) parts.push(ho.untested + ' untested');
+      meta += '<br><span class="sd-outcomes-line">Outcomes: ' + parts.join(' · ') + '</span>';
+    }
+    if (rqMeta) rqMeta.innerHTML = meta;
   }
 
   // Hint dependency card
+  // sdHintDepSub is owned by renderTrends. Metric description goes to meta.
   const hd = data.metrics.hintDependency;
+  const hdMeta = $('sdHintDepMeta');
   if (hd.sessions === 0) {
     $('sdHintDepValue').textContent = '—';
-    $('sdHintDepSub').textContent = 'No completed sessions';
+    if (hdMeta) hdMeta.textContent = 'No completed sessions';
   } else {
     $('sdHintDepValue').textContent = hd.avgHintsPerSession.toFixed(1);
-    $('sdHintDepSub').textContent = 'hints per session · ' + hd.sessions + ' completed session' + (hd.sessions === 1 ? '' : 's');
+    if (hdMeta) {
+      hdMeta.textContent = 'hints per session · ' + hd.sessions + ' completed session' + (hd.sessions === 1 ? '' : 's');
+    }
   }
 
-  // Progress card — prefer server-computed { completed, assigned, percent }
+  // Progress card — sub is owned by renderTrends. Bar + caption go to meta.
   const prog = data.progress || null;
+  const progMeta = $('sdProgressMeta');
   if (prog && prog.assigned > 0) {
     $('sdProgressValue').textContent = prog.completed + ' / ' + prog.assigned;
-    $('sdProgressSub').innerHTML =
-      renderFullProgress(prog.completed, prog.assigned, prog.percent) +
-      '<div class="sd-progress-caption">' +
-        Math.round(prog.percent * 100) + '% of assigned exercises complete' +
-      '</div>';
+    if (progMeta) {
+      progMeta.innerHTML =
+        renderFullProgress(prog.completed, prog.assigned, prog.percent) +
+        '<div class="sd-progress-caption">' +
+          Math.round(prog.percent * 100) + '% of assigned exercises complete' +
+        '</div>';
+    }
   } else {
     const attempted = (data.sessionHistory || []).length;
     const completed = (data.sessionHistory || []).filter((s) => s.state === 'complete').length;
     if (attempted === 0) {
       $('sdProgressValue').textContent = '—';
-      $('sdProgressSub').textContent = 'No exercises attempted';
+      if (progMeta) progMeta.textContent = 'No exercises attempted';
     } else {
       $('sdProgressValue').textContent = completed + ' / ' + attempted;
-      $('sdProgressSub').textContent = Math.round((completed / attempted) * 100) + '% complete';
+      if (progMeta) {
+        progMeta.textContent = Math.round((completed / attempted) * 100) + '% complete';
+      }
     }
   }
 
@@ -2705,6 +2731,7 @@ function renderExerciseDetail(data) {
           <span class="sed-item-time">${h.createdAt ? relativeTime(h.createdAt) : ''}</span>
         </div>
         <div class="sed-item-body">${escapeHtml(h.text)}</div>
+        ${renderOutcomeRow(h.id, h.outcome)}
         ${renderTutorFeedback(h.tutorFeedback)}
       </div>
     `).join('');
@@ -2727,6 +2754,60 @@ function renderExerciseDetail(data) {
         ${renderTutorFeedback(pm.tutorFeedback)}
       </div>
     `).join('');
+  }
+}
+
+/**
+ * Render the outcome row for a hypothesis: 4 pills (Confirmed / Refuted
+ * / Unclear / Clear). The currently-active outcome is highlighted.
+ */
+function renderOutcomeRow(hypothesisId, currentOutcome) {
+  function pill(value, label, extraClass) {
+    const active = (currentOutcome || null) === value;
+    return '<button class="outcome-pill ' + (extraClass || '') + (active ? ' active' : '') +
+      '" data-hypothesis-id="' + hypothesisId + '" data-outcome="' + (value || '') + '">' +
+      label + '</button>';
+  }
+  return (
+    '<div class="sed-outcome-row">' +
+      '<span class="sed-outcome-label">Outcome:</span>' +
+      pill('confirmed', '✓ Confirmed', 'outcome-confirmed') +
+      pill('refuted', '✗ Refuted', 'outcome-refuted') +
+      pill('unclear', '? Unclear', 'outcome-unclear') +
+      (currentOutcome ? '<button class="outcome-pill outcome-clear" data-hypothesis-id="' + hypothesisId + '" data-outcome="">Clear</button>' : '') +
+    '</div>'
+  );
+}
+
+/**
+ * Handle clicks on outcome pills: PATCH the server, then re-fetch the
+ * exercise detail so the UI reflects the new state.
+ */
+async function handleOutcomeClick(btn) {
+  const hypothesisId = btn.dataset.hypothesisId;
+  const outcomeRaw = btn.dataset.outcome;
+  const outcome = outcomeRaw === '' ? null : outcomeRaw;
+
+  try {
+    const res = await fetch(
+      '/api/admin/students/' + encodeURIComponent(currentStudentId) +
+      '/exercises/' + encodeURIComponent(currentExerciseId) +
+      '/hypotheses/' + encodeURIComponent(hypothesisId) + '/outcome',
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ outcome }),
+      }
+    );
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || 'Could not update outcome.');
+      return;
+    }
+    // Re-fetch exercise detail to refresh counts + active pill
+    await openExerciseDetail(currentStudentId, currentExerciseId, $('sedExerciseTitle').textContent);
+  } catch (err) {
+    alert('Failed: ' + err.message);
   }
 }
 
@@ -2768,6 +2849,10 @@ function renderTutorFeedback(items) {
 function wireTutorFeedbackHandlers() {
   const root = document.getElementById('studentExerciseDetailView');
   if (!root) return;
+
+  root.querySelectorAll('.outcome-pill').forEach((btn) => {
+    btn.addEventListener('click', () => handleOutcomeClick(btn));
+  });
 
   root.querySelectorAll('.sed-tutor-feedback-add').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -3320,10 +3405,10 @@ function renderOneTrend(trendElId, subElId, trend, opts) {
   const points = trend.points || [];
   const validCount = points.filter((p) => p.value !== null).length;
 
-  // 0 or 1 valid point: there is no direction to describe, so leave the
-  // sub-label set by renderStudentDetail() intact (it carries the actual
-  // metric description). Only render the sparkline if we have 1 point,
-  // and clear it if we have none.
+  // 0 or 1 valid point: no direction to describe. Clear the sub-label
+  // entirely — the metric's description lives in the sd-metric-meta
+  // element below it, so an empty sub is fine.
+  // Render the sparkline if we have 1 point; clear it if we have none.
   if (validCount < 2) {
     if (validCount === 1) {
       trendEl.innerHTML = renderSparkline(points, {
@@ -3334,6 +3419,7 @@ function renderOneTrend(trendElId, subElId, trend, opts) {
     } else {
       trendEl.innerHTML = '';
     }
+    if (subEl) subEl.textContent = '';
     return;
   }
 

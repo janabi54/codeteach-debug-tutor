@@ -447,6 +447,46 @@ router.get('/:studentId/exercises/:exerciseId', requireInstructor, async (req, r
 });
 
 // ─────────────────────────────────────────────────────────────
+// PATCH /api/admin/students/:studentId/exercises/:exerciseId/hypotheses/:hypothesisId/outcome
+// Set or clear the outcome for one hypothesis. Body:
+//   { outcome: 'confirmed' | 'refuted' | 'unclear' | null }
+// ─────────────────────────────────────────────────────────────
+router.patch(
+  '/:studentId/exercises/:exerciseId/hypotheses/:hypothesisId/outcome',
+  requireInstructor,
+  async (req, res) => {
+    const instructorId = req.user!.id;
+    const { studentId, exerciseId, hypothesisId } = req.params;
+    const { outcome } = req.body as { outcome?: string | null };
+
+    if (!canInstructorViewStudentOnExercise(instructorId, studentId, exerciseId)) {
+      return res.status(403).json({ error: 'You do not teach this student on this exercise.' });
+    }
+
+    const allowed = ['confirmed', 'refuted', 'unclear', null];
+    if (!allowed.includes(outcome ?? null)) {
+      return res.status(400).json({ error: 'outcome must be confirmed, refuted, unclear, or null.' });
+    }
+
+    const parsed = Number(hypothesisId);
+    if (!Number.isFinite(parsed)) {
+      return res.status(400).json({ error: 'Invalid hypothesis id.' });
+    }
+
+    const ok = db.students.updateHypothesisOutcome(
+      studentId,
+      exerciseId,
+      parsed,
+      (outcome ?? null) as 'confirmed' | 'refuted' | 'unclear' | null
+    );
+    if (!ok) {
+      return res.status(404).json({ error: 'Hypothesis not found.' });
+    }
+    res.json({ ok: true, outcome: outcome ?? null });
+  }
+);
+
+// ─────────────────────────────────────────────────────────────
 // DELETE /api/admin/students/:studentId/exercises/:exerciseId/progress
 // Reset a student's progress on one exercise. Removes their sessions,
 // hypotheses, post-mortems, and mistake patterns for that exercise.
