@@ -2205,3 +2205,101 @@ button.danger.small {
   justify-content: flex-end;
   margin-top: 6px;
 }
+
+/* ── Activity heatmap (Tier 3) ── */
+.sd-activity {
+  background: #fff;
+  border: 1px solid #e4e6eb;
+  border-radius: 10px;
+  padding: 18px 20px;
+  margin: 4px 0 20px;
+}
+.sd-activity .sd-section-heading {
+  margin: 0 0 12px;
+}
+.sd-activity-grid-wrap {
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+/* Grid layout (detail page) */
+.activity-grid {
+  display: grid;
+  /* grid-template-columns is set inline (depends on week count) */
+  grid-auto-rows: 12px;
+  gap: 3px;
+  align-items: center;
+}
+.activity-row-label {
+  font-size: 10px;
+  color: #7a7f88;
+  text-align: right;
+  padding-right: 4px;
+  line-height: 12px;
+}
+.activity-cell {
+  display: inline-block;
+  border-radius: 2px;
+  background: #ebedf0;
+  cursor: default;
+}
+.activity-cell.lvl-empty { background: transparent; }
+.activity-cell.lvl-0 { background: #ebedf0; }
+.activity-cell.lvl-1 { background: #c7d2fe; }
+.activity-cell.lvl-2 { background: #818cf8; }
+.activity-cell.lvl-3 { background: #4f46e5; }
+
+/* Month labels above the grid */
+.activity-months {
+  display: flex;
+  gap: 3px;
+  margin-bottom: 4px;
+  padding-left: 26px;
+}
+.activity-month {
+  width: 12px;
+  font-size: 10px;
+  color: #7a7f88;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  overflow: visible;
+}
+
+/* Summary pills */
+.sd-activity-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.sd-activity-pill {
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #3730a3;
+  font-weight: 500;
+}
+.sd-activity-pill-muted {
+  background: #f3f4f6;
+  color: #4b5563;
+  font-weight: 400;
+}
+
+/* Roster compact strip */
+.roster-activity {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.activity-strip {
+  display: flex;
+  gap: 2px;
+}
+.roster-activity-streak {
+  font-size: 11px;
+  color: #4f46e5;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}

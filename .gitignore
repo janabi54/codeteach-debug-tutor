@@ -53,3 +53,4 @@ Thumbs.db
 *.orig
 *.rej
 verify-feedback.ts
+verify-activity.ts

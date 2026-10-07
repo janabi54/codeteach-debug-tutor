@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { fillWeeks, lastNWeekStarts, classifyTrend } from './util/weeks.js';
 import { deriveStrengths, type Strength } from './util/strengths.js';
+import { buildActivitySummary, type ActivitySummary } from './util/activity.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -1009,6 +1010,78 @@ export const db = {
         hintDependency: hintMap.has(studentId) ? hintMap.get(studentId)! : null,
         progress: progressMap.has(studentId) ? progressMap.get(studentId)! : 0,
       }));
+    },
+
+    /**
+     * Per-student activity summary over the last N days, for the
+     * heatmap. Batched across multiple students in a single call
+     * (used by the roster). Returns a Map keyed by student_id.
+     *
+     * Counts events from three sources (no telemetry in v1):
+     *   - hypotheses.recorded_at
+     *   - hint_sessions.updated_at
+     *   - post_mortems.recorded_at
+     */
+    activityForMany(
+      studentIds: string[],
+      exerciseIds: string[],
+      days: number
+    ): Map<string, ActivitySummary> {
+      const out = new Map<string, ActivitySummary>();
+      if (studentIds.length === 0 || exerciseIds.length === 0) {
+        for (const id of studentIds) out.set(id, buildActivitySummary([], days));
+        return out;
+      }
+
+      const sPlaceholders = studentIds.map(() => '?').join(',');
+      const ePlaceholders = exerciseIds.map(() => '?').join(',');
+
+      // UNION ALL across sources, grouped by (student, date)
+      const rows = sqlite
+        .prepare(
+          `SELECT student_id AS studentId, day, SUM(n) AS n FROM (
+             SELECT student_id, date(recorded_at) AS day, COUNT(*) AS n
+             FROM hypotheses
+             WHERE student_id IN (${sPlaceholders})
+               AND exercise_id IN (${ePlaceholders})
+               AND recorded_at >= datetime('now', '-' || ? || ' days')
+             GROUP BY student_id, day
+             UNION ALL
+             SELECT student_id, date(updated_at) AS day, COUNT(*) AS n
+             FROM hint_sessions
+             WHERE student_id IN (${sPlaceholders})
+               AND exercise_id IN (${ePlaceholders})
+               AND updated_at >= datetime('now', '-' || ? || ' days')
+             GROUP BY student_id, day
+             UNION ALL
+             SELECT student_id, date(recorded_at) AS day, COUNT(*) AS n
+             FROM post_mortems
+             WHERE student_id IN (${sPlaceholders})
+               AND exercise_id IN (${ePlaceholders})
+               AND recorded_at >= datetime('now', '-' || ? || ' days')
+             GROUP BY student_id, day
+           )
+           GROUP BY studentId, day
+           ORDER BY studentId, day`
+        )
+        .all(
+          ...studentIds, ...exerciseIds, days,
+          ...studentIds, ...exerciseIds, days,
+          ...studentIds, ...exerciseIds, days
+        ) as Array<{ studentId: string; day: string; n: number }>;
+
+      // Bucket per student
+      const byStudent = new Map<string, Array<{ date: string; count: number }>>();
+      for (const r of rows) {
+        if (!byStudent.has(r.studentId)) byStudent.set(r.studentId, []);
+        byStudent.get(r.studentId)!.push({ date: r.day, count: r.n });
+      }
+
+      for (const id of studentIds) {
+        const events = byStudent.get(id) || [];
+        out.set(id, buildActivitySummary(events, days));
+      }
+      return out;
     },
 
     /**

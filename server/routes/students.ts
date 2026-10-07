@@ -48,6 +48,20 @@ router.get('/', requireInstructor, async (req, res) => {
     if (entry.joinedAt < s.joinedAt) s.joinedAt = entry.joinedAt;
   }
 
+  // Batch: compute activity for all students in one go
+  const studentIds = Array.from(byStudent.keys());
+  const allExercisesByStudent = new Map<string, string[]>();
+  for (const sid of studentIds) {
+    allExercisesByStudent.set(sid, viewableExerciseIdsFor(instructorId, sid));
+  }
+  // Union of all exercises across students — used as the IN list. Since a
+  // student only counts events on their own viewable exercises, having a
+  // shared exercise set here is fine (extra IDs on the list are harmless).
+  const allExercises = Array.from(new Set(
+    Array.from(allExercisesByStudent.values()).flat()
+  ));
+  const activityMap = db.students.activityForMany(studentIds, allExercises, 30);
+
   const students = [];
   for (const s of byStudent.values()) {
     const user = await db.users.findById(s.studentId);
@@ -78,6 +92,7 @@ router.get('/', requireInstructor, async (req, res) => {
         return { status: r.status, statusReasons: r.reasons };
       })(),
       assigned: exerciseIds.length,
+      activity30d: activityMap.get(s.studentId) || null,
     });
   }
 
@@ -142,6 +157,10 @@ router.get('/:studentId', requireInstructor, async (req, res) => {
     percent: assigned > 0 ? completed / assigned : 0,
   };
 
+  // Activity heatmap (90 days)
+  const activityMap = db.students.activityForMany([studentId], exerciseIds, 90);
+  const activity = activityMap.get(studentId) || null;
+
   // Cohort comparison: same-cohort peers only
   const { peerIds, cohortNames } = cohortPeersFor(instructorId, studentId);
   let cohortComparison: CohortComparison | null = null;
@@ -199,6 +218,7 @@ router.get('/:studentId', requireInstructor, async (req, res) => {
     nextAction,
     progress,
     cohortComparison,
+    activity,
   });
 });
 

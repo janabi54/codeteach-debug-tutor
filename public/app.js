@@ -1812,7 +1812,7 @@ async function loadStudentsRoster() {
           <tr>
             <th>Student</th>
             <th>Classes</th>
-            <th>Attempted</th>
+            <th>Activity (30d)</th>
             <th>Completed</th>
             <th>Last active</th>
             <th>Status</th>
@@ -1826,7 +1826,7 @@ async function loadStudentsRoster() {
                 <span class="student-email-cell">${escapeHtml(s.email)}</span>
               </td>
               <td>${s.cohortNames.map((n) => escapeHtml(n)).join(', ')}</td>
-              <td>${s.exercisesAttempted}</td>
+              <td>${renderRosterActivity(s.activity30d)}</td>
               <td>${renderCompactProgress(s.exercisesCompleted, s.assigned)}</td>
               <td>${s.lastActiveAt ? relativeTime(s.lastActiveAt) : '—'}</td>
               <td>${renderStatusBadge(s.status, s.statusReasons)}</td>
@@ -1891,6 +1891,203 @@ function renderFullProgress(completed, assigned, percent) {
   return (
     '<div class="sd-progress-bar-lg">' +
       '<div class="sd-progress-bar-lg-fill ' + cls + '" style="width:' + Math.round(percent * 100) + '%"></div>' +
+    '</div>'
+  );
+}
+
+/**
+ * Render the activity heatmap panel on the student detail page.
+ * `activity` = { windowDays, events, totalEvents, currentStreak,
+ *                longestStreak, mostActiveDay }
+ */
+function renderActivity(activity) {
+  const el = $('sdActivity');
+  if (!el) return;
+
+  if (!activity || activity.totalEvents === 0) {
+    el.style.display = 'none';
+    el.innerHTML = '';
+    return;
+  }
+
+  const grid = renderActivityGrid(activity, { days: 90, cellSize: 12, showLabels: true });
+
+  const streakLabel = activity.currentStreak > 0
+    ? activity.currentStreak + '-day streak'
+    : 'No current streak';
+  const longestLabel = 'Longest: ' + activity.longestStreak + ' day' +
+    (activity.longestStreak === 1 ? '' : 's');
+  const totalLabel = activity.totalEvents + ' event' +
+    (activity.totalEvents === 1 ? '' : 's') + ' in ' + activity.windowDays + ' days';
+
+  el.style.display = 'block';
+  el.innerHTML =
+    '<h3 class="sd-section-heading">Activity</h3>' +
+    '<div class="sd-activity-grid-wrap">' + grid + '</div>' +
+    '<div class="sd-activity-summary">' +
+      '<span class="sd-activity-pill">' + escapeHtml(streakLabel) + '</span>' +
+      '<span class="sd-activity-pill sd-activity-pill-muted">' + escapeHtml(longestLabel) + '</span>' +
+      '<span class="sd-activity-pill sd-activity-pill-muted">' + escapeHtml(totalLabel) + '</span>' +
+    '</div>';
+}
+
+/**
+ * Reusable heatmap grid renderer. Used by the detail page (larger)
+ * and by the roster cell (compact).
+ *
+ * opts = { days, cellSize, showLabels, orientation }
+ *   days        — number of trailing days to render (90 or 30)
+ *   cellSize    — px size of a cell (12 for detail, 8 for roster)
+ *   showLabels  — month labels above + weekday labels left
+ *   orientation — 'grid' (detail: 7 rows × N cols) or 'strip'
+ *                 (roster: 1 row × N cols, no weekday labels)
+ */
+function renderActivityGrid(activity, opts) {
+  opts = opts || {};
+  const days = opts.days || 90;
+  const cellSize = opts.cellSize || 12;
+  const showLabels = opts.showLabels !== false;
+  const orientation = opts.orientation || 'grid';
+
+  // Build a date → count map from the events
+  const byDate = new Map();
+  for (const e of activity.events) byDate.set(e.date, e.count);
+
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+
+  // Date array of length `days`, oldest first
+  const dates = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(today);
+    d.setUTCDate(today.getUTCDate() - i);
+    dates.push(d.toISOString().slice(0, 10));
+  }
+
+  if (orientation === 'strip') {
+    return renderActivityStrip(dates, byDate, cellSize);
+  }
+  return renderActivityWeeks(dates, byDate, cellSize, showLabels);
+}
+
+function activityLevel(count) {
+  if (!count || count <= 0) return 0;
+  if (count === 1) return 1;
+  if (count === 2) return 2;
+  return 3;
+}
+
+function renderActivityStrip(dates, byDate, cellSize) {
+  let html = '<div class="activity-strip">';
+  for (const d of dates) {
+    const count = byDate.get(d) || 0;
+    const lvl = activityLevel(count);
+    html += '<span class="activity-cell lvl-' + lvl + '" style="width:' +
+      cellSize + 'px;height:' + cellSize + 'px;" title="' +
+      escapeHtml(d + ' · ' + count + ' event' + (count === 1 ? '' : 's')) +
+      '"></span>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function renderActivityWeeks(dates, byDate, cellSize, showLabels) {
+  // Pad the start so the first column begins on a Monday
+  const firstDate = new Date(dates[0] + 'T00:00:00Z');
+  const firstDow = firstDate.getUTCDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+  const padBefore = (firstDow + 6) % 7;   // days since Monday
+
+  const cells = [];
+  for (let i = 0; i < padBefore; i++) cells.push(null);
+  for (const d of dates) cells.push(d);
+  // Pad to a full week
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const weeks = [];
+  for (let i = 0; i < cells.length; i += 7) {
+    weeks.push(cells.slice(i, i + 7));
+  }
+
+  const rowLabels = showLabels ? ['Mon', '', 'Wed', '', 'Fri', '', ''] : null;
+  const cellTitle = (d) => {
+    if (!d) return '';
+    const count = byDate.get(d) || 0;
+    return d + ' · ' + count + ' event' + (count === 1 ? '' : 's');
+  };
+
+  // Month labels above: find the first cell of each month across weeks
+  let monthHeader = '';
+  if (showLabels) {
+    monthHeader = '<div class="activity-months" style="margin-left:26px;">';
+    let lastMonth = '';
+    for (const week of weeks) {
+      const firstWithDate = week.find((c) => c);
+      if (!firstWithDate) {
+        monthHeader += '<span class="activity-month"></span>';
+        continue;
+      }
+      const m = firstWithDate.slice(0, 7);
+      if (m !== lastMonth) {
+        const label = new Date(firstWithDate + 'T00:00:00Z')
+          .toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
+        monthHeader += '<span class="activity-month">' + label + '</span>';
+        lastMonth = m;
+      } else {
+        monthHeader += '<span class="activity-month"></span>';
+      }
+    }
+    monthHeader += '</div>';
+  }
+
+  // Grid body — explicit column count so each weekday is exactly one row.
+  // CSS grid flows row-by-row, so 7 rows × (1 label + N week cells) lays
+  // out cleanly without needing break elements.
+  const cols = weeks.length;
+  let grid = '<div class="activity-grid" style="grid-template-columns:26px repeat(' +
+    cols + ', ' + cellSize + 'px);">';
+  for (let row = 0; row < 7; row++) {
+    if (rowLabels) {
+      grid += '<div class="activity-row-label">' + (rowLabels[row] || '') + '</div>';
+    }
+    for (const week of weeks) {
+      const d = week[row];
+      if (!d) {
+        grid += '<span class="activity-cell lvl-empty" style="width:' +
+          cellSize + 'px;height:' + cellSize + 'px;"></span>';
+      } else {
+        const count = byDate.get(d) || 0;
+        const lvl = activityLevel(count);
+        grid += '<span class="activity-cell lvl-' + lvl + '" style="width:' +
+          cellSize + 'px;height:' + cellSize + 'px;" title="' +
+          escapeHtml(cellTitle(d)) + '"></span>';
+      }
+    }
+  }
+  grid += '</div>';
+
+  return monthHeader + grid;
+}
+
+/**
+ * Roster cell: compact 30-day activity strip + streak label.
+ */
+function renderRosterActivity(activity) {
+  if (!activity || activity.totalEvents === 0) {
+    return '<span class="progress-empty">—</span>';
+  }
+  const strip = renderActivityGrid(activity, {
+    days: 30,
+    cellSize: 8,
+    showLabels: false,
+    orientation: 'strip',
+  });
+  const streak = activity.currentStreak > 0
+    ? activity.currentStreak + 'd'
+    : '';
+  return (
+    '<div class="roster-activity">' +
+      strip +
+      (streak ? '<span class="roster-activity-streak">' + escapeHtml(streak) + '</span>' : '') +
     '</div>'
   );
 }
@@ -2138,6 +2335,7 @@ function clearStudentDetail() {
   var st = $('sdStrengths'); if (st) st.innerHTML = '<p class="empty-state">Loading...</p>';
   var na = $('sdNextAction'); if (na) { na.style.display = 'none'; na.innerHTML = ''; }
   var cc = $('sdCohortComparison'); if (cc) { cc.style.display = 'none'; cc.innerHTML = ''; }
+  var ac = $('sdActivity'); if (ac) { ac.style.display = 'none'; ac.innerHTML = ''; }
 }
 
 function renderStudentDetail(data) {
@@ -2171,6 +2369,9 @@ function renderStudentDetail(data) {
 
   // Cohort comparison panel
   renderCohortComparison(data.cohortComparison);
+
+  // Activity heatmap
+  renderActivity(data.activity);
 
   // Reasoning quality card
   const rq = data.metrics.reasoningQuality;
