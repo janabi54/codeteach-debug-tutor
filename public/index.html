@@ -63,6 +63,7 @@
       </button>
       <div id="userMenuDropdown" class="user-menu-dropdown" hidden>
         <button id="openSettingsBtn" class="user-menu-item">Join Class</button>
+        <button id="openPrivacyBtn" class="user-menu-item">Privacy notice</button>
         <button id="logoutBtn" class="user-menu-item">Log out</button>
       </div>
     </div>>
@@ -568,6 +569,73 @@ for (let i = 0; i < arr.length; i++) {
           <p class="empty-state">Loading...</p>
         </div>
       </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- PRIVACY VIEW -->
+<section id="privacyView" class="privacy-view" hidden>
+  <div class="privacy-container">
+    <div class="privacy-header">
+      <button id="backFromPrivacyBtn" class="ghost small">← Back</button>
+      <h1>Privacy notice</h1>
+      <p class="privacy-updated">Last updated: 2026-10-07</p>
+    </div>
+
+    <div class="privacy-body">
+      <h2>What we collect</h2>
+      <p>
+        CodeTeach Debug Tutor records your work while you use it. This includes
+        your enrollment details (name, email, the classes you've joined), the
+        debug sessions you run, the hypotheses you write while debugging, the
+        post-mortems you complete afterward, and telemetry about when hints are
+        served. Your tutor may also add notes and feedback to your work.
+      </p>
+
+      <h2>Why we collect it</h2>
+      <p>
+        The data powers the tutor dashboard that helps your instructor spot
+        where you're stuck, and it powers the reflection prompts you see after
+        each exercise. Nothing is used to train third-party models, and nothing
+        is sold or shared with advertisers.
+      </p>
+
+      <h2>Who can see it</h2>
+      <p>
+        Only the instructor of each class you join can see your data, and only
+        for exercises assigned to that class. Data from one class is not
+        visible to instructors of another.
+      </p>
+
+      <h2>How long we keep it</h2>
+      <p>
+        Your data is kept until it is deleted — either by you (via Account
+        settings) or by your instructor (via the student or class data
+        deletion controls). Deletions are permanent and cannot be undone.
+      </p>
+
+      <h2>Your rights</h2>
+      <p>
+        You can export a copy of your data at any time from your student
+        dashboard. You can request that all of your data be deleted by using
+        the <strong>Delete my account</strong> option in Account settings, or
+        by asking your instructor. When deleted, your debug history,
+        hypotheses, post-mortems, telemetry, tutor notes, and feedback are
+        removed from the system.
+      </p>
+
+      <h2>Data location</h2>
+      <p>
+        Data is stored on the server hosting this application. It is not
+        transferred to third parties.
+      </p>
+
+      <h2>Contact</h2>
+      <p>
+        For questions about your data, contact the instructor of your class,
+        or reach out to the application maintainer.
+      </p>
     </div>
   </div>
 </section>

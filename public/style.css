@@ -1,7 +1,19 @@
+/* Make the hidden attribute always hide an element, regardless of display rules. */
+[hidden] { display: none !important; }
+
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f6f7f9; color: #1a1d23; }
 
-.topbar { display: flex; align-items: center; gap: 24px; padding: 12px 20px; background: #fff; border-bottom: 1px solid #e4e6eb; }
+.topbar {
+  position: relative;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 12px 20px;
+  background: #fff;
+  border-bottom: 1px solid #e4e6eb;
+}
 .brand { display: flex; align-items: center; gap: 8px; }
 .brand-mark { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; background: #4f46e5; color: #fff; font-weight: 700; font-size: 12px; }
 .brand-name { font-weight: 700; }
@@ -979,7 +991,7 @@ button.danger:hover {
   border-radius: 10px;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
   padding: 6px;
-  z-index: 100;
+  z-index: 1001;
 }
 .user-menu-item {
   display: block;
@@ -1849,9 +1861,13 @@ button.danger.small {
 /* Reopen button: fixed bottom-right, always visible when panel is collapsed */
 .sd-notes-reopen {
   position: fixed;
+  /* Cancel the earlier `top: 20px` from the sticky rule (line ~1796) so
+     the fixed positioning anchors to bottom-right, not top-right. */
+  top: auto;
   bottom: 24px;
   right: 24px;
-  z-index: 50;
+  /* Above the topbar (z-index: 1000) so it isn't clipped when scrolled up. */
+  z-index: 1100;
   background: #4f46e5;
   color: #fff;
   border: 0;
@@ -2460,4 +2476,62 @@ button.danger.small {
 .sd-metric-meta .sd-outcomes-line {
   display: inline-block;
   margin-top: 2px;
+}
+
+/* ── Privacy view ── */
+.privacy-view {
+  padding: 24px;
+  max-width: 900px;
+  margin: 0 auto;
+}
+.privacy-container {
+  background: #fff;
+  border: 1px solid #e4e6eb;
+  border-radius: 10px;
+  padding: 32px 40px;
+}
+.privacy-header {
+  border-bottom: 1px solid #eef0f3;
+  padding-bottom: 16px;
+  margin-bottom: 24px;
+  position: relative;
+}
+.privacy-header h1 {
+  margin: 12px 0 4px;
+  font-size: 24px;
+  color: #1a1d23;
+}
+.privacy-updated {
+  font-size: 12px;
+  color: #7a7f88;
+  margin: 0;
+}
+.privacy-body h2 {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1a1d23;
+  margin: 24px 0 8px;
+}
+.privacy-body p {
+  font-size: 14px;
+  line-height: 1.65;
+  color: #4b5563;
+  margin: 0 0 12px;
+  max-width: 70ch;
+}
+.privacy-body strong {
+  color: #1a1d23;
+}
+
+
+/* When the privacy view is open, let the whole page scroll normally. */
+body.privacy-open {
+  overflow: auto;
+}
+body.privacy-open main {
+  height: auto;
+  overflow: visible;
+}
+body.privacy-open .privacy-view {
+  overflow: visible;
 }

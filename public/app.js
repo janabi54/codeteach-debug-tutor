@@ -2972,6 +2972,42 @@ async function resetExerciseProgress() {
   }
 }
 
+/**
+ * Show the privacy view. Hides all other top-level views.
+ * We don't touch the URL hash (v1), but returning restores the previous
+ * view based on auth state.
+ */
+function showPrivacy() {
+  // Hide every top-level section AND remove .active from tab-panels — the
+  // .tab-panel.active rule sets display: block and would otherwise override
+  // the hidden attribute.
+  document.querySelectorAll('section').forEach(function (s) {
+    s.hidden = true;
+    s.classList.remove('active');
+  });
+  // Also hide the top-level detail views that are divs, not sections.
+  ['studentDetailView', 'studentExerciseDetailView'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) el.hidden = true;
+  });
+  var pv = $('privacyView');
+  if (pv) pv.hidden = false;
+  // Close the user menu
+  var m = $('userMenuDropdown'); if (m) m.hidden = true;
+  // Unlock page scroll so the full notice is reachable
+  document.body.classList.add('privacy-open');
+  // Scroll to top
+  window.scrollTo(0, 0);
+}
+
+function hidePrivacy() {
+  document.body.classList.remove('privacy-open');
+  var pv = $('privacyView');
+  if (pv) pv.hidden = true;
+  // Reload so the normal auth-boot path decides which view to show.
+  location.reload();
+}
+
 // Wire the buttons
 document.addEventListener('click', (e) => {
   const t = e.target;
@@ -2989,6 +3025,10 @@ document.addEventListener('click', (e) => {
     if (currentStudentId) {
       window.location = '/api/admin/students/' + encodeURIComponent(currentStudentId) + '/export.csv';
     }
+  } else if (t.id === 'openPrivacyBtn') {
+    showPrivacy();
+  } else if (t.id === 'backFromPrivacyBtn') {
+    hidePrivacy();
   }
 });
 
