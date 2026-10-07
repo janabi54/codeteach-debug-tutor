@@ -2898,6 +2898,12 @@ document.addEventListener('click', (e) => {
     if (currentStudentId) openStudentDetail(currentStudentId);
   } else if (t.id === 'sedResetBtn') {
     resetExerciseProgress();
+  } else if (t.id === 'sdPrintBtn') {
+    window.print();
+  } else if (t.id === 'sdExportCsvBtn') {
+    if (currentStudentId) {
+      window.location = '/api/admin/students/' + encodeURIComponent(currentStudentId) + '/export.csv';
+    }
   }
 });
 

@@ -379,6 +379,7 @@ for (let i = 0; i < arr.length; i++) {
           <option value="30">Last 30 days</option>
           <option value="0" selected>All time</option>
         </select>
+        <a href="/api/admin/students/export.csv" class="ghost small" download style="margin-left:8px;">Export CSV</a>
       </div>
     </div>
 
@@ -390,6 +391,8 @@ for (let i = 0; i < arr.length; i++) {
       <div class="student-detail-header">
         <button id="backToRosterBtn" class="ghost small">← Back to students</button>
         <div class="sd-header-actions">
+          <button id="sdPrintBtn" class="ghost small" title="Print this page">🖨 Print</button>
+          <button id="sdExportCsvBtn" class="ghost small" title="Export this student's data as CSV">📥 Export CSV</button>
           <button id="sdNotesToggleBtn" class="ghost small" title="Toggle notes panel">
             Notes <span id="sdNotesCount" class="sd-notes-count-badge"></span>
           </button>

@@ -2305,3 +2305,79 @@ button.danger.small {
 .sd-time-empty {
   color: #b0b5bd;
 }
+
+/* ── Print styles (Export/Print feature) ── */
+@media print {
+  /* Global reset for print: white bg, black text, no shadows */
+  html, body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  /* Hide app chrome */
+  .topnav,
+  .tabs,
+  .panel-header,
+  #notesToggleBtn,
+  .notes-panel,
+  .notes-toggle,
+  .sd-header-actions,
+  button,
+  #backToRosterBtn,
+  .sd-session-row {
+    display: none !important;
+  }
+
+  /* Only show the student detail view */
+  #studentDetailView {
+    display: block !important;
+  }
+  #studentsRoster,
+  #studentExerciseDetailView {
+    display: none !important;
+  }
+
+  /* Layout adjustments */
+  .panel-wrap {
+    box-shadow: none !important;
+    border: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  .sd-main {
+    display: block !important;
+    max-width: 100% !important;
+  }
+  .sd-metric-card,
+  .sd-cohort-comparison,
+  .sd-activity,
+  .sd-pattern-list,
+  .sd-strength-row,
+  .sd-sessions-table {
+    box-shadow: none !important;
+    border-color: #ccc !important;
+  }
+
+  /* Avoid awkward page breaks */
+  .sd-activity,
+  .sd-cohort-comparison,
+  .sd-two-col,
+  .sd-sessions-table {
+    break-inside: avoid;
+  }
+
+  /* Page setup */
+  @page {
+    margin: 1cm;
+  }
+
+  /* Exercise/student names should print in black, not brand colors */
+  .status-badge,
+  .quality-badge,
+  .state-badge,
+  .sd-strength-label,
+  .sd-trend-label {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

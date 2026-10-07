@@ -108,6 +108,104 @@ router.get('/', requireInstructor, async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────
+// GET /api/admin/students/export.csv
+// Download a CSV of the instructor's roster. Registered BEFORE
+// /:studentId so Express doesn't treat "export.csv" as an id.
+// ─────────────────────────────────────────────────────────────
+router.get('/export.csv', requireInstructor, async (req, res) => {
+  const instructorId = req.user!.id;
+  const days = Number(req.query.days ?? 30) || 30;
+
+  const roster = rosterFor(instructorId);
+  const byStudent = new Map<string, {
+    studentId: string;
+    cohortNames: Set<string>;
+    joinedAt: string;
+  }>();
+  for (const entry of roster) {
+    if (!byStudent.has(entry.studentId)) {
+      byStudent.set(entry.studentId, {
+        studentId: entry.studentId,
+        cohortNames: new Set(),
+        joinedAt: entry.joinedAt,
+      });
+    }
+    const s = byStudent.get(entry.studentId)!;
+    s.cohortNames.add(entry.cohortName);
+    if (entry.joinedAt < s.joinedAt) s.joinedAt = entry.joinedAt;
+  }
+
+  const studentIds = Array.from(byStudent.keys());
+  const allExercises = Array.from(new Set(
+    studentIds.flatMap((sid) => viewableExerciseIdsFor(instructorId, sid))
+  ));
+  const activityMap = db.students.activityForMany(studentIds, allExercises, days);
+
+  const rows: string[][] = [];
+  rows.push([
+    'Name', 'Email', 'Classes', 'Status', 'Reasons',
+    'Attempted', 'Completed', 'Assigned', 'Progress %',
+    'Time (min)', 'Last active', 'Streak (days)',
+  ]);
+
+  for (const s of byStudent.values()) {
+    const user = await db.users.findById(s.studentId);
+    if (!user) continue;
+
+    const exerciseIds = viewableExerciseIdsFor(instructorId, s.studentId);
+    if (exerciseIds.length === 0) continue;
+
+    const stats = db.students.statsFor(s.studentId, exerciseIds);
+    const rosterStatus = deriveRosterStatus({
+      exercisesAttempted: stats.exercisesAttempted,
+      exercisesCompleted: stats.exercisesCompleted,
+      lastActiveAt: stats.lastActiveAt,
+    });
+
+    const detail = db.students.detailFor(s.studentId, exerciseIds);
+
+    const assigned = exerciseIds.length;
+    const completedSlugs = new Set(
+      detail.sessionHistory.filter((r) => r.state === 'complete').map((r) => r.exerciseId)
+    );
+    const completed = exerciseIds.filter((slug) => completedSlugs.has(slug)).length;
+    const progressPct = assigned > 0 ? Math.round((completed / assigned) * 100) : 0;
+
+    const totalTime = detail.timeMetrics.totalStruggleMinutes;
+    const act = activityMap.get(s.studentId);
+    const streak = act ? act.currentStreak : 0;
+
+    rows.push([
+      user.displayName,
+      user.email,
+      Array.from(s.cohortNames).join('; '),
+      rosterStatus.status,
+      rosterStatus.reasons.join('; '),
+      String(stats.exercisesAttempted),
+      String(completed),
+      String(assigned),
+      String(progressPct),
+      String(totalTime),
+      stats.lastActiveAt ?? '',
+      String(streak),
+    ]);
+  }
+
+  const csv = rows
+    .map((row) =>
+      row
+        .map((cell) => '"' + String(cell).replace(/"/g, '""') + '"')
+        .join(',')
+    )
+    .join('\r\n');
+
+  const stamp = new Date().toISOString().slice(0, 10);
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="students-' + stamp + '.csv"');
+  res.send('\uFEFF' + csv);
+});
+
+// ─────────────────────────────────────────────────────────────
 // GET /api/admin/students/:studentId
 // Full detail for one student, scoped to the instructor's cohorts.
 // ─────────────────────────────────────────────────────────────
@@ -220,6 +318,113 @@ router.get('/:studentId', requireInstructor, async (req, res) => {
     cohortComparison,
     activity,
   });
+});
+
+// ─────────────────────────────────────────────────────────────
+// GET /api/admin/students/:studentId/export.csv
+// Download a per-student CSV: identity + metrics summary,
+// then a session-history table.
+// ─────────────────────────────────────────────────────────────
+router.get('/:studentId/export.csv', requireInstructor, async (req, res) => {
+  const instructorId = req.user!.id;
+  const { studentId } = req.params;
+
+  const user = await db.users.findById(studentId);
+  if (!user) return res.status(404).json({ error: 'Student not found.' });
+
+  const exerciseIds = viewableExerciseIdsFor(instructorId, studentId);
+  if (exerciseIds.length === 0) {
+    return res.status(403).json({ error: 'You do not teach this student.' });
+  }
+
+  const detail = db.students.detailFor(studentId, exerciseIds);
+  const stats = db.students.statsFor(studentId, exerciseIds);
+  const rosterStatus = deriveRosterStatus({
+    exercisesAttempted: stats.exercisesAttempted,
+    exercisesCompleted: stats.exercisesCompleted,
+    lastActiveAt: stats.lastActiveAt,
+  });
+  const statusResult = escalateWithTrends(rosterStatus, detail.trends);
+
+  const assigned = exerciseIds.length;
+  const completedSlugs = new Set(
+    detail.sessionHistory.filter((r) => r.state === 'complete').map((r) => r.exerciseId)
+  );
+  const completed = exerciseIds.filter((slug) => completedSlugs.has(slug)).length;
+  const progressPct = assigned > 0 ? Math.round((completed / assigned) * 100) : 0;
+
+  const rq = detail.metrics.reasoningQuality;
+  const rqPct = rq.total > 0 ? Math.round((rq.precise / rq.total) * 100) : 0;
+  const rqSummary = rq.total > 0
+    ? rqPct + '% (' + rq.precise + ' precise, ' + rq.plausible + ' plausible, ' + rq.vague + ' vague)'
+    : '—';
+
+  const hd = detail.metrics.hintDependency;
+  const hdSummary = hd.sessions > 0
+    ? hd.avgHintsPerSession.toFixed(1) + ' hints / session (' + hd.sessions + ' session' + (hd.sessions === 1 ? '' : 's') + ')'
+    : '—';
+
+  const tm = detail.timeMetrics;
+  const timeSummary = tm.sessionsWithTime > 0
+    ? tm.totalStruggleMinutes + ' min total, ' + tm.avgStruggleMinutes + ' min avg'
+    : '—';
+
+  const act = db.students.activityForMany([studentId], exerciseIds, 90).get(studentId);
+  const currentStreak = act ? act.currentStreak : 0;
+  const longestStreak = act ? act.longestStreak : 0;
+
+  const classes = db.students.cohortNamesFor(studentId);
+
+  // CSV rows
+  const rows: string[][] = [];
+  rows.push(['# Summary']);
+  rows.push(['Field', 'Value']);
+  rows.push(['Name', user.displayName]);
+  rows.push(['Email', user.email]);
+  rows.push(['Classes', classes.join('; ')]);
+  rows.push(['Joined', user.createdAt ? user.createdAt.toISOString().slice(0, 10) : '']);
+  rows.push(['Status', statusResult.status]);
+  rows.push(['Reasons', statusResult.reasons.join('; ')]);
+  rows.push(['Reasoning quality', rqSummary]);
+  rows.push(['Hint dependency', hdSummary]);
+  rows.push(['Progress', completed + ' / ' + assigned + ' (' + progressPct + '%)']);
+  rows.push(['Time on task', timeSummary]);
+  rows.push(['Current streak (days)', String(currentStreak)]);
+  rows.push(['Longest streak (days)', String(longestStreak)]);
+  rows.push([]);
+  rows.push(['# Session history']);
+  rows.push([
+    'Exercise',
+    'State',
+    'Level',
+    'Attempts',
+    'Struggle (min)',
+    'Duration (min)',
+    'Last activity',
+  ]);
+  for (const s of detail.sessionHistory) {
+    rows.push([
+      s.exerciseTitle || s.exerciseId,
+      s.state,
+      String(s.currentLevel),
+      String(s.totalAttempts),
+      String(s.struggleMinutes || 0),
+      s.durationMinutes !== null ? String(s.durationMinutes) : '',
+      s.updatedAt || '',
+    ]);
+  }
+
+  const csv = rows
+    .map((row) =>
+      row.map((cell) => '"' + String(cell).replace(/"/g, '""') + '"').join(',')
+    )
+    .join('\r\n');
+
+  const slug = user.displayName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'student';
+  const stamp = new Date().toISOString().slice(0, 10);
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="' + slug + '-' + stamp + '.csv"');
+  res.send('\uFEFF' + csv);
 });
 
 // ─────────────────────────────────────────────────────────────
