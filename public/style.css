@@ -411,20 +411,26 @@ button.ghost:hover { background: #f0f1f3; }
   flex-direction: column;
   gap: 6px;
 }
-.login-form label {
+/* Form labels — apply to all labels inside .login-form EXCEPT the
+   role-picker option labels (which have their own styling below). */
+.login-form label:not(.signup-role-option) {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: #7a7f88;
   font-weight: 600;
   margin-top: 10px;
+  display: block;
 }
-.login-form input {
+/* Text inputs only — exclude the radio inputs inside the role picker. */
+.login-form input:not([type="radio"]) {
   border: 1px solid #dfe2e7;
   border-radius: 8px;
   padding: 10px 12px;
   font-size: 14px;
   font-family: inherit;
+  width: 100%;
+  box-sizing: border-box;
 }
 .login-form input:focus {
   outline: none;
@@ -2788,4 +2794,13 @@ body.privacy-open .privacy-view {
   font-size: 11px;
   color: #7a7f88;
   margin-top: 2px;
+}
+
+
+/* Signup-only fields: same column layout as the main form so labels
+   stack above their inputs. */
+.login-form #registerFields {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }

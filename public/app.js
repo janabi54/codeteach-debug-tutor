@@ -2764,7 +2764,7 @@ async function loadExercisePicker() {
     if (!exercises.length) {
       select.innerHTML = '<option value="ex-1">ex-1 (no cohort)</option>';
       if (hint) {
-        hint.textContent = 'You are not enrolled in any class yet. Open Join Class from the top-right menu to enter a code.';
+        hint.textContent = 'You are not enrolled in any class yet. Open Classes from the top-right menu to enter a code.';
         hint.hidden = false;
       }
       return;
