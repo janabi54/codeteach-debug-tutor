@@ -6,6 +6,7 @@ export interface SessionUser {
   email: string;
   displayName: string;
   role: 'student' | 'instructor';
+  isAdmin: boolean;
 }
 
 const DEFAULT_TTL_DAYS = 30;
@@ -31,6 +32,7 @@ export async function resolveSession(token: string): Promise<SessionUser | null>
     email: user.email,
     displayName: user.displayName,
     role: user.role,
+    isAdmin: user.isAdmin === true,
   };
 }
 

@@ -19,6 +19,7 @@ const BYPASS_USER: SessionUser = {
   email: 'dev@localhost',
   displayName: 'Dev Bypass',
   role: 'instructor',
+  isAdmin: true,
 };
 
 export async function requireAuth(

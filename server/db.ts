@@ -31,6 +31,7 @@ function rowToUser(row: any): User {
     passwordHash: row.password_hash,
     displayName: row.display_name,
     role: row.role === 'instructor' ? 'instructor' : 'student',
+    isAdmin: row.is_admin === 1,
     createdAt: parseSqliteTimestamp(row.created_at),
   };
 }
@@ -179,6 +180,14 @@ if (!hasScoreSource) {
   console.log('[db] migrated: added hypotheses.score_source');
 }
 
+// One-time migration: users.is_admin (0/1) for admin capability flag
+const userColumns = sqlite.prepare('PRAGMA table_info(users)').all() as Array<{ name: string }>;
+const hasIsAdmin = userColumns.some((c) => c.name === 'is_admin');
+if (!hasIsAdmin) {
+  sqlite.exec('ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0');
+  console.log('[db] migrated: added users.is_admin');
+}
+
 const hasOutcome = hypothesisColumns.some((c) => c.name === 'outcome');
 if (!hasOutcome) {
   sqlite.exec('ALTER TABLE hypotheses ADD COLUMN outcome TEXT');
@@ -249,6 +258,7 @@ interface User {
   passwordHash: string;
   displayName: string;
   role: 'student' | 'instructor';
+  isAdmin: boolean;
   createdAt: Date;
 }
 
@@ -440,7 +450,7 @@ const stmt = {
 
   // ── Auth: users ──
   insertUser: sqlite.prepare(
-    'INSERT INTO users (id, email, password_hash, display_name, role) VALUES (?, ?, ?, ?, ?)'
+    'INSERT INTO users (id, email, password_hash, display_name, role, is_admin) VALUES (?, ?, ?, ?, ?, ?)'
   ),
   findUserByEmail: sqlite.prepare(
     'SELECT * FROM users WHERE email = ?'
@@ -628,10 +638,18 @@ export const db = {
       passwordHash: string;
       displayName: string;
       role: 'student' | 'instructor';
+      isAdmin?: boolean;
     }): Promise<User> {
       const id = randomUUID();
       const email = data.email.toLowerCase().trim();
-      stmt.insertUser.run(id, email, data.passwordHash, data.displayName, data.role);
+      stmt.insertUser.run(
+        id,
+        email,
+        data.passwordHash,
+        data.displayName,
+        data.role,
+        data.isAdmin ? 1 : 0
+      );
       const row = stmt.findUserById.get(id) as any;
       return rowToUser(row);
     },
@@ -2004,6 +2022,46 @@ export const db = {
         countsJson: row.counts_json,
         createdAt: parseSqliteTimestamp(row.created_at),
       }));
+    },
+  },
+
+  inviteAudit: {
+    record(data: {
+      actorId: string;
+      actorEmail: string | null;
+      code: string;
+      role: 'instructor' | 'student';
+      expiresAt: string | null;
+    }): void {
+      const id = randomUUID();
+      sqlite
+        .prepare(
+          `INSERT INTO invite_audit
+             (id, actor_id, actor_email, code, role, expires_at)
+           VALUES (?, ?, ?, ?, ?, ?)`
+        )
+        .run(id, data.actorId, data.actorEmail, data.code, data.role, data.expiresAt);
+    },
+
+    listForActor(actorId: string, limit = 100): Array<{
+      id: string;
+      actorId: string;
+      actorEmail: string | null;
+      code: string;
+      role: string;
+      expiresAt: string | null;
+      createdAt: string;
+    }> {
+      return sqlite
+        .prepare(
+          `SELECT id, actor_id AS actorId, actor_email AS actorEmail,
+                  code, role, expires_at AS expiresAt, created_at AS createdAt
+           FROM invite_audit
+           WHERE actor_id = ?
+           ORDER BY created_at DESC
+           LIMIT ?`
+        )
+        .all(actorId, limit) as any[];
     },
   },
 

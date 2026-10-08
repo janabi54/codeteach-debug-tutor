@@ -66,7 +66,7 @@
         <button id="openPrivacyBtn" class="user-menu-item">Privacy notice</button>
         <button id="logoutBtn" class="user-menu-item">Log out</button>
       </div>
-    </div>>
+    </div>
 </header>
 
 <main>
@@ -92,9 +92,23 @@
         <label>Your name</label>
         <input id="loginDisplayName" type="text" spellcheck="false" placeholder="How we'll greet you" />
 
+        <label>I'm signing up as</label>
+        <div class="signup-role-picker">
+          <label class="signup-role-option">
+            <input type="radio" name="signupRole" value="student" id="signupRoleStudent" checked />
+            <span class="signup-role-label">Student</span>
+            <span class="signup-role-hint">Join classes with an invite code</span>
+          </label>
+          <label class="signup-role-option">
+            <input type="radio" name="signupRole" value="instructor" id="signupRoleInstructor" />
+            <span class="signup-role-label">Instructor</span>
+            <span class="signup-role-hint">Create and manage your own classes</span>
+          </label>
+        </div>
+
         <label>Invite code <span class="label-optional">(optional)</span></label>
         <input id="loginInviteCode" type="text" spellcheck="false" placeholder="XXXX-XXXX-XXXX" autocomplete="off" />
-        <p class="field-hint">Leave blank if you're a student.</p>
+        <p class="field-hint">Only needed if your instructor gave you one.</p>
       </div>
 
       <button id="loginSubmit" class="primary login-submit">Log in</button>
@@ -180,7 +194,7 @@ for (let i = 0; i < arr.length; i++) {
   <div class="panel-wrap">
     <h1>Debug Tutor Health</h1>
     <p class="subtitle">Operator view — how the tutor is behaving right now.</p>
-    <div class="section-card">
+    <div class="section-card" id="inviteCodesPanel">
       <h2>Invite codes</h2>
       <p class="subtitle" style="margin-bottom:12px;">
         Generate a code to invite another instructor. Codes are single-use and expire.

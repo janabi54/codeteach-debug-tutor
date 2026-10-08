@@ -209,3 +209,18 @@ CREATE INDEX IF NOT EXISTS idx_deletion_audit_time
 
 CREATE INDEX IF NOT EXISTS idx_deletion_audit_actor
   ON deletion_audit(actor_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS invite_audit (
+  id TEXT PRIMARY KEY,
+  actor_id TEXT NOT NULL,
+  actor_email TEXT,
+  code TEXT NOT NULL,
+  role TEXT NOT NULL,                 -- 'instructor' | 'student'
+  expires_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_invite_audit_time
+  ON invite_audit(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_invite_audit_actor
+  ON invite_audit(actor_id, created_at DESC);

@@ -18,6 +18,7 @@ import {
   clientIp,
 } from '../middleware/rateLimit.js';
 import { requireAuth } from '../middleware/requireAuth.js';
+import { openAdminSignupEnabled } from '../util/roles.js';
 
 const router = express.Router();
 
@@ -70,9 +71,17 @@ router.post('/register', async (req, res) => {
       .json({ error: 'An account with that email already exists.' });
   }
 
-  // Optional invite code grants the instructor role
+  // Signup can specify role directly (self-service) OR via invite code.
+  // - role='instructor' → is_admin = openAdminSignupEnabled() (true unless
+  //   DISABLE_OPEN_ADMIN=true is set)
+  // - role='student'    → never admin
+  // - valid invite code → role = code.role, is_admin = false (invite codes
+  //   never grant admin — that would be a privilege-escalation path)
+  const requestedRole = (req.body ?? {}).role;
   const rawInvite = (req.body ?? {}).inviteCode;
+
   let assignedRole: 'student' | 'instructor' = 'student';
+  let assignedIsAdmin = false;
   let usedInviteCode: string | null = null;
 
   if (rawInvite && typeof rawInvite === 'string' && rawInvite.trim().length > 0) {
@@ -88,7 +97,11 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'That invite code has expired.' });
     }
     assignedRole = code.role === 'instructor' ? 'instructor' : 'student';
+    assignedIsAdmin = false; // invite codes never grant admin
     usedInviteCode = trimmed;
+  } else if (requestedRole === 'instructor') {
+    assignedRole = 'instructor';
+    assignedIsAdmin = openAdminSignupEnabled();
   }
 
   const passwordHash = await hashPassword(password);
@@ -97,6 +110,7 @@ router.post('/register', async (req, res) => {
     passwordHash,
     displayName: displayName.trim(),
     role: assignedRole,
+    isAdmin: assignedIsAdmin,
   });
 
   if (usedInviteCode) {
@@ -112,6 +126,7 @@ router.post('/register', async (req, res) => {
       email: user.email,
       displayName: user.displayName,
       role: user.role,
+      isAdmin: user.isAdmin,
     },
   });
 });
@@ -168,6 +183,7 @@ router.post('/login', async (req, res) => {
       email: user.email,
       displayName: user.displayName,
       role: user.role,
+      isAdmin: user.isAdmin === true,
     },
   });
 });
@@ -235,7 +251,15 @@ router.get('/me', async (req, res) => {
   if (!user) {
     return res.status(401).json({ error: 'Session expired or invalid.' });
   }
-  res.json({ user });
+  res.json({
+    user: {
+      id: user.id,
+      email: user.email,
+      displayName: user.displayName,
+      role: user.role,
+      isAdmin: user.isAdmin === true,
+    },
+  });
 });
 
 export default router;

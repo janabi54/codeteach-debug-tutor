@@ -301,6 +301,12 @@ function renderReasoningCard(reasoning) {
 // --- Health ---
 // --- Health tab ---
 async function loadHealth() {
+  // Hide the invite-codes panel for non-admins. Admins see it.
+  const invitePanel = document.getElementById('inviteCodesPanel');
+  if (invitePanel) {
+    invitePanel.hidden = !(currentUser && currentUser.isAdmin === true);
+  }
+
   const body = $('healthBody');
   if (!body) return;
   body.innerHTML = '<p class="empty-state">Loading...</p>';
@@ -719,10 +725,13 @@ function showAppView() {
     // Everyone
     if (typeof loadExercisePicker === 'function') loadExercisePicker();
 
-    // Instructor-only
+    // Instructor-only (health stats)
     if (currentUser && currentUser.role === 'instructor') {
-      if (typeof loadInviteCodes === 'function') loadInviteCodes();
       if (typeof loadHealth === 'function') loadHealth();
+    }
+    // Admin-only (invite codes)
+    if (currentUser && currentUser.isAdmin === true) {
+      if (typeof loadInviteCodes === 'function') loadInviteCodes();
     }
 
     // Restore the tab from the URL hash
@@ -732,8 +741,13 @@ function showAppView() {
 
 function applyRoleVisibility() {
   const adminTabs = ['health', 'class', 'students', 'exercises'];
+  const studentOnlyTabs = ['weak-spots'];
+  const isInstructor = currentUser.role === 'instructor' || currentUser.role === 'admin';
   document.querySelectorAll('.tab').forEach(tab => {
-    if (adminTabs.includes(tab.dataset.tab) && currentUser.role !== 'instructor') {
+    const t = tab.dataset.tab;
+    if (adminTabs.includes(t) && !isInstructor) {
+      tab.remove();
+    } else if (studentOnlyTabs.includes(t) && isInstructor) {
       tab.remove();
     } else {
       tab.style.display = '';
@@ -741,6 +755,16 @@ function applyRoleVisibility() {
   });
   const nameEl = $('currentUserName');
   if (nameEl) nameEl.textContent = currentUser.displayName;
+
+  // If the previously-active tab was just removed (e.g. instructor lands
+  // on #weak-spots), fall back to the Tutor tab.
+  const activeTab = document.querySelector('.tab.active');
+  if (!activeTab) {
+    const tutorTab = document.querySelector('.tab[data-tab="tutor"]');
+    if (tutorTab) tutorTab.classList.add('active');
+    const panels = document.querySelectorAll('.tab-panel');
+    panels.forEach(p => p.classList.toggle('active', p.id === 'tab-tutor'));
+  }
 
   // The user-menu label adapts to role: instructors manage classes,
   // students join/leave them.
@@ -796,12 +820,15 @@ async function submitLogin() {
 
   const url = loginMode === 'login' ? '/api/auth/login' : '/api/auth/register';
   const inviteCode = $('loginInviteCode')?.value?.trim() ?? '';
+  const roleEl = document.querySelector('input[name="signupRole"]:checked');
+  const requestedRole = roleEl && roleEl.value === 'instructor' ? 'instructor' : 'student';
   const body = loginMode === 'login'
     ? { email, password }
     : {
         email,
         password,
         displayName,
+        role: requestedRole,
         ...(inviteCode ? { inviteCode } : {}),
       };
 
