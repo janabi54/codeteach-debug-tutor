@@ -34,7 +34,16 @@ main { height: calc(100vh - 53px); overflow: hidden; }
 /* TUTOR */
 .tutor-layout { display: grid; grid-template-columns: 1fr 420px; height: 100%; }
 .editor-pane { padding: 20px; overflow-y: auto; display: flex; flex-direction: column; }
-.tutor-pane { border-left: 1px solid #e4e6eb; background: #fafbfc; display: flex; flex-direction: column; }
+.tutor-pane {
+  border-left: 1px solid #e4e6eb;
+  background: #fafbfc;
+  display: flex;
+  flex-direction: column;
+  /* min-height: 0 lets the flex children (esp. .messages) shrink below
+     their natural content size so the messages list can scroll internally
+     instead of growing past the viewport and becoming unreachable. */
+  min-height: 0;
+}
 
 .pane-header { display: flex; justify-content: space-between; align-items: center; margin: 12px 0 6px; }
 .pane-header label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #7a7f88; font-weight: 600; }
@@ -60,7 +69,15 @@ button.ghost:hover { background: #f0f1f3; }
 .dot.active { background: #4f46e5; }
 .hint-level-text { font-size: 12px; color: #7a7f88; }
 
-.messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
 .empty-state { color: #8a8f98; font-style: italic; font-size: 14px; text-align: center; padding: 40px 20px; }
 
 .msg { border-radius: 10px; padding: 12px 14px; font-size: 14px; line-height: 1.5; max-width: 100%; }
