@@ -12,6 +12,103 @@ document.querySelectorAll('.tab').forEach(tab => {
 
 // --- Element refs ---
 const $ = id => document.getElementById(id);
+
+// ═══════════════════════════════════════════════════════════
+// Session event capture (replay infrastructure)
+// ═══════════════════════════════════════════════════════════
+
+const CAPTURE_TYPES = new Set([
+  'code-snapshot',
+  'hint-request',
+  'hint-served',
+  'hypothesis-written',
+  'post-mortem-saved',
+  'session-completed',
+]);
+
+let __captureSessionId = null;
+let __captureExerciseId = null;
+let __lastCodeSnapshotAt = 0;
+
+/**
+ * POST a capture event. Fire-and-forget — errors are swallowed so
+ * capture never disrupts the student's flow.
+ */
+function captureEvent(type, payload) {
+  if (!CAPTURE_TYPES.has(type)) return;
+  if (!__captureSessionId) return;
+  try {
+    fetch('/api/debug-tutor/session-events', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({
+        sessionId: __captureSessionId,
+        exerciseId: __captureExerciseId,
+        type,
+        payload: payload || {},
+      }),
+    }).catch(() => {});
+  } catch {
+    // never throw from capture
+  }
+}
+
+/**
+ * Capture a snapshot of the code editor + error output. Throttled to
+ * once every 5 seconds except when forceCapture is true (used on
+ * hint-request boundaries which we always want to record).
+ */
+function captureCodeSnapshot(reason, forceCapture) {
+  if (!__captureSessionId) return;
+  const now = Date.now();
+  if (!forceCapture && now - __lastCodeSnapshotAt < 5000) return;
+  __lastCodeSnapshotAt = now;
+  const codeEl = document.getElementById('code');
+  const errEl = document.getElementById('errorOutput');
+  captureEvent('code-snapshot', {
+    codeSnapshot: codeEl ? codeEl.value : '',
+    errorOutput: errEl ? errEl.value : '',
+    reason: reason || 'blur',
+  });
+}
+
+/**
+ * Attach blur listeners to the code + error editors. Called once on
+ * boot; safe to call multiple times.
+ */
+let __captureListenersWired = false;
+function wireCaptureListeners() {
+  if (__captureListenersWired) return;
+  __captureListenersWired = true;
+  const codeEl = document.getElementById('code');
+  const errEl = document.getElementById('errorOutput');
+  if (codeEl) codeEl.addEventListener('blur', () => captureCodeSnapshot('blur'));
+  if (errEl) errEl.addEventListener('blur', () => captureCodeSnapshot('blur'));
+}
+
+/**
+ * Called by handleHintResponse when the sessionId is known. Sets the
+ * active capture context and captures an initial code-snapshot so the
+ * replay has the state at the moment the first hint was requested.
+ */
+function armCapture(sessionId, exerciseId) {
+  const isNew = __captureSessionId !== sessionId;
+  __captureSessionId = sessionId;
+  __captureExerciseId = exerciseId;
+  if (isNew) {
+    // Fresh session context — reset throttle so the first snapshot fires
+    __lastCodeSnapshotAt = 0;
+    captureCodeSnapshot('session-start', true);
+  }
+  wireCaptureListeners();
+}
+
+// Capture listeners should be re-wired after the student's DOM is
+// available. The boot sequence calls this via hydrateSession/applyRole.
+document.addEventListener('DOMContentLoaded', () => {
+  setTimeout(wireCaptureListeners, 500);
+});
 const messagesEl = $('messages');
 const hintLevelText = $('hintLevelText');
 const hintDots = document.querySelectorAll('.dot');
@@ -113,6 +210,9 @@ function renderHypothesisPrompt(prompt, level) {
     div.outerHTML = '';
     appendMessage({ kind: 'student', text });
 
+    // Replay: record the hypothesis text
+    captureEvent('hypothesis-written', { text });
+
     btn.disabled = true;
     try {
       const data = await callHintApi(text);
@@ -124,6 +224,28 @@ function renderHypothesisPrompt(prompt, level) {
 }
 
 function handleHintResponse(data) {
+  // Replay: learn the session ID from every response that carries one,
+  // so future events know where to attach.
+  const __exerciseId = ($('exerciseId') && $('exerciseId').value.trim()) || 'ex-1';
+  if (data && data.sessionId) {
+    armCapture(data.sessionId, __exerciseId);
+  }
+  // Replay: record the hint text that was just shown
+  if (data && typeof data.message === 'string' && !data.requiresStruggle && !data.requiresHypothesis && !data.requiresPostMortem) {
+    captureEvent('hint-served', {
+      hintText: data.message,
+      hintLevel: data.hintLevel || null,
+      fallbackUsed: !!data.isFallback,
+      detectedPattern: data.detectedPattern || null,
+    });
+  }
+  // Replay: session completed?
+  if (data && (data.sessionComplete || data.postMortemComplete)) {
+    captureEvent('session-completed', {
+      reason: data.sessionComplete ? 'session-complete' : 'post-mortem-complete',
+    });
+  }
+
   if (data.resolved) {
     appendMessage({ kind: 'system', text: data.message });
     return;
@@ -166,6 +288,12 @@ $('askBtn').addEventListener('click', async () => {
   const btn = $('askBtn');
   btn.disabled = true;
   btn.textContent = 'Thinking...';
+  // Replay: capture the code the student is asking about right now,
+  // then log the request event.
+  captureCodeSnapshot('hint-request', true);
+  captureEvent('hint-request', {
+    hintLevel: document.querySelector('.hint-level-text') ? document.querySelector('.hint-level-text').textContent : null,
+  });
   try {
     const data = await callHintApi();
     handleHintResponse(data);
@@ -181,6 +309,8 @@ $('fixedBtn').addEventListener('click', async () => {
   const btn = $('fixedBtn');
   btn.disabled = true;
   btn.textContent = 'Nice!';
+  // Replay: capture the code the student considers fixed
+  captureCodeSnapshot('fixed-it', true);
   try {
     const res = await fetch('/api/debug-tutor/hint', {
       method: 'POST',
@@ -409,6 +539,9 @@ function renderPostMortemPrompt(prompt) {
     }
     div.outerHTML = '';
     appendMessage({ kind: 'student', text, label: 'Your explanation' });
+
+    // Replay: record the post-mortem text
+    captureEvent('post-mortem-saved', { text });
 
     btn.disabled = true;
     try {

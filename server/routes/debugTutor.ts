@@ -70,6 +70,7 @@ router.post('/hint', requireAuth, async (req, res) => {
 
     return res.json({
       postMortemComplete: true,
+      sessionId: session.id,
       score: result.score,
       feedback: result.feedback,
       scoredBy: result.scoredBy,
@@ -80,6 +81,7 @@ router.post('/hint', requireAuth, async (req, res) => {
   if (session.state === 'complete') {
     return res.json({
       sessionComplete: true,
+      sessionId: session.id,
       message: 'This session is finished. Start a new exercise to keep going.',
     });
   }
@@ -105,6 +107,7 @@ router.post('/hint', requireAuth, async (req, res) => {
 
       return res.json({
         requiresStruggle: true,
+        sessionId: session.id,
         remainingSeconds,
         struggleMinutes: session.struggleMinutes,
         attemptCount: session.codeSubmissions,
@@ -121,6 +124,7 @@ router.post('/hint', requireAuth, async (req, res) => {
     await db.hintSessions.update(session.id, { state: 'resolved' });
     return res.json({
       requiresPostMortem: true,
+      sessionId: session.id,
       prompt:
         "Nice — that one's fixed. Before we move on: in your own words, why did the bug happen? One or two sentences is fine.",
     });
@@ -132,6 +136,7 @@ router.post('/hint', requireAuth, async (req, res) => {
     if (!hypothesis || String(hypothesis).trim().length < 10) {
       return res.json({
         requiresHypothesis: true,
+        sessionId: session.id,
         prompt:
           'Before I give you a hint, tell me in one sentence what you think the bug is. Start with: "I think the bug is because..."',
         hintLevel: session.currentLevel,
@@ -201,8 +206,74 @@ router.post('/hint', requireAuth, async (req, res) => {
 
   res.json({
     ...hint,
+    sessionId: session.id,
     ...(hypothesisScore ? { hypothesisScore } : {}),
   });
+});
+
+// ─────────────────────────────────────────────────────────────
+// POST /api/debug-tutor/session-events
+// Records one capture event for a session (replay infrastructure).
+// Only the session's owner can post events for it.
+// ─────────────────────────────────────────────────────────────
+const ALLOWED_EVENT_TYPES = new Set([
+  'code-snapshot',
+  'hint-request',
+  'hint-served',
+  'hypothesis-written',
+  'post-mortem-saved',
+  'session-completed',
+]);
+
+router.post('/session-events', requireAuth, async (req, res) => {
+  const { sessionId, exerciseId, type, payload } = req.body ?? {};
+
+  if (typeof sessionId !== 'string' || sessionId.length === 0) {
+    return res.status(400).json({ error: 'sessionId is required.' });
+  }
+  if (typeof exerciseId !== 'string' || exerciseId.length === 0) {
+    return res.status(400).json({ error: 'exerciseId is required.' });
+  }
+  if (typeof type !== 'string' || !ALLOWED_EVENT_TYPES.has(type)) {
+    return res.status(400).json({ error: 'Unknown event type.' });
+  }
+
+  // Look up the session by (caller, exercise). This doubles as the
+  // ownership check — the session must belong to the current user.
+  const session = await db.hintSessions.find(req.user!.id, exerciseId);
+  if (!session) {
+    return res.status(404).json({ error: 'Session not found.' });
+  }
+  // Confirm the client-supplied sessionId matches. This prevents one
+  // client from posting events to another's session (as a defence in
+  // depth beyond the ownership check).
+  if (session.id !== sessionId) {
+    return res.status(400).json({ error: 'sessionId does not match.' });
+  }
+
+  // Cap payload size to avoid abuse
+  let payloadJson: string;
+  try {
+    payloadJson = JSON.stringify(payload ?? {});
+  } catch {
+    return res.status(400).json({ error: 'Payload is not JSON-serializable.' });
+  }
+  if (payloadJson.length > 16 * 1024) {
+    return res.status(413).json({ error: 'Payload too large (16KB max).' });
+  }
+
+  try {
+    const created = db.sessionEvents.create({
+      sessionId,
+      studentId: session.studentId,
+      exerciseId,
+      type,
+      payload,
+    });
+    res.status(201).json(created);
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message ?? 'Could not record event.' });
+  }
 });
 
 // ─────────────────────────────────────────────────────────────

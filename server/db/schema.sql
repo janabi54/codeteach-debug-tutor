@@ -260,3 +260,25 @@ CREATE TABLE IF NOT EXISTS nudge_messages (
 
 CREATE INDEX IF NOT EXISTS idx_nudge_messages_thread
   ON nudge_messages(thread_id, created_at);
+
+-- ── Session events (replay capture) ──
+-- Snapshots of student state at meaningful moments so a tutor can
+-- later replay a session. Not keystroke-level; each row is a discrete
+-- event (hint-request, code-snapshot on blur, etc.).
+
+CREATE TABLE IF NOT EXISTS session_events (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  student_id TEXT NOT NULL,
+  exercise_id TEXT NOT NULL,
+  type TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  recorded_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (session_id) REFERENCES hint_sessions(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_session_events_session
+  ON session_events(session_id, recorded_at);
+
+CREATE INDEX IF NOT EXISTS idx_session_events_student
+  ON session_events(student_id, recorded_at);

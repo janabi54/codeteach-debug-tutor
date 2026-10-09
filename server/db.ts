@@ -1101,6 +1101,96 @@ export const db = {
     },
   },
 
+  sessionEvents: {
+    /**
+     * Record a single event. `payload` is stored as JSON.
+     */
+    create(data: {
+      sessionId: string;
+      studentId: string;
+      exerciseId: string;
+      type: string;
+      payload: unknown;
+    }): { id: string; recordedAt: string } {
+      const id = randomUUID();
+      let payloadJson: string;
+      try {
+        payloadJson = JSON.stringify(data.payload ?? {});
+      } catch {
+        payloadJson = '{}';
+      }
+      sqlite
+        .prepare(
+          `INSERT INTO session_events
+             (id, session_id, student_id, exercise_id, type, payload_json)
+           VALUES (?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          id,
+          data.sessionId,
+          data.studentId,
+          data.exerciseId,
+          data.type,
+          payloadJson
+        );
+      const row = sqlite
+        .prepare('SELECT recorded_at AS recordedAt FROM session_events WHERE id = ?')
+        .get(id) as { recordedAt: string };
+      return { id, recordedAt: row.recordedAt };
+    },
+
+    /**
+     * All events for a session, oldest first. Returns rows with the
+     * payload already parsed.
+     */
+    listForSession(sessionId: string): Array<{
+      id: string;
+      sessionId: string;
+      studentId: string;
+      exerciseId: string;
+      type: string;
+      payload: unknown;
+      recordedAt: string;
+    }> {
+      const rows = sqlite
+        .prepare(
+          `SELECT id, session_id AS sessionId, student_id AS studentId,
+                  exercise_id AS exerciseId, type, payload_json AS payloadJson,
+                  recorded_at AS recordedAt
+           FROM session_events
+           WHERE session_id = ?
+           ORDER BY recorded_at ASC, id ASC`
+        )
+        .all(sessionId) as Array<{
+          id: string;
+          sessionId: string;
+          studentId: string;
+          exerciseId: string;
+          type: string;
+          payloadJson: string;
+          recordedAt: string;
+        }>;
+
+      return rows.map((r) => {
+        let payload: unknown = {};
+        try {
+          payload = JSON.parse(r.payloadJson);
+        } catch {
+          payload = { _raw: r.payloadJson };
+        }
+        return {
+          id: r.id,
+          sessionId: r.sessionId,
+          studentId: r.studentId,
+          exerciseId: r.exerciseId,
+          type: r.type,
+          payload,
+          recordedAt: r.recordedAt,
+        };
+      });
+    },
+  },
+
   students: {
     /**
      * Summary stats for a student, restricted to a set of exercise IDs.
