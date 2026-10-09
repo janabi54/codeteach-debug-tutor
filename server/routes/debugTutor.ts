@@ -82,7 +82,7 @@ router.post('/hint', requireAuth, async (req, res) => {
     return res.json({
       sessionComplete: true,
       sessionId: session.id,
-      message: 'This session is finished. Start a new exercise to keep going.',
+      message: 'This session is complete. Start a new exercise to keep debugging.',
     });
   }
 

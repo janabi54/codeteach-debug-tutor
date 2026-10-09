@@ -3825,3 +3825,27 @@ body.privacy-open .privacy-view {
   .rp-view { grid-template-columns: 1fr; }
   .rp-counter { margin-left: 0; width: 100%; }
 }
+
+/* ── Replay polish additions ── */
+
+/* Added lines highlighted in the code pane */
+.rp-code .rp-line-added {
+  display: block;
+  background: #dcfce7;
+  color: #065f46;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+/* Clickable timeline rows */
+.rp-timeline-row[role="button"] {
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.rp-timeline-row[role="button"]:hover {
+  background: #f0f1f3;
+}
+.rp-timeline-row[role="button"]:focus-visible {
+  outline: 2px solid #4f46e5;
+  outline-offset: 1px;
+}

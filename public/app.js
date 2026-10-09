@@ -224,6 +224,27 @@ function renderHypothesisPrompt(prompt, level) {
   });
 }
 
+/**
+ * Toggle the 'Ask for a Hint' and 'I fixed it' buttons based on whether
+ * the current exercise's session is complete. Called both from the
+ * picker state fetch and from handleHintResponse when a completion
+ * response arrives.
+ */
+function setSessionCompleteButtons(exerciseId, isComplete) {
+  const askBtn = $('askBtn');
+  const fixedBtn = $('fixedBtn');
+  const current = ($('exerciseId') && $('exerciseId').value.trim()) || null;
+  // Only act on the currently-displayed exercise
+  if (current && exerciseId && current !== exerciseId) return;
+  if (askBtn) {
+    askBtn.disabled = !!isComplete;
+    askBtn.textContent = isComplete ? 'Session complete' : 'Ask the Tutor for a Hint';
+  }
+  if (fixedBtn) {
+    fixedBtn.disabled = !!isComplete;
+  }
+}
+
 function handleHintResponse(data) {
   // Replay: learn the session ID from every response that carries one,
   // so future events know where to attach.
@@ -245,6 +266,13 @@ function handleHintResponse(data) {
     captureEvent('session-completed', {
       reason: data.sessionComplete ? 'session-complete' : 'post-mortem-complete',
     });
+    // Session is over — mark this exercise complete and disable the
+    // ask/fixed buttons so the student can't keep clicking.
+    const exId = ($('exerciseId') && $('exerciseId').value.trim()) || null;
+    if (exId) {
+      __sessionCompletedFor.add(exId);
+      setSessionCompleteButtons(exId, true);
+    }
   }
 
   if (data.resolved) {
@@ -609,13 +637,21 @@ async function hydrateSession() {
       renderPostMortemPrompt(
         "You fixed this one earlier. Before we move on: in your own words, why did the bug happen?"
       );
+      setSessionCompleteButtons(exerciseId, false);
     } else if (data.state === 'complete') {
-      appendMessage({
-        kind: 'system',
-        text: 'This session is complete. Start a new exercise to keep debugging.',
-      });
+      // Only append the message the first time we learn the session
+      // is complete for this exercise.
+      if (!__sessionCompletedFor.has(exerciseId)) {
+        __sessionCompletedFor.add(exerciseId);
+        appendMessage({
+          kind: 'system',
+          text: 'This session is complete. Start a new exercise to keep debugging.',
+        });
+      }
+      setSessionCompleteButtons(exerciseId, true);
     } else {
       setLevel(data.currentLevel || 1);
+      setSessionCompleteButtons(exerciseId, false);
     }
   } catch (err) {
     // silent — fall through to placeholder
@@ -839,6 +875,7 @@ function renderStruggleCard(prompt, remainingSeconds, attemptCount) {
 
 let currentUser = null;
 let loginMode = 'login';
+let __sessionCompletedFor = new Set();  // exerciseIds whose session is known-complete
 
 async function loadCurrentUser() {
   try {
@@ -3352,9 +3389,10 @@ async function loadMySessions() {
     `;
 
     const sessionRows = sessions.map((s) => {
-      const when = s.updatedAt
+      const absoluteWhen = s.updatedAt
         ? new Date(s.updatedAt.replace(' ', 'T') + 'Z').toLocaleString()
         : '';
+      const when = s.updatedAt ? relativeTime(s.updatedAt) : '';
       const stateLabel = s.state === 'complete' ? 'Complete'
         : s.state === 'resolved' ? 'Awaiting post-mortem'
         : 'In progress';
@@ -3385,7 +3423,7 @@ async function loadMySessions() {
           <div class="ms-session-header">
             <div>
               <div class="ms-session-title">${escapeHtml(s.exerciseTitle)}</div>
-              <div class="ms-session-meta">${escapeHtml(when)} · <span class="${stateCls}">${escapeHtml(stateLabel)}</span></div>
+              <div class="ms-session-meta" title="${escapeHtml(absoluteWhen)}">${escapeHtml(when)} · <span class="${stateCls}">${escapeHtml(stateLabel)}</span></div>
             </div>
             <button class="ms-toggle-btn" data-session-toggle="${escapeHtml(s.sessionId)}">
               ${expanded ? 'Hide events' : 'Show events'}
@@ -4189,6 +4227,21 @@ function formatReplayTime(iso) {
   } catch { return ''; }
 }
 
+/**
+ * Split code into lines and mark lines that are new since the previous
+ * snapshot. Very simple line-based diff (no LCS) — sufficient for a
+ * tutor to see which lines the student touched.
+ */
+function renderReplayCodeHtml(current, previous) {
+  const curLines = String(current || '').split('\n');
+  const prevSet = new Set(String(previous || '').split('\n'));
+  return curLines.map((line) => {
+    const isNew = line.trim().length > 0 && !prevSet.has(line);
+    const cls = isNew ? ' class="rp-line-added"' : '';
+    return '<span' + cls + '>' + escapeHtml(line) + '</span>';
+  }).join('\n');
+}
+
 function renderReplayPanel(body) {
   const idx = __replay.index;
   const total = __replay.events.length;
@@ -4223,11 +4276,24 @@ function renderReplayPanel(body) {
   const timelineRows = state.timeline.map((e, i) => {
     const isCurrent = i === idx;
     const when = formatReplayTime(e.when);
-    return `<li class="rp-timeline-row${isCurrent ? ' rp-current' : ''}">
+    return `<li class="rp-timeline-row${isCurrent ? ' rp-current' : ''}" data-rp-jump="${i}" role="button" tabindex="0">
       <span class="rp-timeline-time">${escapeHtml(when)}</span>
       <span class="rp-timeline-label">${escapeHtml(describeEvent(e))}</span>
     </li>`;
   }).join('');
+
+  // Build a map of previous snapshot for the current index (for diff)
+  let previousCode = '';
+  {
+    // Walk backwards from idx-1 to find the previous code-snapshot
+    for (let i = idx - 1; i >= 0; i--) {
+      const e = __replay.events[i];
+      if (e.type === 'code-snapshot') {
+        previousCode = e.payload.codeSnapshot || '';
+        break;
+      }
+    }
+  }
 
   // Event ticks on the scrubber
   const ticks = __replay.events.map((e, i) => {
@@ -4256,7 +4322,7 @@ function renderReplayPanel(body) {
     <div class="rp-view">
       <div class="rp-pane">
         <div class="rp-pane-title">Code at this moment</div>
-        <pre class="rp-code" id="rpCode">${escapeHtml(state.code || '(empty)')}</pre>
+        <pre class="rp-code" id="rpCode">${renderReplayCodeHtml(state.code, previousCode) || escapeHtml('(empty)')}</pre>
         <div class="rp-pane-title rp-pane-title-error">Error output</div>
         <pre class="rp-error" id="rpError">${escapeHtml(state.errorOutput || '(none)')}</pre>
       </div>
@@ -4282,6 +4348,63 @@ function renderReplayPanel(body) {
       setReplayIndex(Number(e.target.value), { fromScrubber: true });
     });
   }
+  body.querySelectorAll('[data-rp-jump]').forEach((row) => {
+    const jump = () => setReplayIndex(Number(row.dataset.rpJump));
+    row.addEventListener('click', jump);
+    row.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); jump(); }
+    });
+  });
+  if (typeof wireReplayKeyboard === 'function') wireReplayKeyboard();
+}
+
+let __replayKeyboardWired = false;
+function wireReplayKeyboard() {
+  if (__replayKeyboardWired) return;
+  __replayKeyboardWired = true;
+  document.addEventListener('keydown', (e) => {
+    const wrap = document.getElementById('sedReplay');
+    if (!wrap || wrap.style.display === 'none') return;
+    // Ignore if typing in an input/textarea/select
+    const tag = (e.target && e.target.tagName) || '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target.isContentEditable) return;
+    // Ignore if a modal is open (let modals own the keys)
+    const confirmModal = document.getElementById('confirmModal');
+    const nudgeModal = document.getElementById('nudgeModal');
+    const messagesModal = document.getElementById('messagesModal');
+    if ((confirmModal && !confirmModal.hidden) ||
+        (nudgeModal && !nudgeModal.hidden) ||
+        (messagesModal && !messagesModal.hidden)) return;
+
+    const total = __replay.events.length;
+    if (total === 0) return;
+
+    switch (e.key) {
+      case ' ':
+      case 'Spacebar':
+        e.preventDefault();
+        toggleReplayPlay();
+        break;
+      case 'ArrowLeft':
+        e.preventDefault();
+        setReplayIndex(__replay.index - 1);
+        break;
+      case 'ArrowRight':
+        e.preventDefault();
+        setReplayIndex(__replay.index + 1);
+        break;
+      case 'Home':
+        e.preventDefault();
+        setReplayIndex(0);
+        break;
+      case 'End':
+        e.preventDefault();
+        setReplayIndex(total - 1);
+        break;
+      default:
+        break;
+    }
+  });
 }
 
 function setReplayIndex(idx, opts) {
