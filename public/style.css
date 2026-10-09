@@ -2833,3 +2833,199 @@ body.privacy-open .privacy-view {
   font-size: 13px;
   text-align: center;
 }
+
+/* ── Mobile header: hide the tagline so tabs have room ── */
+@media (max-width: 700px) {
+  .brand-tag { display: none; }
+}
+
+/* ══════════════════════════════════════════════════════════
+   Mobile responsive fixes (≤ 700px)
+   ══════════════════════════════════════════════════════════ */
+
+@media (max-width: 700px) {
+  /* ── Header: hide brand tagline so tabs have room ── */
+  .brand-tag { display: none; }
+  .topbar { padding: 8px 12px; gap: 12px; }
+
+  /* ── Modals: shrink padding so they fit narrow screens ── */
+  .modal-backdrop { padding: 12px; }
+  .modal {
+    padding: 20px 18px 18px;
+    max-width: 100%;
+  }
+  .settings-modal { max-width: 100%; }
+  .confirm-modal {
+    max-width: 100%;
+    padding: 20px 18px;
+  }
+
+  /* ── Panel headers: stack vertically ── */
+  .panel-header {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 10px;
+  }
+  .range-picker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+  }
+
+  /* ── Roster table: hide non-essential columns ── */
+  /* Columns: Student | Classes | Activity | Completed | Last active | Status
+     Hide: Classes, Activity */
+  .students-table th:nth-child(2),
+  .students-table td:nth-child(2),
+  .students-table th:nth-child(3),
+  .students-table td:nth-child(3) {
+    display: none;
+  }
+  .students-table {
+    font-size: 12px;
+  }
+  .students-table th,
+  .students-table td {
+    padding: 10px 8px;
+    vertical-align: middle;
+  }
+  .student-name-cell { font-size: 13px; }
+  .student-email-cell { font-size: 11px; }
+
+  /* ── Session history table: hide hint level + attempts ── */
+  /* Columns: Exercise | State | Hint level | Attempts | Time | Last activity
+     Hide: Hint level, Attempts */
+  .sd-sessions-table th:nth-child(3),
+  .sd-sessions-table td:nth-child(3),
+  .sd-sessions-table th:nth-child(4),
+  .sd-sessions-table td:nth-child(4) {
+    display: none;
+  }
+  .sd-sessions-table {
+    font-size: 12px;
+  }
+  .sd-sessions-table th,
+  .sd-sessions-table td {
+    padding: 8px 6px;
+  }
+  /* Exercise names: don't break mid-word */
+  .sd-exercise-cell,
+  .sd-exercise-slug {
+    display: block;
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ── Exercises table: hide less-important columns ── */
+  /* Columns: Title | Language | Struggle | Updated | Actions
+     Hide: Language, Struggle */
+  .exercises-table th:nth-child(2),
+  .exercises-table td:nth-child(2),
+  .exercises-table th:nth-child(3),
+  .exercises-table td:nth-child(3) {
+    display: none;
+  }
+
+  /* ── Two-column Weak Spots / Strengths panels: stack ── */
+  .sd-two-col {
+    grid-template-columns: 1fr !important;
+    gap: 16px;
+  }
+
+  /* ── Metric cards: allow wrapping ── */
+  .sd-metrics-row {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+  .sd-metric-card {
+    padding: 14px 16px;
+  }
+  .sd-metric-value { font-size: 20px; }
+
+  /* ── Cohort comparison: tighter bars ── */
+  .sd-cc-bar-line {
+    grid-template-columns: 70px 1fr 50px;
+    gap: 6px;
+  }
+  .sd-cc-bar-name { font-size: 11px; }
+  .sd-cc-bar-value { font-size: 11px; }
+
+  /* ── Activity heatmap: horizontal scroll if needed ── */
+  .sd-activity-grid-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* ── Session table row: make tappable rows look tappable ── */
+  .sd-session-row { cursor: pointer; }
+
+  /* ── Danger zone: stack content vertically ── */
+  .sd-danger-body {
+    flex-direction: column;
+    align-items: flex-start !important;
+  }
+  .sd-danger-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  /* ── Next-action banner: smaller text ── */
+  .sd-next-action-title { font-size: 13px; }
+  .sd-next-action-detail { font-size: 12px; }
+
+  /* ── Privacy view: reduce padding ── */
+  .privacy-container { padding: 20px 18px; }
+  .privacy-header h1 { font-size: 20px; }
+  .privacy-body h2 { font-size: 14px; }
+  .privacy-body p { font-size: 13px; }
+
+  /* ── Logout chip: keep tight ── */
+  .current-user-name { font-size: 12px; }
+  .user-menu-toggle { padding: 5px 8px; }
+}
+
+/* ══════════════════════════════════════════════════════════
+   Very narrow (≤ 400px): extra-cramped fallbacks
+   ══════════════════════════════════════════════════════════ */
+
+@media (max-width: 400px) {
+  /* Header: allow tabs to wrap to a second row */
+  .topbar {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .tabs {
+    margin-left: 0;
+    width: 100%;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+  .tab { white-space: nowrap; font-size: 13px; padding: 6px 10px; }
+
+  /* Metric cards: single column */
+  .sd-metrics-row {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Hide activities + streak pills overflow */
+  .sd-activity-summary { gap: 6px; }
+  .sd-activity-pill { font-size: 11px; padding: 3px 8px; }
+
+  /* Login / signup: tighter */
+  .login-card { padding: 20px 16px; }
+  .login-form input,
+  .login-form #registerFields input { padding: 10px; font-size: 14px; }
+
+  /* Confirm modal buttons: stack */
+  .confirm-modal-actions {
+    flex-direction: column-reverse;
+  }
+  .confirm-modal-actions > button {
+    width: 100%;
+  }
+}

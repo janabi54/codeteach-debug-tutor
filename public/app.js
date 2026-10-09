@@ -2442,6 +2442,8 @@ let currentStudentId = null;
 
 function showStudentsRoster() {
   $('studentsRoster').hidden = false;
+  var hdr = document.getElementById('studentsPanelHeader');
+  if (hdr) hdr.hidden = false;
   $('studentDetailView').hidden = true;
   const exView = $('studentExerciseDetailView');
   if (exView) exView.hidden = true;
@@ -2450,6 +2452,8 @@ function showStudentsRoster() {
 
 function showStudentDetail() {
   $('studentsRoster').hidden = true;
+  var hdr = document.getElementById('studentsPanelHeader');
+  if (hdr) hdr.hidden = true;
   $('studentDetailView').hidden = false;
   const exView = $('studentExerciseDetailView');
   if (exView) exView.hidden = true;
