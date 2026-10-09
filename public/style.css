@@ -3414,3 +3414,13 @@ body.privacy-open .privacy-view {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
 }
+
+/* ── Nudge character counter ── */
+.nudge-char-counter {
+  font-size: 11px;
+  color: #9ca3af;
+  font-variant-numeric: tabular-nums;
+  margin-left: 8px;
+}
+.nudge-char-counter.warn { color: #d97706; font-weight: 600; }
+.nudge-char-counter.full { color: #dc2626; font-weight: 700; }

@@ -2432,6 +2432,7 @@ function renderNudgeCompose(container, studentName, existingThread) {
         placeholder="Write a message…" maxlength="2000"></textarea>
       <div class="nudge-compose-actions">
         <span id="nudgeComposeStatus" class="nudge-compose-status"></span>
+        <span id="nudgeComposeCounter" class="nudge-char-counter">0 / 2000</span>
         <button type="button" id="nudgeComposeSend" class="primary small">Send message</button>
       </div>
     </div>
@@ -2440,6 +2441,7 @@ function renderNudgeCompose(container, studentName, existingThread) {
   const textarea = $('nudgeComposeText');
   const sendBtn = $('nudgeComposeSend');
   const status = $('nudgeComposeStatus');
+  attachCharCounter(textarea, $('nudgeComposeCounter'), 2000);
 
   // Template chip click fills the textarea
   container.querySelectorAll('.nudge-template-chip').forEach((chip) => {
@@ -2520,6 +2522,7 @@ function renderNudgeThread(container, data) {
           placeholder="Write a reply…" maxlength="2000"></textarea>
         <div class="nudge-compose-actions">
           <span id="nudgeReplyStatus" class="nudge-compose-status"></span>
+          <span id="nudgeReplyCounter" class="nudge-char-counter">0 / 2000</span>
           <button type="button" id="nudgeReplySend" class="primary small">Send</button>
         </div>
       </div>
@@ -2529,6 +2532,7 @@ function renderNudgeThread(container, data) {
   const textarea = $('nudgeReplyText');
   const sendBtn = $('nudgeReplySend');
   const status = $('nudgeReplyStatus');
+  attachCharCounter(textarea, $('nudgeReplyCounter'), 2000);
 
   sendBtn.addEventListener('click', async () => {
     const body = textarea.value.trim();
@@ -2828,6 +2832,7 @@ async function openThreadView(threadId) {
           '<textarea id="messagesReplyText" class="nudge-compose-textarea" rows="3" placeholder="Write a reply…" maxlength="2000"></textarea>' +
           '<div class="nudge-compose-actions">' +
             '<span id="messagesReplyStatus" class="nudge-compose-status"></span>' +
+            '<span id="messagesReplyCounter" class="nudge-char-counter">0 / 2000</span>' +
             '<button type="button" id="messagesReplySend" class="primary small">Send</button>' +
           '</div>' +
         '</div>' +
@@ -2836,6 +2841,7 @@ async function openThreadView(threadId) {
     const ta = $('messagesReplyText');
     const sendBtn = $('messagesReplySend');
     const status = $('messagesReplyStatus');
+    attachCharCounter(ta, $('messagesReplyCounter'), 2000);
 
     sendBtn.addEventListener('click', async () => {
       const text = ta.value.trim();
@@ -2883,6 +2889,27 @@ async function openThreadView(threadId) {
   } catch (err) {
     body.innerHTML = '<p class="empty-state">Failed: ' + escapeHtml(err.message) + '</p>';
   }
+}
+
+
+
+/**
+ * Attach a live character counter to a textarea.
+ * @param textarea  the <textarea> element
+ * @param counterEl the element to write "123 / 2000" into
+ * @param max       the maximum length (matches the textarea's maxlength)
+ */
+function attachCharCounter(textarea, counterEl, max) {
+  if (!textarea || !counterEl) return;
+  function update() {
+    var n = textarea.value.length;
+    counterEl.textContent = n + ' / ' + max;
+    counterEl.classList.remove('warn', 'full');
+    if (n >= max) counterEl.classList.add('full');
+    else if (n >= max * 0.9) counterEl.classList.add('warn');
+  }
+  textarea.addEventListener('input', update);
+  update();
 }
 
 function renderNextAction(nextAction) {
@@ -4504,3 +4531,19 @@ function classificationLabel(c) {
   if (c === 'worsening') return 'Worsening';
   return 'Stable';
 }
+
+
+// ═══════════════════════════════════════════════════════════
+// Global Escape handler — closes the topmost open modal
+// ═══════════════════════════════════════════════════════════
+document.addEventListener('keydown', function (e) {
+  if (e.key !== 'Escape') return;
+  var messages = document.getElementById('messagesModal');
+  var nudge = document.getElementById('nudgeModal');
+  var confirm = document.getElementById('confirmModal');
+  if (messages && !messages.hidden) { closeMessagesModal(); return; }
+  if (nudge && !nudge.hidden) { closeNudgeModal(); return; }
+  if (confirm && !confirm.hidden && typeof closeConfirmModal === 'function') {
+    closeConfirmModal();
+  }
+});
