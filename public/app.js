@@ -703,7 +703,9 @@ async function loadCurrentUser() {
     const res = await fetch('/api/auth/me');
     if (!res.ok) return null;
     const data = await res.json();
-    return data.user;
+    // Server now returns { user: null } when not authenticated
+    // (instead of a 401) to avoid noise in the browser console.
+    return data.user || null;
   } catch {
     return null;
   }
@@ -2656,12 +2658,33 @@ function handleWsMessage(msg) {
     case 'nudge:reply':
       // Refresh badge count from the server (safer than incrementing)
       refreshMyUnreadCount();
-      // Live-refresh the open modal if it's showing this thread
-      if (typeof currentMessagesThreadId !== 'undefined' && currentMessagesThreadId === msg.threadId) {
-        // Re-render thread
-        const modal = $('messagesModal');
-        if (modal && !modal.hidden) {
-          openThreadView(msg.threadId);
+      // Refresh any open messaging UI, guarded against disrupting a
+      // user who is mid-compose.
+      {
+        const messagesModal = $('messagesModal');
+        if (messagesModal && !messagesModal.hidden) {
+          if (currentMessagesThreadId === msg.threadId) {
+            // Same thread is open — refresh unless the reply box has
+            // unsent text (don't wipe the user's draft).
+            const ta = document.getElementById('messagesReplyText');
+            if (!ta || ta.value.trim().length === 0) {
+              openThreadView(msg.threadId);
+            }
+          } else if (!currentMessagesThreadId) {
+            // Threads list is showing — refresh it so the new message
+            // preview and unread badge appear.
+            renderThreadsList();
+          }
+        }
+
+        // Instructor-side nudge modal for the currently-open student
+        const nudgeModal = $('nudgeModal');
+        if (nudgeModal && !nudgeModal.hidden && currentStudentId) {
+          const replyTa = document.getElementById('nudgeReplyText');
+          // Only refresh if the instructor isn't mid-reply
+          if (!replyTa || replyTa.value.trim().length === 0) {
+            void refreshNudgeThreadView();
+          }
         }
       }
       // Small visual ping — briefly animate the badge
@@ -2794,6 +2817,14 @@ async function renderThreadsList() {
 async function openThreadView(threadId) {
   const body = $('messagesModalBody');
   if (!body) return;
+
+  // Preserve any in-progress reply draft across re-renders so a WS
+  // event arriving mid-compose doesn't wipe what the user was typing.
+  const existingReply = document.getElementById('messagesReplyText');
+  const draft = existingReply ? existingReply.value : '';
+  const draftStart = existingReply ? existingReply.selectionStart : 0;
+  const draftEnd = existingReply ? existingReply.selectionEnd : 0;
+
   currentMessagesThreadId = threadId;
   updateMessagesModalChrome('thread');
   body.innerHTML = '<p class="empty-state">Loading…</p>';
@@ -2876,6 +2907,17 @@ async function openThreadView(threadId) {
       }
     });
 
+    // Restore any draft the user was typing before the re-render
+    if (draft) {
+      ta.value = draft;
+      try {
+        ta.selectionStart = draftStart;
+        ta.selectionEnd = draftEnd;
+      } catch {}
+      // Trigger the counter update
+      ta.dispatchEvent(new Event('input'));
+    }
+
     // Mark read
     try {
       await fetch('/api/me/nudges/' + encodeURIComponent(threadId) + '/read', {
@@ -2910,6 +2952,49 @@ function attachCharCounter(textarea, counterEl, max) {
   }
   textarea.addEventListener('input', update);
   update();
+}
+
+/**
+ * Refresh the instructor-side nudge modal's thread view WITHOUT
+ * re-marking messages read and without disrupting a user who is
+ * currently typing.
+ */
+async function refreshNudgeThreadView() {
+  if (!currentStudentId) return;
+  const bodyEl = $('nudgeModalBody');
+  if (!bodyEl) return;
+
+  // Preserve draft across re-render (instructor side)
+  const existingReply = document.getElementById('nudgeReplyText');
+  const draft = existingReply ? existingReply.value : '';
+  const draftStart = existingReply ? existingReply.selectionStart : 0;
+  const draftEnd = existingReply ? existingReply.selectionEnd : 0;
+
+  try {
+    const res = await fetch(
+      '/api/admin/students/' + encodeURIComponent(currentStudentId) + '/nudges',
+      { credentials: 'same-origin' }
+    );
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.thread) {
+      renderNudgeThread(bodyEl, data);
+      // Restore draft
+      if (draft) {
+        const ta = document.getElementById('nudgeReplyText');
+        if (ta) {
+          ta.value = draft;
+          try {
+            ta.selectionStart = draftStart;
+            ta.selectionEnd = draftEnd;
+          } catch {}
+          ta.dispatchEvent(new Event('input'));
+        }
+      }
+    }
+  } catch {
+    // silent
+  }
 }
 
 function renderNextAction(nextAction) {

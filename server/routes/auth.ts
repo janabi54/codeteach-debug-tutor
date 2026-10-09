@@ -245,11 +245,13 @@ router.delete('/me/account', requireAuth, async (req, res) => {
 router.get('/me', async (req, res) => {
   const token = getSessionTokenFromRequest(req);
   if (!token) {
-    return res.status(401).json({ error: 'Not authenticated.' });
+    // Not logged in. Return 200 with null user so the client's
+    // auth bootstrap doesn't log a red 401 in the browser console.
+    return res.json({ user: null });
   }
   const user = await resolveSession(token);
   if (!user) {
-    return res.status(401).json({ error: 'Session expired or invalid.' });
+    return res.json({ user: null });
   }
   res.json({
     user: {
