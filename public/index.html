@@ -417,6 +417,10 @@ for (let i = 0; i < arr.length; i++) {
       <div class="student-detail-top">
         <div>
           <h1 id="sdName" class="student-detail-name">—</h1>
+          <button id="sdNudgeIcon" class="sd-nudge-icon" title="Message this student" aria-label="Message this student">
+            <span class="sd-nudge-icon-glyph">✉</span>
+            <span id="sdNudgeBadge" class="sd-nudge-badge" hidden></span>
+          </button>
           <p class="student-detail-meta">
             <span id="sdEmail">—</span>
             <span class="meta-sep">·</span>
@@ -735,5 +739,18 @@ for (let i = 0; i < arr.length; i++) {
     </div>
   </div>
 </div>
+<!-- NUDGE MODAL (instructor-side: compose + thread) -->
+<div id="nudgeModal" class="nudge-modal-backdrop" hidden>
+  <div class="nudge-modal">
+    <div class="nudge-modal-header">
+      <h2 id="nudgeModalTitle" class="nudge-modal-title">Message</h2>
+      <button id="nudgeModalClose" class="nudge-modal-close" title="Close">×</button>
+    </div>
+    <div id="nudgeModalBody" class="nudge-modal-body">
+      <!-- rendered dynamically -->
+    </div>
+  </div>
+</div>
+
 </body>
 </html>

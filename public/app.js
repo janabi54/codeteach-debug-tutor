@@ -2274,6 +2274,299 @@ function renderStatusBadge(status, reasons) {
  * `nextAction` is present. Clickable (opens exercise detail) only
  * when nextAction.clickable === true.
  */
+/**
+ * Wire the message icon next to the student name. Idempotent — safe
+ * to call on every render.
+ */
+function wireStudentNudgeIcon() {
+  const btn = $('sdNudgeIcon');
+  if (!btn) return;
+
+  // Clone-replace to strip stale listeners
+  const fresh = btn.cloneNode(true);
+  btn.parentNode.replaceChild(fresh, btn);
+
+  fresh.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!currentStudentId) return;
+    // If the student has an existing thread, open it directly.
+    // Otherwise open the compose view.
+    openNudgeModal('auto');
+  });
+
+  // Refresh badge count for the current student
+  refreshStudentNudgeBadge();
+}
+
+/**
+ * Fetch the unread count for the current student (from the
+ * instructor's perspective — messages the student sent that we
+ * haven't read).
+ */
+async function refreshStudentNudgeBadge() {
+  const badge = $('sdNudgeBadge');
+  if (!badge) return;
+  if (!currentStudentId) {
+    badge.hidden = true;
+    return;
+  }
+  try {
+    const res = await fetch(
+      '/api/admin/students/' + encodeURIComponent(currentStudentId) + '/nudges',
+      { credentials: 'same-origin' }
+    );
+    if (!res.ok) { badge.hidden = true; return; }
+    const data = await res.json();
+    const messages = data.messages || [];
+    // Count messages authored by the student that have no readAt
+    const unread = messages.filter(
+      (m) => m.authorRole === 'student' && !m.readAt
+    ).length;
+    if (unread > 0) {
+      badge.textContent = String(unread);
+      badge.hidden = false;
+    } else {
+      badge.hidden = true;
+    }
+  } catch {
+    badge.hidden = true;
+  }
+}
+
+/**
+ * Open the nudge modal.
+ * mode = 'compose' | 'thread' | 'auto'
+ *   'auto' -> if a thread exists, show it; else show compose.
+ */
+async function openNudgeModal(mode) {
+  const modal = $('nudgeModal');
+  if (!modal || !currentStudentId) return;
+  modal.hidden = false;
+
+  const bodyEl = $('nudgeModalBody');
+  const titleEl = $('nudgeModalTitle');
+
+  // Fetch current thread state
+  bodyEl.innerHTML = '<p class="empty-state">Loading…</p>';
+  titleEl.textContent = 'Message';
+
+  let data = { thread: null, messages: [] };
+  try {
+    const res = await fetch(
+      '/api/admin/students/' + encodeURIComponent(currentStudentId) + '/nudges',
+      { credentials: 'same-origin' }
+    );
+    if (res.ok) data = await res.json();
+  } catch {}
+
+  // Resolve mode
+  if (mode === 'auto') {
+    mode = data.thread ? 'thread' : 'compose';
+  }
+
+  // Mark thread read on open (any unread student messages)
+  if (mode === 'thread' && data.thread) {
+    try {
+      await fetch(
+        '/api/me/nudges/' + encodeURIComponent(data.thread.id) + '/read',
+        { method: 'POST', credentials: 'same-origin' }
+      );
+      // Refresh badge after marking read
+      refreshStudentNudgeBadge();
+    } catch {}
+  }
+
+  // Render
+  const student = window.__studentsRoster
+    ? window.__studentsRoster.find((s) => s.studentId === currentStudentId)
+    : null;
+  const studentName = student ? student.displayName : 'this student';
+  titleEl.textContent = 'Message ' + studentName;
+
+  if (mode === 'compose') {
+    renderNudgeCompose(bodyEl, studentName, data.thread);
+  } else {
+    renderNudgeThread(bodyEl, data);
+  }
+}
+
+/**
+ * Render the compose form. Templates + textarea + send.
+ */
+function renderNudgeCompose(container, studentName, existingThread) {
+  // Discover context for template placeholders
+  const roster = window.__studentsRoster || [];
+  const student = roster.find((s) => s.studentId === currentStudentId);
+  const recentExercise = student && student.lastActiveAt ? '(your most recent exercise)' : 'your recent exercise';
+  const nextExercise = 'the next exercise';
+
+  // Templates
+  const templates = [
+    'Just checking in — how\'s it going?',
+    'Try the next exercise when you get a chance.',
+    'Nice work on your recent exercise!',
+    'Anything I can help with?',
+  ];
+
+  const templatesHtml = templates.map((t) => `
+    <button type="button" class="nudge-template-chip" data-template="${escapeHtml(t)}">
+      ${escapeHtml(t)}
+    </button>
+  `).join('');
+
+  container.innerHTML = `
+    <div class="nudge-compose">
+      <div class="nudge-compose-label">Quick messages</div>
+      <div class="nudge-template-row">${templatesHtml}</div>
+      <div class="nudge-compose-label" style="margin-top:14px;">
+        ${existingThread ? 'Add to the conversation' : 'Your message'}
+      </div>
+      <textarea id="nudgeComposeText" class="nudge-compose-textarea" rows="5"
+        placeholder="Write a message…" maxlength="2000"></textarea>
+      <div class="nudge-compose-actions">
+        <span id="nudgeComposeStatus" class="nudge-compose-status"></span>
+        <button type="button" id="nudgeComposeSend" class="primary small">Send message</button>
+      </div>
+    </div>
+  `;
+
+  const textarea = $('nudgeComposeText');
+  const sendBtn = $('nudgeComposeSend');
+  const status = $('nudgeComposeStatus');
+
+  // Template chip click fills the textarea
+  container.querySelectorAll('.nudge-template-chip').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      textarea.value = chip.dataset.template;
+      textarea.focus();
+    });
+  });
+
+  sendBtn.addEventListener('click', async () => {
+    const body = textarea.value.trim();
+    if (!body) {
+      status.textContent = 'Write a message first.';
+      status.className = 'nudge-compose-status error';
+      return;
+    }
+    sendBtn.disabled = true;
+    sendBtn.textContent = 'Sending…';
+    status.textContent = '';
+    try {
+      const res = await fetch(
+        '/api/admin/students/' + encodeURIComponent(currentStudentId) + '/nudges',
+        {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ body }),
+        }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        status.textContent = data.error || 'Could not send.';
+        status.className = 'nudge-compose-status error';
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Send message';
+        return;
+      }
+      // Reload as a thread view
+      openNudgeModal('thread');
+    } catch (err) {
+      status.textContent = 'Failed: ' + err.message;
+      status.className = 'nudge-compose-status error';
+      sendBtn.disabled = false;
+      sendBtn.textContent = 'Send message';
+    }
+  });
+
+  setTimeout(() => textarea.focus(), 30);
+}
+
+/**
+ * Render the thread view: all messages + reply box.
+ */
+function renderNudgeThread(container, data) {
+  const messages = data.messages || [];
+  const thread = data.thread;
+
+  const messagesHtml = messages.length === 0
+    ? '<p class="empty-state">No messages yet.</p>'
+    : messages.map((m) => {
+        const mine = m.authorRole === 'instructor';
+        const when = m.createdAt ? new Date(m.createdAt.replace(' ', 'T') + 'Z').toLocaleString() : '';
+        return `
+          <div class="nudge-bubble-row ${mine ? 'mine' : 'theirs'}">
+            <div class="nudge-bubble">
+              <div class="nudge-bubble-body">${escapeHtml(m.body).replace(/\n/g, '<br>')}</div>
+              <div class="nudge-bubble-time">${escapeHtml(when)}</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+  container.innerHTML = `
+    <div class="nudge-thread">
+      <div class="nudge-thread-messages">${messagesHtml}</div>
+      <div class="nudge-thread-reply">
+        <textarea id="nudgeReplyText" class="nudge-compose-textarea" rows="3"
+          placeholder="Write a reply…" maxlength="2000"></textarea>
+        <div class="nudge-compose-actions">
+          <span id="nudgeReplyStatus" class="nudge-compose-status"></span>
+          <button type="button" id="nudgeReplySend" class="primary small">Send</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const textarea = $('nudgeReplyText');
+  const sendBtn = $('nudgeReplySend');
+  const status = $('nudgeReplyStatus');
+
+  sendBtn.addEventListener('click', async () => {
+    const body = textarea.value.trim();
+    if (!body) {
+      status.textContent = 'Write a message first.';
+      status.className = 'nudge-compose-status error';
+      return;
+    }
+    sendBtn.disabled = true;
+    sendBtn.textContent = 'Sending…';
+    try {
+      const res = await fetch(
+        '/api/me/nudges/' + encodeURIComponent(thread.id) + '/reply',
+        {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ body }),
+        }
+      );
+      const data2 = await res.json();
+      if (!res.ok) {
+        status.textContent = data2.error || 'Could not send.';
+        status.className = 'nudge-compose-status error';
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Send';
+        return;
+      }
+      openNudgeModal('thread');
+    } catch (err) {
+      status.textContent = 'Failed: ' + err.message;
+      status.className = 'nudge-compose-status error';
+      sendBtn.disabled = false;
+      sendBtn.textContent = 'Send';
+    }
+  });
+
+  setTimeout(() => textarea.focus(), 30);
+}
+
+function closeNudgeModal() {
+  const modal = $('nudgeModal');
+  if (modal) modal.hidden = true;
+}
+
 function renderNextAction(nextAction) {
   const el = $('sdNextAction');
   if (!el) return;
@@ -2286,10 +2579,31 @@ function renderNextAction(nextAction) {
 
   el.className = 'sd-next-action sd-next-action-' + nextAction.kind;
   el.style.display = 'block';
-  el.innerHTML =
-    '<div class="sd-next-action-title">' + escapeHtml(nextAction.title) + '</div>' +
-    '<div class="sd-next-action-detail">' + escapeHtml(nextAction.detail) + '</div>';
 
+  // Split content into a left text block and a right action area
+  // (with an optional "Nudge" button).
+  const titleHtml = '<div class="sd-next-action-title">' + escapeHtml(nextAction.title) + '</div>';
+  const detailHtml = '<div class="sd-next-action-detail">' + escapeHtml(nextAction.detail) + '</div>';
+  const nudgeBtnHtml = currentStudentId
+    ? '<button type="button" class="sd-next-action-nudge" data-nudge-open="1">✉ Nudge</button>'
+    : '';
+
+  el.innerHTML =
+    '<div class="sd-next-action-content">' +
+      '<div class="sd-next-action-text">' + titleHtml + detailHtml + '</div>' +
+      '<div class="sd-next-action-actions">' + nudgeBtnHtml + '</div>' +
+    '</div>';
+
+  // Wire the nudge button if present
+  const nudgeBtn = el.querySelector('[data-nudge-open]');
+  if (nudgeBtn && currentStudentId) {
+    nudgeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openNudgeModal('compose');
+    });
+  }
+
+  // Click-through behavior on the banner itself (existing behavior)
   if (nextAction.clickable && nextAction.exerciseId) {
     el.style.cursor = 'pointer';
     el.setAttribute('role', 'button');
@@ -2541,6 +2855,9 @@ function renderStudentDetail(data) {
 
   $('sdName').textContent = displayName;
   $('sdEmail').textContent = email;
+
+  // Message icon next to the name — opens the nudge thread
+  wireStudentNudgeIcon();
   $('sdClasses').textContent = classes;
   $('sdJoined').textContent = joinedAt
     ? new Date(joinedAt).toLocaleDateString()
@@ -3386,6 +3703,10 @@ document.addEventListener('click', (e) => {
     }
   } else if (t.id === 'deleteAccountBtn') {
     deleteMyAccount();
+  } else if (t.id === 'nudgeModalClose') {
+    closeNudgeModal();
+  } else if (t.id === 'nudgeModal') {
+    if (e.target === t) closeNudgeModal();
   } else if (t.id === 'openPrivacyBtn') {
     showPrivacy();
   } else if (t.id === 'backFromPrivacyBtn') {

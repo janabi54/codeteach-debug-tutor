@@ -3101,3 +3101,209 @@ body.privacy-open .privacy-view {
     white-space: nowrap;
   }
 }
+
+/* ── Nudge icon (next to student name) ── */
+.sd-nudge-icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid #e4e6eb;
+  background: #fff;
+  cursor: pointer;
+  margin-left: 10px;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.sd-nudge-icon:hover {
+  background: #f5f6ff;
+  border-color: #c7d2fe;
+}
+.sd-nudge-icon-glyph { font-size: 16px; }
+.sd-nudge-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: #dc2626;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+/* ── Nudge button inside the next-action banner ── */
+.sd-next-action-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.sd-next-action-text { flex: 1; min-width: 0; }
+.sd-next-action-actions { flex-shrink: 0; }
+.sd-next-action-nudge {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid #c7d2fe;
+  background: #eef2ff;
+  color: #4338ca;
+  cursor: pointer;
+}
+.sd-next-action-nudge:hover { background: #e0e7ff; }
+
+/* ── Nudge modal ── */
+.nudge-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  padding: 20px;
+}
+.nudge-modal {
+  background: #fff;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 560px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.25);
+}
+.nudge-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid #eef0f3;
+}
+.nudge-modal-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a1d23;
+}
+.nudge-modal-close {
+  border: 0;
+  background: transparent;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  color: #7a7f88;
+  padding: 0 4px;
+}
+.nudge-modal-close:hover { color: #dc2626; }
+.nudge-modal-body {
+  padding: 16px 20px 20px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Compose form */
+.nudge-compose-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #7a7f88;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.nudge-template-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.nudge-template-chip {
+  font-family: inherit;
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid #e4e6eb;
+  background: #fff;
+  color: #4b5563;
+  cursor: pointer;
+  text-align: left;
+}
+.nudge-template-chip:hover {
+  background: #f5f6ff;
+  border-color: #c7d2fe;
+  color: #4338ca;
+}
+.nudge-compose-textarea {
+  width: 100%;
+  border: 1px solid #dfe2e7;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  resize: vertical;
+  box-sizing: border-box;
+}
+.nudge-compose-textarea:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
+}
+.nudge-compose-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 10px;
+  gap: 10px;
+}
+.nudge-compose-status { font-size: 12px; color: #7a7f88; }
+.nudge-compose-status.error { color: #dc2626; }
+
+/* Thread view */
+.nudge-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.nudge-thread-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 45vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.nudge-bubble-row { display: flex; }
+.nudge-bubble-row.mine { justify-content: flex-end; }
+.nudge-bubble-row.theirs { justify-content: flex-start; }
+.nudge-bubble {
+  max-width: 80%;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.nudge-bubble-row.mine .nudge-bubble {
+  background: #eef2ff;
+  color: #1a1d23;
+}
+.nudge-bubble-row.theirs .nudge-bubble {
+  background: #f3f4f6;
+  color: #1a1d23;
+}
+.nudge-bubble-time {
+  font-size: 11px;
+  color: #7a7f88;
+  margin-top: 4px;
+}
