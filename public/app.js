@@ -2751,7 +2751,7 @@ async function loadExercisePicker() {
   try {
     const res = await fetch('/api/cohorts/my-exercises');
     if (!res.ok) {
-      select.innerHTML = '<option value="ex-1">ex-1 (no cohort)</option>';
+      select.innerHTML = '<option value="ex-1">ex-1 (not enrolled)</option>';
       if (hint) {
         hint.textContent = 'You are not enrolled in any class yet. Ask your instructor for an enrollment code.';
         hint.hidden = false;
@@ -2762,7 +2762,7 @@ async function loadExercisePicker() {
     const exercises = await res.json();
 
     if (!exercises.length) {
-      select.innerHTML = '<option value="ex-1">ex-1 (no cohort)</option>';
+      select.innerHTML = '<option value="ex-1">ex-1 (not enrolled)</option>';
       if (hint) {
         hint.textContent = 'You are not enrolled in any class yet. Open Classes from the top-right menu to enter a code.';
         hint.hidden = false;
