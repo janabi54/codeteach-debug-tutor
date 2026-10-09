@@ -52,7 +52,7 @@
     <button class="tab active" data-tab="tutor">Tutor</button>
     <button class="tab" data-tab="weak-spots">Weak Spots</button>
     <button class="tab" data-tab="health">Health</button>
-    <button class="tab" data-tab="class">Class</button>
+    <button class="tab" data-tab="class">Analytics</button>
     <button class="tab" data-tab="students">Students</button>
     <button class="tab" data-tab="exercises">Exercises</button>
   </nav>
@@ -223,18 +223,22 @@ for (let i = 0; i < arr.length; i++) {
 
 <!-- CLASS TAB -->
 <section id="tab-class" class="tab-panel">
-  <div class="panel-wrap">
-    <h1>Class Fingerprint</h1>
-    <p class="subtitle">Aggregate view across all students. Not a grade — a teaching signal.</p>
-
-    <div class="admin-key-row">
-      <label for="adminKeyClass">Admin key</label>
-      <input id="adminKeyClass" type="text" value="change-me" spellcheck="false" />
-      <button id="refreshClass" class="primary small">Refresh</button>
+  <div class="panel-wrap panel-wrap-wide">
+    <div class="analytics-header">
+      <div>
+        <h1>Analytics</h1>
+        <p class="subtitle">How your cohort is doing — aggregated across all students.</p>
+      </div>
+      <div class="analytics-picker">
+        <label for="analyticsCohort">Cohort</label>
+        <select id="analyticsCohort">
+          <option value="">Loading…</option>
+        </select>
+      </div>
     </div>
 
-    <div id="classBody" class="health-body">
-      <p class="empty-state">Enter the admin key and press Refresh.</p>
+    <div id="analyticsBody" class="analytics-body">
+      <p class="empty-state">Loading…</p>
     </div>
   </div>
 </section>

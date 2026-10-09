@@ -6,6 +6,7 @@ document.querySelectorAll('.tab').forEach(tab => {
     tab.classList.add('active');
     document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
     if (tab.dataset.tab === 'weak-spots') loadWeakSpots();
+    if (tab.dataset.tab === 'class' && typeof loadAnalytics === 'function') loadAnalytics();
   });
 });
 
@@ -490,26 +491,33 @@ async function hydrateSession() {
 
 // (persistIds removed — identity comes from session)
 
-// --- Class fingerprint tab ---
-$('refreshClass').addEventListener('click', async () => {
-  const key = $('adminKeyClass').value.trim();
-  const body = $('classBody');
-  body.innerHTML = '<p class="empty-state">Loading...</p>';
+// --- Class fingerprint tab (legacy — the tab UI was replaced by
+// Analytics, but the endpoint and renderClassFingerprint are kept so
+// the loader can be revived without a rewrite. Guarded so the missing
+// DOM elements don't throw at boot.) ---
+const __refreshClassBtn = $('refreshClass');
+if (__refreshClassBtn) {
+  __refreshClassBtn.addEventListener('click', async () => {
+    const key = $('adminKeyClass') ? $('adminKeyClass').value.trim() : '';
+    const body = $('classBody');
+    if (!body) return;
+    body.innerHTML = '<p class="empty-state">Loading...</p>';
 
-  try {
-    const res = await fetch('/api/admin/class-fingerprint?hours=168', {
-      headers: { 'x-admin-key': key },
-    });
-    if (!res.ok) {
-      body.innerHTML = '<p class="empty-state">Request failed: HTTP ' + res.status + '</p>';
-      return;
+    try {
+      const res = await fetch('/api/admin/class-fingerprint?hours=168', {
+        headers: { 'x-admin-key': key },
+      });
+      if (!res.ok) {
+        body.innerHTML = '<p class="empty-state">Request failed: HTTP ' + res.status + '</p>';
+        return;
+      }
+      const fp = await res.json();
+      body.innerHTML = renderClassFingerprint(fp);
+    } catch (err) {
+      body.innerHTML = '<p class="empty-state">Failed: ' + escapeHtml(err.message) + '</p>';
     }
-    const fp = await res.json();
-    body.innerHTML = renderClassFingerprint(fp);
-  } catch (err) {
-    body.innerHTML = '<p class="empty-state">Failed: ' + escapeHtml(err.message) + '</p>';
-  }
-});
+  });
+}
 
 function renderClassFingerprint(fp) {
   const anomaliesHtml = fp.anomalies && fp.anomalies.length
@@ -1895,6 +1903,10 @@ async function loadClassPicker() {
 }
 
 document.addEventListener('change', (e) => {
+  if (e.target && e.target.id === 'analyticsCohort') {
+    loadAnalyticsFor(e.target.value);
+    return;
+  }
   if (e.target && e.target.id === 'classPicker') {
     selectedCohortId = e.target.value;
     loadExercises();
@@ -2995,6 +3007,175 @@ async function refreshNudgeThreadView() {
   } catch {
     // silent
   }
+}
+
+// ═══════════════════════════════════════════════════════════
+// Analytics tab (cohort-level dashboard)
+// ═══════════════════════════════════════════════════════════
+
+let analyticsCohortsLoaded = false;
+
+async function loadAnalytics() {
+  const picker = $('analyticsCohort');
+  const body = $('analyticsBody');
+  if (!picker || !body) return;
+
+  // Populate the picker once per session (or when the instructor's
+  // cohort list may have changed — simplest: repopulate every tab open).
+  try {
+    const res = await fetch('/api/admin/cohorts', { credentials: 'same-origin' });
+    if (!res.ok) {
+      body.innerHTML = '<p class="empty-state">Could not load your cohorts.</p>';
+      return;
+    }
+    const cohorts = await res.json();
+
+    if (!cohorts.length) {
+      picker.innerHTML = '<option value="">No cohorts yet</option>';
+      body.innerHTML = '<p class="empty-state">Create a cohort from the Exercises tab first.</p>';
+      return;
+    }
+
+    // Preserve current selection if still valid
+    const previousValue = picker.value;
+    picker.innerHTML = cohorts.map((c) =>
+      '<option value="' + escapeHtml(c.id) + '">' + escapeHtml(c.name) + '</option>'
+    ).join('');
+    if (previousValue && cohorts.some((c) => c.id === previousValue)) {
+      picker.value = previousValue;
+    }
+
+    analyticsCohortsLoaded = true;
+  } catch (err) {
+    body.innerHTML = '<p class="empty-state">Failed: ' + escapeHtml(err.message) + '</p>';
+    return;
+  }
+
+  await loadAnalyticsFor(picker.value);
+}
+
+async function loadAnalyticsFor(cohortId) {
+  const body = $('analyticsBody');
+  if (!body) return;
+  if (!cohortId) {
+    body.innerHTML = '<p class="empty-state">Select a cohort above.</p>';
+    return;
+  }
+
+  body.innerHTML = '<p class="empty-state">Loading…</p>';
+
+  try {
+    const res = await fetch(
+      '/api/admin/analytics/' + encodeURIComponent(cohortId),
+      { credentials: 'same-origin' }
+    );
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      body.innerHTML = '<p class="empty-state">' + escapeHtml(data.error || 'Could not load analytics.') + '</p>';
+      return;
+    }
+    const data = await res.json();
+    renderAnalytics(body, data);
+  } catch (err) {
+    body.innerHTML = '<p class="empty-state">Failed: ' + escapeHtml(err.message) + '</p>';
+  }
+}
+
+function renderAnalytics(container, data) {
+  const s = data.summary;
+  const bd = data.statusBreakdown;
+  const total = data.studentCount || 0;
+  const pct = (n) => total > 0 ? Math.round((n / total) * 100) : 0;
+
+  // Summary metric cards
+  const summaryCards = [
+    { label: 'Enrolled', value: total },
+    { label: 'Avg reasoning', value: s.avgReasoningPct === null ? '—' : s.avgReasoningPct + '%' },
+    { label: 'Median progress', value: s.medianProgressPct === null ? '—' : Math.round(s.medianProgressPct) + '%' },
+    { label: 'Avg hints / session', value: s.avgHintsPerSession === null ? '—' : s.avgHintsPerSession.toFixed(1) },
+  ];
+
+  const statusRows = [
+    { key: 'onTrack',  label: 'On track',  count: bd.onTrack,  cls: 'status-row-ontrack' },
+    { key: 'slipping', label: 'Slipping',  count: bd.slipping, cls: 'status-row-slipping' },
+    { key: 'atRisk',   label: 'At-risk',   count: bd.atRisk,   cls: 'status-row-atrisk' },
+    { key: 'new',      label: 'New',       count: bd.new,      cls: 'status-row-new' },
+  ];
+
+  // Weekly sparklines via the shared renderActivityGrid approach?
+  // Simpler: build a small inline sparkline using the same technique
+  // used in the metric cards.
+  const reasoningSpark = renderAnalyticsSparkline(data.weeklyTrends.reasoningQuality, {
+    classification: 'stable',
+    scale: 1,
+  });
+  const sessionsSpark = renderAnalyticsSparkline(data.weeklyTrends.sessions, {
+    classification: 'stable',
+    scale: null, // auto
+  });
+
+  container.innerHTML = `
+    <div class="analytics-summary-row">
+      ${summaryCards.map((c) => `
+        <div class="analytics-card">
+          <div class="analytics-card-label">${escapeHtml(c.label)}</div>
+          <div class="analytics-card-value">${escapeHtml(String(c.value))}</div>
+        </div>
+      `).join('')}
+    </div>
+
+    <div class="analytics-section">
+      <h3 class="analytics-section-title">Status breakdown</h3>
+      <div class="analytics-status-rows">
+        ${statusRows.map((r) => `
+          <div class="analytics-status-row">
+            <span class="analytics-status-label">${escapeHtml(r.label)}</span>
+            <div class="analytics-status-bar">
+              <div class="analytics-status-fill ${r.cls}" style="width:${pct(r.count)}%"></div>
+            </div>
+            <span class="analytics-status-count">${r.count} <span class="muted">(${pct(r.count)}%)</span></span>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+
+    <div class="analytics-section">
+      <h3 class="analytics-section-title">Reasoning quality (last 12 weeks)</h3>
+      <div class="analytics-spark-wrap">${reasoningSpark}</div>
+    </div>
+
+    <div class="analytics-section">
+      <h3 class="analytics-section-title">Completed sessions (last 12 weeks)</h3>
+      <div class="analytics-spark-wrap">${sessionsSpark}</div>
+    </div>
+  `;
+}
+
+/**
+ * A simple bar-chart sparkline for the analytics tab. Each bar = one
+ * week. Null values render as an empty bar.
+ *
+ * opts.scale = fixed numeric max; null for auto-scale to the max value.
+ */
+function renderAnalyticsSparkline(points, opts) {
+  if (!points || points.length === 0) {
+    return '<p class="empty-state">No data.</p>';
+  }
+  const valid = points.map((p) => p.value).filter((v) => v !== null);
+  const maxRaw = valid.length ? Math.max.apply(null, valid) : 0;
+  const max = opts.scale !== null && opts.scale !== undefined
+    ? opts.scale
+    : (maxRaw > 0 ? maxRaw : 1);
+
+  const bars = points.map((p) => {
+    const v = p.value;
+    const h = v === null ? 0 : Math.max(2, Math.round((v / max) * 40));
+    const cls = v === null ? 'empty' : '';
+    const label = p.weekStart + ': ' + (v === null ? 'no data' : v);
+    return '<div class="analytics-bar ' + cls + '" style="height:' + h + 'px" title="' + escapeHtml(label) + '"></div>';
+  }).join('');
+
+  return '<div class="analytics-bars">' + bars + '</div>';
 }
 
 function renderNextAction(nextAction) {
