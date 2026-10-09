@@ -2911,13 +2911,17 @@ body.privacy-open .privacy-view {
   }
   /* Exercise names: don't break mid-word */
   .sd-exercise-cell,
-  .sd-exercise-slug {
+  .sd-exercise-slug,
+  .exercise-title-cell {
     display: block;
     max-width: 140px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  /* Exercises table: allow the title cell a wider budget so the
+     action buttons remain reachable. */
+  .exercise-title-cell { max-width: 180px; }
 
   /* ── Exercises table: hide less-important columns ── */
   /* Columns: Title | Language | Struggle | Updated | Actions
@@ -3027,5 +3031,73 @@ body.privacy-open .privacy-view {
   }
   .confirm-modal-actions > button {
     width: 100%;
+  }
+}
+
+
+/* ══════════════════════════════════════════════════════════
+   Very-narrow session history: hide Last activity
+   so exercise names have room (>= 100px per column)
+   ══════════════════════════════════════════════════════════ */
+
+@media (max-width: 400px) {
+  /* Session history columns: Exercise | State | Time | Last activity
+     Hide: Last activity (col 4 after our earlier hides) */
+  .sd-sessions-table th:nth-child(6),
+  .sd-sessions-table td:nth-child(6) {
+    display: none;
+  }
+  /* Give the exercise column a wider budget */
+  .sd-sessions-table td:first-child,
+  .sd-sessions-table th:first-child {
+    max-width: 45vw;
+  }
+  .sd-exercise-cell,
+  .sd-exercise-slug {
+    max-width: 42vw;
+  }
+
+  /* Exercises table: give the title column room too */
+  .exercise-title-cell { max-width: 180px; }
+}
+
+
+/* ══════════════════════════════════════════════════════════
+   Exercises table — actions column handling at narrow widths
+   ══════════════════════════════════════════════════════════ */
+
+/* Hide the Duplicate button at <=700px to make room for Edit + Delete. */
+@media (max-width: 700px) {
+  .exercises-table button[data-action="duplicate"] {
+    display: none;
+  }
+}
+
+/* At <=500px, stack Edit + Delete vertically so both fit. */
+@media (max-width: 500px) {
+  .exercises-table .exercise-actions-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: stretch;
+  }
+  .exercises-table .exercise-actions-cell button {
+    width: 100%;
+    padding: 4px 8px;
+    font-size: 11px;
+  }
+  /* Title column: allow more width since actions are stacked */
+  .exercise-title-cell { max-width: 200px; }
+  .exercise-slug-cell { max-width: 200px; }
+}
+
+/* The .exercise-slug-cell also needs truncation. */
+@media (max-width: 700px) {
+  .exercise-slug-cell {
+    display: block;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
