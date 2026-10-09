@@ -897,6 +897,210 @@ export const db = {
     },
   },
 
+  nudges: {
+    /**
+     * Get or create the thread between an instructor and a student.
+     * There's exactly one thread per pair (UNIQUE constraint).
+     */
+    ensureThread(instructorId: string, studentId: string, subject: string | null): {
+      id: string;
+      instructorId: string;
+      studentId: string;
+      subject: string | null;
+      lastMessageAt: string;
+      createdAt: string;
+    } {
+      const existing = sqlite
+        .prepare(
+          `SELECT id, instructor_id AS instructorId, student_id AS studentId,
+                  subject, last_message_at AS lastMessageAt, created_at AS createdAt
+           FROM nudge_threads
+           WHERE instructor_id = ? AND student_id = ?`
+        )
+        .get(instructorId, studentId) as any;
+
+      if (existing) return existing;
+
+      const id = randomUUID();
+      sqlite
+        .prepare(
+          `INSERT INTO nudge_threads (id, instructor_id, student_id, subject)
+           VALUES (?, ?, ?, ?)`
+        )
+        .run(id, instructorId, studentId, subject);
+
+      return sqlite
+        .prepare(
+          `SELECT id, instructor_id AS instructorId, student_id AS studentId,
+                  subject, last_message_at AS lastMessageAt, created_at AS createdAt
+           FROM nudge_threads WHERE id = ?`
+        )
+        .get(id) as any;
+    },
+
+    getThreadById(threadId: string): any {
+      return sqlite
+        .prepare(
+          `SELECT id, instructor_id AS instructorId, student_id AS studentId,
+                  subject, last_message_at AS lastMessageAt, created_at AS createdAt
+           FROM nudge_threads WHERE id = ?`
+        )
+        .get(threadId);
+    },
+
+    findThreadBetween(instructorId: string, studentId: string): any {
+      return sqlite
+        .prepare(
+          `SELECT id, instructor_id AS instructorId, student_id AS studentId,
+                  subject, last_message_at AS lastMessageAt, created_at AS createdAt
+           FROM nudge_threads
+           WHERE instructor_id = ? AND student_id = ?`
+        )
+        .get(instructorId, studentId);
+    },
+
+    addMessage(data: {
+      threadId: string;
+      authorId: string;
+      authorRole: 'instructor' | 'student';
+      body: string;
+    }): {
+      id: string;
+      threadId: string;
+      authorId: string;
+      authorRole: string;
+      body: string;
+      readAt: string | null;
+      emailSentAt: string | null;
+      createdAt: string;
+    } {
+      const id = randomUUID();
+      const tx = sqlite.transaction(() => {
+        sqlite
+          .prepare(
+            `INSERT INTO nudge_messages
+               (id, thread_id, author_id, author_role, body)
+             VALUES (?, ?, ?, ?, ?)`
+          )
+          .run(id, data.threadId, data.authorId, data.authorRole, data.body);
+        sqlite
+          .prepare(`UPDATE nudge_threads SET last_message_at = datetime('now') WHERE id = ?`)
+          .run(data.threadId);
+      });
+      tx();
+
+      return sqlite
+        .prepare(
+          `SELECT id, thread_id AS threadId, author_id AS authorId,
+                  author_role AS authorRole, body, read_at AS readAt,
+                  email_sent_at AS emailSentAt, created_at AS createdAt
+           FROM nudge_messages WHERE id = ?`
+        )
+        .get(id) as any;
+    },
+
+    listMessages(threadId: string): any[] {
+      return sqlite
+        .prepare(
+          `SELECT id, thread_id AS threadId, author_id AS authorId,
+                  author_role AS authorRole, body, read_at AS readAt,
+                  email_sent_at AS emailSentAt, created_at AS createdAt
+           FROM nudge_messages
+           WHERE thread_id = ?
+           ORDER BY created_at ASC`
+        )
+        .all(threadId) as any[];
+    },
+
+    markThreadRead(threadId: string, readerId: string): number {
+      const r = sqlite
+        .prepare(
+          `UPDATE nudge_messages
+           SET read_at = datetime('now')
+           WHERE thread_id = ? AND author_id != ? AND read_at IS NULL`
+        )
+        .run(threadId, readerId);
+      return r.changes ?? 0;
+    },
+
+    unreadCount(userId: string): number {
+      const row = sqlite
+        .prepare(
+          `SELECT COUNT(*) AS n
+           FROM nudge_messages nm
+           JOIN nudge_threads nt ON nt.id = nm.thread_id
+           WHERE (nt.instructor_id = ? OR nt.student_id = ?)
+             AND nm.author_id != ?
+             AND nm.read_at IS NULL`
+        )
+        .get(userId, userId, userId) as { n: number };
+      return row.n;
+    },
+
+    listThreadsForUser(userId: string): Array<{
+      id: string;
+      instructorId: string;
+      studentId: string;
+      subject: string | null;
+      lastMessageAt: string;
+      createdAt: string;
+      otherPartyName: string;
+      otherPartyEmail: string;
+      lastMessageBody: string | null;
+      lastMessageAtDisplay: string | null;
+      unreadCount: number;
+    }> {
+      const threads = sqlite
+        .prepare(
+          `SELECT nt.id, nt.instructor_id AS instructorId, nt.student_id AS studentId,
+                  nt.subject, nt.last_message_at AS lastMessageAt, nt.created_at AS createdAt
+           FROM nudge_threads nt
+           WHERE nt.instructor_id = ? OR nt.student_id = ?
+           ORDER BY nt.last_message_at DESC`
+        )
+        .all(userId, userId) as Array<{
+          id: string;
+          instructorId: string;
+          studentId: string;
+          subject: string | null;
+          lastMessageAt: string;
+          createdAt: string;
+        }>;
+
+      return threads.map((t) => {
+        const otherPartyId = t.instructorId === userId ? t.studentId : t.instructorId;
+        const other = sqlite
+          .prepare('SELECT display_name AS name, email FROM users WHERE id = ?')
+          .get(otherPartyId) as { name: string; email: string } | undefined;
+
+        const lastMsg = sqlite
+          .prepare(
+            `SELECT body, created_at AS createdAt
+             FROM nudge_messages WHERE thread_id = ?
+             ORDER BY created_at DESC LIMIT 1`
+          )
+          .get(t.id) as { body: string; createdAt: string } | undefined;
+
+        const unread = sqlite
+          .prepare(
+            `SELECT COUNT(*) AS n
+             FROM nudge_messages
+             WHERE thread_id = ? AND author_id != ? AND read_at IS NULL`
+          )
+          .get(t.id, userId) as { n: number };
+
+        return {
+          ...t,
+          otherPartyName: other?.name || 'Unknown',
+          otherPartyEmail: other?.email || '',
+          lastMessageBody: lastMsg?.body ?? null,
+          lastMessageAtDisplay: lastMsg?.createdAt ?? null,
+          unreadCount: unread.n,
+        };
+      });
+    },
+  },
+
   students: {
     /**
      * Summary stats for a student, restricted to a set of exercise IDs.
@@ -1795,11 +1999,13 @@ export const db = {
       telemetry: number;
       tutor_notes: number;
       tutor_feedback: number;
+      nudges: number;
     } {
       if (exerciseIds.length === 0) {
         return {
           hypotheses: 0, hint_sessions: 0, post_mortems: 0,
           mistake_patterns: 0, telemetry: 0, tutor_notes: 0, tutor_feedback: 0,
+          nudges: 0,
         };
       }
       const placeholders = exerciseIds.map(() => '?').join(',');
@@ -1834,6 +2040,13 @@ export const db = {
           .prepare(`DELETE FROM tutor_feedback WHERE student_id = ? AND instructor_id = ?`)
           .run(studentId, studentId);
 
+        // Nudges: delete all threads involving this student (FK cascades
+        // handle the nudge_messages). Both instructor- and student-authored
+        // threads are wiped since the student is the target of this purge.
+        const nd = sqlite
+          .prepare(`DELETE FROM nudge_threads WHERE student_id = ? OR instructor_id = ?`)
+          .run(studentId, studentId);
+
         return {
           hypotheses: h.changes ?? 0,
           hint_sessions: hs.changes ?? 0,
@@ -1842,6 +2055,7 @@ export const db = {
           telemetry: tel.changes ?? 0,
           tutor_notes: tn.changes ?? 0,
           tutor_feedback: tf.changes ?? 0,
+          nudges: nd.changes ?? 0,
         };
       });
 
@@ -1912,6 +2126,15 @@ export const db = {
         // Exercises belonging to the cohort
         const ex = sqlite.prepare('DELETE FROM exercises WHERE cohort_id = ?').run(cohortId).changes ?? 0;
 
+        // Nudge threads for any student in this cohort (any instructor)
+        let nd = 0;
+        if (studentIds.length > 0) {
+          const sP = studentIds.map(() => '?').join(',');
+          nd = sqlite
+            .prepare(`DELETE FROM nudge_threads WHERE student_id IN (${sP})`)
+            .run(...studentIds).changes ?? 0;
+        }
+
         // The cohort itself
         const c = sqlite.prepare('DELETE FROM cohorts WHERE id = ?').run(cohortId).changes ?? 0;
 
@@ -1921,6 +2144,7 @@ export const db = {
           mistake_patterns: mp, telemetry: tel,
           tutor_notes: tn, tutor_feedback: tf,
           cohort_members: cm, exercises: ex, cohort: c,
+          nudges: nd,
         };
       });
 

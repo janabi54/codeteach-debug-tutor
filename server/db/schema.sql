@@ -224,3 +224,39 @@ CREATE INDEX IF NOT EXISTS idx_invite_audit_time
   ON invite_audit(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_invite_audit_actor
   ON invite_audit(actor_id, created_at DESC);
+
+-- ── Nudges (tutor ↔ student messaging) ──
+
+CREATE TABLE IF NOT EXISTS nudge_threads (
+  id TEXT PRIMARY KEY,
+  instructor_id TEXT NOT NULL,
+  student_id TEXT NOT NULL,
+  subject TEXT,
+  last_message_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (instructor_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
+  UNIQUE(instructor_id, student_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_nudge_threads_student
+  ON nudge_threads(student_id, last_message_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_nudge_threads_instructor
+  ON nudge_threads(instructor_id, last_message_at DESC);
+
+CREATE TABLE IF NOT EXISTS nudge_messages (
+  id TEXT PRIMARY KEY,
+  thread_id TEXT NOT NULL,
+  author_id TEXT NOT NULL,
+  author_role TEXT NOT NULL,
+  body TEXT NOT NULL,
+  read_at TEXT,
+  email_sent_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (thread_id) REFERENCES nudge_threads(id) ON DELETE CASCADE,
+  FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_nudge_messages_thread
+  ON nudge_messages(thread_id, created_at);

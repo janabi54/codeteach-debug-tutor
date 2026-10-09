@@ -12,6 +12,8 @@ import { startHealthMonitor } from './admin/alerts.js';
 import { bootstrapInstructor } from './auth/bootstrap.js';
 import { pruneExpiredSessions } from './auth/sessions.js';
 import { seedExercisesFromConfig } from './db/seedExercises.js';
+import { attachWebSocketServer } from './websocket.js';
+import nudgeRoutes from './routes/nudges.js';
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -26,6 +28,7 @@ app.use('/api/cohorts', cohortRoutes);
 app.use('/api/admin/cohorts', cohortAdminRoutes);
 app.use('/api/admin/students', studentRoutes);
 app.use('/api/admin', notesRoutes);
+app.use('/api', nudgeRoutes);
 
 const PORT = Number(process.env.PORT ?? 3001);
 
@@ -34,10 +37,12 @@ async function main() {
   await seedExercisesFromConfig();
   await pruneExpiredSessions();
 
-  app.listen(PORT, () => {
+  const httpServer = app.listen(PORT, () => {
     console.log(`CodeTeach Debug Tutor listening on :${PORT}`);
     if (process.env.NODE_ENV === 'production') startHealthMonitor();
   });
+
+  attachWebSocketServer(httpServer);
 }
 
 main().catch((err) => {

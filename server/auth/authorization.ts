@@ -219,3 +219,16 @@ export function rosterFor(instructorId: string): Array<{
       joinedAt: string;
     }>;
 }
+
+
+/**
+ * Whether an instructor is allowed to message a given student.
+ * True if the student appears in the instructor's roster (i.e. is a
+ * member of any cohort the instructor owns).
+ */
+export function canInstructorMessageStudent(
+  instructorId: string,
+  studentId: string
+): boolean {
+  return rosterFor(instructorId).some((r) => r.studentId === studentId);
+}
