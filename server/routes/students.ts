@@ -527,6 +527,31 @@ router.patch(
 );
 
 // ─────────────────────────────────────────────────────────────
+// GET /api/admin/students/:studentId/exercises/:exerciseId/session-events
+// The captured event log for one (student, exercise) session. Used by
+// the tutor's Replay panel.
+// ─────────────────────────────────────────────────────────────
+router.get(
+  '/:studentId/exercises/:exerciseId/session-events',
+  requireInstructor,
+  async (req, res) => {
+    const instructorId = req.user!.id;
+    const { studentId, exerciseId } = req.params;
+
+    if (!canInstructorViewStudentOnExercise(instructorId, studentId, exerciseId)) {
+      return res.status(403).json({ error: 'You do not teach this student on this exercise.' });
+    }
+
+    const session = await db.hintSessions.find(studentId, exerciseId);
+    if (!session) {
+      return res.json({ session: null, events: [] });
+    }
+    const events = db.sessionEvents.listForSession(session.id);
+    res.json({ session, events });
+  }
+);
+
+// ─────────────────────────────────────────────────────────────
 // DELETE /api/admin/students/:studentId/exercises/:exerciseId/progress
 // Reset a student's progress on one exercise. Removes their sessions,
 // hypotheses, post-mortems, and mistake patterns for that exercise.

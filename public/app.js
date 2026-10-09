@@ -4049,6 +4049,7 @@ async function loadExercisePicker() {
 let currentExerciseId = null;
 
 function showStudentDetailFromExercise() {
+  if (typeof teardownReplay === 'function') teardownReplay();
   $('studentDetailView').hidden = false;
   $('studentExerciseDetailView').hidden = true;
   currentExerciseId = null;
@@ -4098,7 +4099,254 @@ async function openExerciseDetail(studentId, exerciseId, exerciseTitle) {
   }
 }
 
+// ═══════════════════════════════════════════════════════════
+// Replay panel (exercise detail page)
+// ═══════════════════════════════════════════════════════════
+
+const __replay = {
+  events: [],
+  index: 0,
+  playing: false,
+  timer: null,
+  studentId: null,
+  exerciseId: null,
+};
+
+async function loadReplayPanel(studentId, exerciseId) {
+  const wrap = $('sedReplay');
+  const body = $('sedReplayBody');
+  if (!wrap || !body) return;
+
+  // Reset state
+  if (__replay.timer) { clearInterval(__replay.timer); __replay.timer = null; }
+  __replay.events = [];
+  __replay.index = 0;
+  __replay.playing = false;
+  __replay.studentId = studentId;
+  __replay.exerciseId = exerciseId;
+
+  body.innerHTML = '<p class="empty-state">Loading replay…</p>';
+
+  try {
+    const res = await fetch(
+      '/api/admin/students/' + encodeURIComponent(studentId) +
+      '/exercises/' + encodeURIComponent(exerciseId) + '/session-events',
+      { credentials: 'same-origin' }
+    );
+    if (!res.ok) { wrap.style.display = 'none'; return; }
+    const data = await res.json();
+    const events = data.events || [];
+    if (events.length === 0) {
+      wrap.style.display = 'none';
+      return;
+    }
+    __replay.events = events;
+    wrap.style.display = 'block';
+    renderReplayPanel(body);
+  } catch {
+    wrap.style.display = 'none';
+  }
+}
+
+function replayStateAtIndex(idx) {
+  const upTo = __replay.events.slice(0, idx + 1);
+  let code = '';
+  let errorOutput = '';
+  let codeSnapshotAt = null;
+  for (const e of upTo) {
+    if (e.type === 'code-snapshot') {
+      code = e.payload.codeSnapshot || '';
+      errorOutput = e.payload.errorOutput || '';
+      codeSnapshotAt = e.recordedAt;
+    }
+  }
+  const timeline = upTo.map((e) => ({
+    type: e.type,
+    when: e.recordedAt,
+    payload: e.payload,
+  }));
+  return { code, errorOutput, codeSnapshotAt, timeline };
+}
+
+function replayCurrentEventLabel() {
+  const e = __replay.events[__replay.index];
+  if (!e) return '—';
+  const labels = {
+    'code-snapshot': 'Code snapshot',
+    'hint-request': 'Hint requested',
+    'hint-served': 'Hint served',
+    'hypothesis-written': 'Hypothesis written',
+    'post-mortem-saved': 'Post-mortem saved',
+    'session-completed': 'Session completed',
+  };
+  return labels[e.type] || e.type;
+}
+
+function formatReplayTime(iso) {
+  if (!iso) return '';
+  try {
+    return new Date(iso.replace(' ', 'T') + 'Z').toLocaleTimeString();
+  } catch { return ''; }
+}
+
+function renderReplayPanel(body) {
+  const idx = __replay.index;
+  const total = __replay.events.length;
+  const state = replayStateAtIndex(idx);
+  const currentLabel = replayCurrentEventLabel();
+  const atStart = idx === 0;
+  const atEnd = idx === total - 1;
+
+  // Timeline: reuse the timeline items to build a "what happened" list.
+  // Each entry: timestamp + description.
+  const describeEvent = (e) => {
+    switch (e.type) {
+      case 'code-snapshot':
+        return 'Code snapshot (' + ((e.payload && e.payload.reason) || 'auto') + ')';
+      case 'hint-request':
+        return 'Hint requested';
+      case 'hint-served': {
+        const t = (e.payload && e.payload.hintText) || '';
+        return 'Hint: ' + t.slice(0, 80) + (t.length > 80 ? '…' : '');
+      }
+      case 'hypothesis-written':
+        return 'Hypothesis: ' + ((e.payload && e.payload.text) || '').slice(0, 80);
+      case 'post-mortem-saved':
+        return 'Post-mortem: ' + ((e.payload && e.payload.text) || '').slice(0, 80);
+      case 'session-completed':
+        return 'Session completed';
+      default:
+        return e.type;
+    }
+  };
+
+  const timelineRows = state.timeline.map((e, i) => {
+    const isCurrent = i === idx;
+    const when = formatReplayTime(e.when);
+    return `<li class="rp-timeline-row${isCurrent ? ' rp-current' : ''}">
+      <span class="rp-timeline-time">${escapeHtml(when)}</span>
+      <span class="rp-timeline-label">${escapeHtml(describeEvent(e))}</span>
+    </li>`;
+  }).join('');
+
+  // Event ticks on the scrubber
+  const ticks = __replay.events.map((e, i) => {
+    const pct = total > 1 ? (i / (total - 1)) * 100 : 0;
+    const cls = i === idx ? 'rp-tick rp-tick-active'
+              : i < idx ? 'rp-tick rp-tick-past'
+              : 'rp-tick';
+    return `<span class="${cls}" style="left:${pct}%" title="${escapeHtml(formatReplayTime(e.recordedAt))} · ${escapeHtml(describeEvent(e))}"></span>`;
+  }).join('');
+
+  body.innerHTML = `
+    <div class="rp-controls">
+      <button type="button" class="rp-btn" data-rp-action="play" ${atEnd ? 'disabled' : ''}>
+        ${__replay.playing ? '❚❚ Pause' : '▶ Play'}
+      </button>
+      <button type="button" class="rp-btn rp-btn-secondary" data-rp-action="prev" ${atStart ? 'disabled' : ''}>◀ Prev</button>
+      <button type="button" class="rp-btn rp-btn-secondary" data-rp-action="next" ${atEnd ? 'disabled' : ''}>Next ▶</button>
+      <span class="rp-counter">Event ${idx + 1} of ${total} · <span class="rp-current-label">${escapeHtml(currentLabel)}</span></span>
+    </div>
+
+    <div class="rp-scrubber-wrap">
+      <input type="range" min="0" max="${Math.max(0, total - 1)}" value="${idx}" class="rp-scrubber" data-rp-scrubber />
+      <div class="rp-ticks">${ticks}</div>
+    </div>
+
+    <div class="rp-view">
+      <div class="rp-pane">
+        <div class="rp-pane-title">Code at this moment</div>
+        <pre class="rp-code" id="rpCode">${escapeHtml(state.code || '(empty)')}</pre>
+        <div class="rp-pane-title rp-pane-title-error">Error output</div>
+        <pre class="rp-error" id="rpError">${escapeHtml(state.errorOutput || '(none)')}</pre>
+      </div>
+      <div class="rp-pane">
+        <div class="rp-pane-title">What happened</div>
+        <ul class="rp-timeline">${timelineRows || '<li class="empty-state">No events yet.</li>'}</ul>
+      </div>
+    </div>
+  `;
+
+  // Wire controls
+  body.querySelectorAll('[data-rp-action]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const action = btn.dataset.rpAction;
+      if (action === 'play') toggleReplayPlay();
+      else if (action === 'prev') setReplayIndex(__replay.index - 1);
+      else if (action === 'next') setReplayIndex(__replay.index + 1);
+    });
+  });
+  const scrubber = body.querySelector('[data-rp-scrubber]');
+  if (scrubber) {
+    scrubber.addEventListener('input', (e) => {
+      setReplayIndex(Number(e.target.value), { fromScrubber: true });
+    });
+  }
+}
+
+function setReplayIndex(idx, opts) {
+  const total = __replay.events.length;
+  if (total === 0) return;
+  idx = Math.max(0, Math.min(total - 1, idx));
+  __replay.index = idx;
+  // Stop playing if the user scrubbed
+  if (opts && opts.fromScrubber && __replay.playing) {
+    __replay.playing = false;
+    if (__replay.timer) { clearInterval(__replay.timer); __replay.timer = null; }
+  }
+  // Reached the end while playing → stop
+  if (__replay.playing && idx === total - 1) {
+    __replay.playing = false;
+    if (__replay.timer) { clearInterval(__replay.timer); __replay.timer = null; }
+  }
+  const body = $('sedReplayBody');
+  if (body) renderReplayPanel(body);
+}
+
+function toggleReplayPlay() {
+  const total = __replay.events.length;
+  if (total === 0) return;
+  if (__replay.playing) {
+    // Pause
+    __replay.playing = false;
+    if (__replay.timer) { clearInterval(__replay.timer); __replay.timer = null; }
+    const body = $('sedReplayBody');
+    if (body) renderReplayPanel(body);
+    return;
+  }
+  // If we're at the end, restart from the beginning
+  if (__replay.index >= total - 1) {
+    __replay.index = 0;
+  }
+  __replay.playing = true;
+  __replay.timer = setInterval(() => {
+    if (__replay.index >= total - 1) {
+      __replay.playing = false;
+      if (__replay.timer) { clearInterval(__replay.timer); __replay.timer = null; }
+      const body = $('sedReplayBody');
+      if (body) renderReplayPanel(body);
+      return;
+    }
+    setReplayIndex(__replay.index + 1);
+  }, 800);
+  const body = $('sedReplayBody');
+  if (body) renderReplayPanel(body);
+}
+
+// Cleanup when leaving the exercise detail view
+function teardownReplay() {
+  if (__replay.timer) { clearInterval(__replay.timer); __replay.timer = null; }
+  __replay.playing = false;
+  __replay.events = [];
+  __replay.index = 0;
+}
+
 function renderExerciseDetail(data) {
+  // Replay panel (loads asynchronously)
+  if (typeof loadReplayPanel === 'function' && currentStudentId && currentExerciseId) {
+    loadReplayPanel(currentStudentId, currentExerciseId);
+  }
+
   // Session summary
   const s = data.session;
   if (s) {
