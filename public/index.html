@@ -59,9 +59,13 @@
     <div class="user-chip" id="userChip">
       <button id="userMenuToggle" class="user-menu-toggle" aria-haspopup="menu" aria-expanded="false">
         <span id="currentUserName" class="current-user-name"></span>
+        <span id="userUnreadBadge" class="user-unread-badge" hidden></span>
         <span class="user-menu-caret">▾</span>
       </button>
       <div id="userMenuDropdown" class="user-menu-dropdown" hidden>
+        <button id="openMessagesBtn" class="user-menu-item">
+          Messages <span id="messagesMenuBadge" class="user-menu-badge" hidden></span>
+        </button>
         <button id="openSettingsBtn" class="user-menu-item">Classes</button>
         <button id="openPrivacyBtn" class="user-menu-item">Privacy notice</button>
         <button id="logoutBtn" class="user-menu-item">Log out</button>
@@ -747,6 +751,20 @@ for (let i = 0; i < arr.length; i++) {
       <button id="nudgeModalClose" class="nudge-modal-close" title="Close">×</button>
     </div>
     <div id="nudgeModalBody" class="nudge-modal-body">
+      <!-- rendered dynamically -->
+    </div>
+  </div>
+</div>
+
+<!-- MESSAGES INBOX MODAL (student-side: list of threads + individual thread) -->
+<div id="messagesModal" class="nudge-modal-backdrop" hidden>
+  <div class="nudge-modal">
+    <div class="nudge-modal-header">
+      <button id="messagesModalBack" class="nudge-modal-back" hidden>← Back</button>
+      <h2 id="messagesModalTitle" class="nudge-modal-title">Messages</h2>
+      <button id="messagesModalClose" class="nudge-modal-close" title="Close">×</button>
+    </div>
+    <div id="messagesModalBody" class="nudge-modal-body">
       <!-- rendered dynamically -->
     </div>
   </div>

@@ -847,6 +847,9 @@ async function submitLogin() {
     showAppView();
     applyRoleVisibility();
     if (typeof hydrateSession === 'function') hydrateSession();
+    // Real-time messaging: connect WS + initial unread fetch
+    connectWebSocket();
+    refreshMyUnreadCount();
   } catch (err) {
     showLoginError('Network error: ' + err.message);
   } finally {
@@ -858,6 +861,7 @@ async function submitLogout() {
   try {
     await fetch('/api/auth/logout', { method: 'POST' });
   } catch {}
+  disconnectWebSocket();
   currentUser = null;
   location.reload();
 }
@@ -870,6 +874,9 @@ async function authBootstrap() {
     return;
   }
   currentUser = user;
+  // Real-time messaging: connect WS + initial unread fetch
+  connectWebSocket();
+  refreshMyUnreadCount();
   showAppView();
   applyRoleVisibility();
   if (typeof hydrateSession === 'function') hydrateSession();
@@ -2567,6 +2574,317 @@ function closeNudgeModal() {
   if (modal) modal.hidden = true;
 }
 
+// ═══════════════════════════════════════════════════════════
+// WebSocket client — real-time nudges + unread counts
+// ═══════════════════════════════════════════════════════════
+
+let __ws = null;
+let __wsReconnectAttempts = 0;
+let __wsReconnectTimer = null;
+
+function connectWebSocket() {
+  if (!currentUser) return;
+  if (__ws && (__ws.readyState === WebSocket.OPEN || __ws.readyState === WebSocket.CONNECTING)) {
+    return;
+  }
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const url = proto + '//' + location.host + '/ws';
+  try {
+    __ws = new WebSocket(url);
+  } catch (err) {
+    console.warn('[ws] connect failed:', err.message);
+    scheduleWsReconnect();
+    return;
+  }
+
+  __ws.addEventListener('open', () => {
+    __wsReconnectAttempts = 0;
+    console.log('[ws] connected');
+  });
+
+  __ws.addEventListener('message', (evt) => {
+    let msg = null;
+    try { msg = JSON.parse(evt.data); } catch { return; }
+    if (!msg || !msg.type) return;
+    handleWsMessage(msg);
+  });
+
+  __ws.addEventListener('close', (evt) => {
+    console.log('[ws] closed', evt.code, evt.reason);
+    __ws = null;
+    scheduleWsReconnect();
+  });
+
+  __ws.addEventListener('error', () => {
+    // Silent — the close handler runs after error and will reconnect
+  });
+}
+
+function scheduleWsReconnect() {
+  if (!currentUser) return;
+  if (__wsReconnectTimer) return;
+  // Exponential backoff capped at 30s
+  const delay = Math.min(30000, 1000 * Math.pow(2, __wsReconnectAttempts));
+  __wsReconnectAttempts++;
+  __wsReconnectTimer = setTimeout(() => {
+    __wsReconnectTimer = null;
+    connectWebSocket();
+  }, delay);
+}
+
+function disconnectWebSocket() {
+  if (__wsReconnectTimer) {
+    clearTimeout(__wsReconnectTimer);
+    __wsReconnectTimer = null;
+  }
+  if (__ws) {
+    try { __ws.close(); } catch {}
+    __ws = null;
+  }
+}
+
+function handleWsMessage(msg) {
+  switch (msg.type) {
+    case 'unread-count':
+      updateUnreadBadges(msg.count);
+      break;
+    case 'nudge:new':
+    case 'nudge:reply':
+      // Refresh badge count from the server (safer than incrementing)
+      refreshMyUnreadCount();
+      // Live-refresh the open modal if it's showing this thread
+      if (typeof currentMessagesThreadId !== 'undefined' && currentMessagesThreadId === msg.threadId) {
+        // Re-render thread
+        const modal = $('messagesModal');
+        if (modal && !modal.hidden) {
+          openThreadView(msg.threadId);
+        }
+      }
+      // Small visual ping — briefly animate the badge
+      pulseUnreadBadge();
+      break;
+    default:
+      break;
+  }
+}
+
+async function refreshMyUnreadCount() {
+  try {
+    const res = await fetch('/api/me/nudges/unread-count', { credentials: 'same-origin' });
+    if (!res.ok) return;
+    const data = await res.json();
+    updateUnreadBadges(data.count);
+  } catch {}
+}
+
+function updateUnreadBadges(count) {
+  const chipBadge = $('userUnreadBadge');
+  const menuBadge = $('messagesMenuBadge');
+  const n = Number(count) || 0;
+  if (chipBadge) {
+    if (n > 0) {
+      chipBadge.textContent = String(n);
+      chipBadge.hidden = false;
+    } else {
+      chipBadge.hidden = true;
+    }
+  }
+  if (menuBadge) {
+    if (n > 0) {
+      menuBadge.textContent = String(n);
+      menuBadge.hidden = false;
+    } else {
+      menuBadge.hidden = true;
+    }
+  }
+}
+
+function pulseUnreadBadge() {
+  const b = $('userUnreadBadge');
+  if (!b) return;
+  b.classList.remove('pulse');
+  void b.offsetWidth; // force reflow
+  b.classList.add('pulse');
+}
+
+// ═══════════════════════════════════════════════════════════
+// Messages inbox modal (student-side, but works for anyone)
+// ═══════════════════════════════════════════════════════════
+
+let currentMessagesThreadId = null;
+
+async function openMessagesModal() {
+  const modal = $('messagesModal');
+  if (!modal) return;
+  modal.hidden = false;
+  currentMessagesThreadId = null;
+  updateMessagesModalChrome('threads');
+  await renderThreadsList();
+}
+
+function closeMessagesModal() {
+  const modal = $('messagesModal');
+  if (modal) modal.hidden = true;
+  currentMessagesThreadId = null;
+}
+
+function updateMessagesModalChrome(mode) {
+  const back = $('messagesModalBack');
+  const title = $('messagesModalTitle');
+  if (!back || !title) return;
+  if (mode === 'thread') {
+    back.hidden = false;
+    title.textContent = 'Conversation';
+  } else {
+    back.hidden = true;
+    title.textContent = 'Messages';
+  }
+}
+
+async function renderThreadsList() {
+  const body = $('messagesModalBody');
+  if (!body) return;
+  body.innerHTML = '<p class="empty-state">Loading…</p>';
+
+  try {
+    const res = await fetch('/api/me/nudges', { credentials: 'same-origin' });
+    const data = await res.json();
+    const threads = (data && data.threads) || [];
+
+    if (threads.length === 0) {
+      body.innerHTML = '<p class="empty-state">No messages yet. Your tutor may reach out when they see something worth discussing.</p>';
+      return;
+    }
+
+    body.innerHTML = threads.map((t) => {
+      const when = t.lastMessageAtDisplay
+        ? new Date(t.lastMessageAtDisplay.replace(' ', 'T') + 'Z').toLocaleString()
+        : '';
+      const preview = (t.lastMessageBody || '').slice(0, 100);
+      const unread = t.unreadCount > 0
+        ? '<span class="thread-row-badge">' + t.unreadCount + '</span>'
+        : '';
+      return (
+        '<button type="button" class="thread-row ' + (t.unreadCount > 0 ? 'has-unread' : '') + '" data-thread-id="' + escapeHtml(t.id) + '">' +
+          '<div class="thread-row-header">' +
+            '<span class="thread-row-name">' + escapeHtml(t.otherPartyName) + '</span>' +
+            unread +
+            '<span class="thread-row-time">' + escapeHtml(when) + '</span>' +
+          '</div>' +
+          '<div class="thread-row-preview">' + escapeHtml(preview) + '</div>' +
+        '</button>'
+      );
+    }).join('');
+
+    // Wire each row
+    body.querySelectorAll('.thread-row').forEach((row) => {
+      row.addEventListener('click', () => {
+        openThreadView(row.dataset.threadId);
+      });
+    });
+  } catch (err) {
+    body.innerHTML = '<p class="empty-state">Failed: ' + escapeHtml(err.message) + '</p>';
+  }
+}
+
+async function openThreadView(threadId) {
+  const body = $('messagesModalBody');
+  if (!body) return;
+  currentMessagesThreadId = threadId;
+  updateMessagesModalChrome('thread');
+  body.innerHTML = '<p class="empty-state">Loading…</p>';
+
+  try {
+    const res = await fetch('/api/me/nudges/' + encodeURIComponent(threadId), { credentials: 'same-origin' });
+    if (!res.ok) {
+      body.innerHTML = '<p class="empty-state">Could not load conversation.</p>';
+      return;
+    }
+    const data = await res.json();
+    const messages = data.messages || [];
+    const thread = data.thread;
+
+    const messagesHtml = messages.length === 0
+      ? '<p class="empty-state">No messages yet.</p>'
+      : messages.map((m) => {
+          const mine = m.authorId === (currentUser && currentUser.id);
+          const when = m.createdAt
+            ? new Date(m.createdAt.replace(' ', 'T') + 'Z').toLocaleString()
+            : '';
+          return (
+            '<div class="nudge-bubble-row ' + (mine ? 'mine' : 'theirs') + '">' +
+              '<div class="nudge-bubble">' +
+                '<div class="nudge-bubble-body">' + escapeHtml(m.body).replace(/\n/g, '<br>') + '</div>' +
+                '<div class="nudge-bubble-time">' + escapeHtml(when) + '</div>' +
+              '</div>' +
+            '</div>'
+          );
+        }).join('');
+
+    body.innerHTML =
+      '<div class="nudge-thread">' +
+        '<div class="nudge-thread-messages">' + messagesHtml + '</div>' +
+        '<div class="nudge-thread-reply">' +
+          '<textarea id="messagesReplyText" class="nudge-compose-textarea" rows="3" placeholder="Write a reply…" maxlength="2000"></textarea>' +
+          '<div class="nudge-compose-actions">' +
+            '<span id="messagesReplyStatus" class="nudge-compose-status"></span>' +
+            '<button type="button" id="messagesReplySend" class="primary small">Send</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    const ta = $('messagesReplyText');
+    const sendBtn = $('messagesReplySend');
+    const status = $('messagesReplyStatus');
+
+    sendBtn.addEventListener('click', async () => {
+      const text = ta.value.trim();
+      if (!text) {
+        status.textContent = 'Write a message first.';
+        status.className = 'nudge-compose-status error';
+        return;
+      }
+      sendBtn.disabled = true;
+      sendBtn.textContent = 'Sending…';
+      try {
+        const r2 = await fetch('/api/me/nudges/' + encodeURIComponent(threadId) + '/reply', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ body: text }),
+        });
+        const d2 = await r2.json();
+        if (!r2.ok) {
+          status.textContent = d2.error || 'Could not send.';
+          status.className = 'nudge-compose-status error';
+          sendBtn.disabled = false;
+          sendBtn.textContent = 'Send';
+          return;
+        }
+        openThreadView(threadId);
+      } catch (err) {
+        status.textContent = 'Failed: ' + err.message;
+        status.className = 'nudge-compose-status error';
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Send';
+      }
+    });
+
+    // Mark read
+    try {
+      await fetch('/api/me/nudges/' + encodeURIComponent(threadId) + '/read', {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+      refreshMyUnreadCount();
+    } catch {}
+
+    setTimeout(() => ta && ta.focus(), 30);
+  } catch (err) {
+    body.innerHTML = '<p class="empty-state">Failed: ' + escapeHtml(err.message) + '</p>';
+  }
+}
+
 function renderNextAction(nextAction) {
   const el = $('sdNextAction');
   if (!el) return;
@@ -3703,6 +4021,17 @@ document.addEventListener('click', (e) => {
     }
   } else if (t.id === 'deleteAccountBtn') {
     deleteMyAccount();
+  } else if (t.id === 'openMessagesBtn') {
+    toggleUserMenu(false);
+    openMessagesModal();
+  } else if (t.id === 'messagesModalClose') {
+    closeMessagesModal();
+  } else if (t.id === 'messagesModalBack') {
+    currentMessagesThreadId = null;
+    updateMessagesModalChrome('threads');
+    renderThreadsList();
+  } else if (t.id === 'messagesModal') {
+    if (e.target === t) closeMessagesModal();
   } else if (t.id === 'nudgeModalClose') {
     closeNudgeModal();
   } else if (t.id === 'nudgeModal') {
