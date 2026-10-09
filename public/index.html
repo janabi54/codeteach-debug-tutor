@@ -51,6 +51,7 @@
   <nav class="tabs">
     <button class="tab active" data-tab="tutor">Tutor</button>
     <button class="tab" data-tab="weak-spots">Weak Spots</button>
+    <button class="tab" data-tab="my-sessions">My sessions</button>
     <button class="tab" data-tab="health">Health</button>
     <button class="tab" data-tab="class">Analytics</button>
     <button class="tab" data-tab="students">Students</button>
@@ -194,6 +195,17 @@ for (let i = 0; i < arr.length; i++) {
 </section>
 
 <!-- HEALTH TAB -->
+<section id="tab-my-sessions" class="tab-panel">
+  <div class="panel-wrap">
+    <h1>My sessions</h1>
+    <p class="subtitle">A record of everything the tutor has captured about your debugging work.</p>
+
+    <div id="mySessionsBody" class="my-sessions-body">
+      <p class="empty-state">Loading…</p>
+    </div>
+  </div>
+</section>
+
 <section id="tab-health" class="tab-panel">
   <div class="panel-wrap">
     <h1>Debug Tutor Health</h1>
@@ -651,6 +663,16 @@ for (let i = 0; i < arr.length; i++) {
         debug sessions you run, the hypotheses you write while debugging, the
         post-mortems you complete afterward, and telemetry about when hints are
         served. Your tutor may also add notes and feedback to your work.
+      </p>
+      <p>
+        As you work, we also take <strong>snapshots of your code editor and
+        error output</strong> at key moments — when you ask for a hint, click
+        "I fixed it," or leave the editor. These snapshots, along with the
+        events listed above, let your tutor <em>replay</em> your session to
+        understand how you approached the bug. We do <strong>not</strong>
+        record individual keystrokes, and nothing outside the code editor is
+        captured. You can see everything we've recorded about your sessions
+        from the <strong>My sessions</strong> tab.
       </p>
 
       <h2>Why we collect it</h2>

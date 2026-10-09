@@ -3563,3 +3563,110 @@ body.privacy-open .privacy-view {
   height: 2px !important;
 }
 .analytics-bar:hover { background: #4f46e5; }
+
+/* ── My sessions tab ── */
+.my-sessions-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.my-sessions-intro {
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: #f5f6ff;
+  border: 1px solid #c7d2fe;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #3730a3;
+}
+.my-sessions-intro p { margin: 0; }
+.my-sessions-intro strong { color: #312e81; }
+
+.ms-session-card {
+  background: #fff;
+  border: 1px solid #e4e6eb;
+  border-radius: 10px;
+  padding: 16px 18px;
+}
+.ms-session-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.ms-session-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1a1d23;
+}
+.ms-session-meta {
+  font-size: 12px;
+  color: #7a7f88;
+  margin-top: 2px;
+}
+.ms-state-open { color: #3730a3; }
+.ms-state-resolved { color: #b45309; }
+.ms-state-complete { color: #065f46; }
+
+.ms-toggle-btn {
+  border: 1px solid #e4e6eb;
+  border-radius: 6px;
+  background: #fff;
+  color: #4b5563;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.ms-toggle-btn:hover { background: #f5f6ff; border-color: #c7d2fe; color: #4338ca; }
+
+.ms-session-events-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.ms-session-total {
+  font-size: 12px;
+  color: #7a7f88;
+}
+.ms-type-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.ms-type-chip {
+  display: inline-block;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #4338ca;
+}
+
+.ms-detail {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #f0f1f3;
+}
+.ms-event-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ms-event-row {
+  display: flex;
+  gap: 10px;
+  font-size: 13px;
+}
+.ms-event-time {
+  font-family: "SF Mono", Monaco, monospace;
+  font-size: 11px;
+  color: #7a7f88;
+  min-width: 70px;
+}
+.ms-event-label { color: #1a1d23; }

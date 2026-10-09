@@ -238,6 +238,36 @@ router.post('/me/nudges/:threadId/reply', requireAuth, async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────
+// GET /api/me/sessions
+// Lists the caller's own debug sessions with event-count summaries.
+// Used by the student-facing 'My sessions' tab.
+// ─────────────────────────────────────────────────────────────
+router.get('/me/sessions', requireAuth, async (req, res) => {
+  const userId = req.user!.id;
+  const rows = db.sessionEvents.listSessionsForStudent(userId);
+  res.json({ sessions: rows });
+});
+
+// ─────────────────────────────────────────────────────────────
+// GET /api/me/sessions/:sessionId/events
+// The event log for one of the caller's own sessions.
+// ─────────────────────────────────────────────────────────────
+router.get('/me/sessions/:sessionId/events', requireAuth, async (req, res) => {
+  const userId = req.user!.id;
+  const { sessionId } = req.params;
+
+  const session = await db.hintSessions.findById(sessionId);
+  if (!session) {
+    return res.status(404).json({ error: 'Session not found.' });
+  }
+  if (session.studentId !== userId) {
+    return res.status(403).json({ error: 'Not your session.' });
+  }
+  const events = db.sessionEvents.listForSession(sessionId);
+  res.json({ session, events });
+});
+
+// ─────────────────────────────────────────────────────────────
 // POST /api/me/nudges/:threadId/read
 // Mark all messages NOT authored by the caller as read.
 // ─────────────────────────────────────────────────────────────

@@ -7,6 +7,7 @@ document.querySelectorAll('.tab').forEach(tab => {
     document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
     if (tab.dataset.tab === 'weak-spots') loadWeakSpots();
     if (tab.dataset.tab === 'class' && typeof loadAnalytics === 'function') loadAnalytics();
+    if (tab.dataset.tab === 'my-sessions' && typeof loadMySessions === 'function') loadMySessions();
   });
 });
 
@@ -884,7 +885,7 @@ function showAppView() {
 
 function applyRoleVisibility() {
   const adminTabs = ['health', 'class', 'students', 'exercises'];
-  const studentOnlyTabs = ['weak-spots'];
+  const studentOnlyTabs = ['weak-spots', 'my-sessions'];
   const isInstructor = currentUser.role === 'instructor' || currentUser.role === 'admin';
   document.querySelectorAll('.tab').forEach(tab => {
     const t = tab.dataset.tab;
@@ -3311,6 +3312,158 @@ function renderAnalyticsSparkline(points, opts) {
   return '<div class="analytics-bars">' + bars + '</div>';
 }
 
+// ═══════════════════════════════════════════════════════════
+// My sessions tab (student transparency)
+// ═══════════════════════════════════════════════════════════
+
+let __mySessionsExpanded = null; // currently-expanded session id, or null
+
+async function loadMySessions() {
+  const body = $('mySessionsBody');
+  if (!body) return;
+  body.innerHTML = '<p class="empty-state">Loading…</p>';
+
+  try {
+    const res = await fetch('/api/me/sessions', { credentials: 'same-origin' });
+    if (!res.ok) {
+      body.innerHTML = '<p class="empty-state">Could not load your sessions.</p>';
+      return;
+    }
+    const data = await res.json();
+    const sessions = data.sessions || [];
+
+    if (sessions.length === 0) {
+      body.innerHTML =
+        '<p class="empty-state">You haven\'t started any debug sessions yet. ' +
+        'Once you do, everything the tutor captures about your work will appear here.</p>';
+      return;
+    }
+
+    const intro = `
+      <div class="my-sessions-intro">
+        <p>
+          These are the debug sessions your tutor can replay. For each session we
+          capture: <strong>code editor snapshots</strong> (at hint boundaries, on
+          "I fixed it", and when you leave the editor), your <strong>hints</strong>,
+          your <strong>hypotheses</strong>, and your <strong>post-mortems</strong>.
+          We do not record individual keystrokes.
+        </p>
+      </div>
+    `;
+
+    const sessionRows = sessions.map((s) => {
+      const when = s.updatedAt
+        ? new Date(s.updatedAt.replace(' ', 'T') + 'Z').toLocaleString()
+        : '';
+      const stateLabel = s.state === 'complete' ? 'Complete'
+        : s.state === 'resolved' ? 'Awaiting post-mortem'
+        : 'In progress';
+      const stateCls = s.state === 'complete' ? 'ms-state-complete'
+        : s.state === 'resolved' ? 'ms-state-resolved'
+        : 'ms-state-open';
+
+      const typeLabels = {
+        'code-snapshot': 'code snapshots',
+        'hint-request': 'hint requests',
+        'hint-served': 'hints received',
+        'hypothesis-written': 'hypotheses written',
+        'post-mortem-saved': 'post-mortems',
+        'session-completed': 'session completion events',
+      };
+      const eventSummary = (s.eventTypes || []).length
+        ? (s.eventTypes || []).map((t) =>
+            '<span class="ms-type-chip">' + escapeHtml(String(t.count)) + ' ' +
+            escapeHtml(typeLabels[t.type] || t.type) + '</span>'
+          ).join('')
+        : '<span class="muted">No events captured yet.</span>';
+
+      const expanded = __mySessionsExpanded === s.sessionId;
+      const detailHtml = expanded ? '<div class="ms-detail" data-session-detail="' + escapeHtml(s.sessionId) + '"><p class="empty-state">Loading events…</p></div>' : '';
+
+      return `
+        <div class="ms-session-card" data-session-id="${escapeHtml(s.sessionId)}">
+          <div class="ms-session-header">
+            <div>
+              <div class="ms-session-title">${escapeHtml(s.exerciseTitle)}</div>
+              <div class="ms-session-meta">${escapeHtml(when)} · <span class="${stateCls}">${escapeHtml(stateLabel)}</span></div>
+            </div>
+            <button class="ms-toggle-btn" data-session-toggle="${escapeHtml(s.sessionId)}">
+              ${expanded ? 'Hide events' : 'Show events'}
+            </button>
+          </div>
+          <div class="ms-session-events-summary">
+            <span class="ms-session-total">${s.eventCount} event${s.eventCount === 1 ? '' : 's'} captured</span>
+            <div class="ms-type-chips">${eventSummary}</div>
+          </div>
+          ${detailHtml}
+        </div>
+      `;
+    }).join('');
+
+    body.innerHTML = intro + sessionRows;
+
+    // Wire toggles
+    body.querySelectorAll('[data-session-toggle]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const sid = btn.dataset.sessionToggle;
+        __mySessionsExpanded = (__mySessionsExpanded === sid) ? null : sid;
+        await loadMySessions();
+        // If we just expanded, fetch the events
+        if (__mySessionsExpanded) {
+          loadMySessionEvents(sid);
+        }
+      });
+    });
+
+    // If a session was already expanded, fetch its events
+    if (__mySessionsExpanded) {
+      loadMySessionEvents(__mySessionsExpanded);
+    }
+  } catch (err) {
+    body.innerHTML = '<p class="empty-state">Failed: ' + escapeHtml(err.message) + '</p>';
+  }
+}
+
+async function loadMySessionEvents(sessionId) {
+  const container = document.querySelector('[data-session-detail="' + CSS.escape(sessionId) + '"]');
+  if (!container) return;
+  try {
+    const res = await fetch(
+      '/api/me/sessions/' + encodeURIComponent(sessionId) + '/events',
+      { credentials: 'same-origin' }
+    );
+    if (!res.ok) {
+      container.innerHTML = '<p class="empty-state">Could not load events.</p>';
+      return;
+    }
+    const data = await res.json();
+    const events = data.events || [];
+    if (events.length === 0) {
+      container.innerHTML = '<p class="empty-state">No events recorded for this session yet.</p>';
+      return;
+    }
+
+    const labels = {
+      'code-snapshot': 'Code snapshot',
+      'hint-request': 'Hint requested',
+      'hint-served': 'Hint served',
+      'hypothesis-written': 'Hypothesis written',
+      'post-mortem-saved': 'Post-mortem saved',
+      'session-completed': 'Session completed',
+    };
+
+    container.innerHTML = '<ul class="ms-event-list">' + events.map((e) => {
+      const when = e.recordedAt
+        ? new Date(e.recordedAt.replace(' ', 'T') + 'Z').toLocaleTimeString()
+        : '';
+      const label = labels[e.type] || e.type;
+      return '<li class="ms-event-row"><span class="ms-event-time">' + escapeHtml(when) + '</span><span class="ms-event-label">' + escapeHtml(label) + '</span></li>';
+    }).join('') + '</ul>';
+  } catch (err) {
+    container.innerHTML = '<p class="empty-state">Failed: ' + escapeHtml(err.message) + '</p>';
+  }
+}
+
 function renderNextAction(nextAction) {
   const el = $('sdNextAction');
   if (!el) return;
@@ -4711,7 +4864,7 @@ document.addEventListener('click', (e) => {
 // Tab persistence via URL hash
 // ═══════════════════════════════════════════════════════════
 
-const VALID_TABS = ['tutor', 'weak-spots', 'health', 'class', 'students', 'exercises'];
+const VALID_TABS = ['tutor', 'weak-spots', 'health', 'class', 'students', 'exercises', 'my-sessions'];
 
 function activateTabFromHash() {
   const raw = (window.location.hash || '').replace(/^#/, '');

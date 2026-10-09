@@ -1140,6 +1140,61 @@ export const db = {
     },
 
     /**
+     * Summary of every session the student owns, with per-session
+     * event counts (grouped by type). Used by the 'My sessions' tab.
+     */
+    listSessionsForStudent(studentId: string): Array<{
+      sessionId: string;
+      exerciseId: string;
+      exerciseTitle: string;
+      state: string;
+      createdAt: string;
+      updatedAt: string;
+      eventCount: number;
+      eventTypes: Array<{ type: string; count: number }>;
+    }> {
+      const sessions = sqlite
+        .prepare(
+          `SELECT hs.id AS sessionId,
+                  hs.exercise_id AS exerciseId,
+                  COALESCE(e.title, hs.exercise_id) AS exerciseTitle,
+                  hs.state,
+                  hs.created_at AS createdAt,
+                  hs.updated_at AS updatedAt
+           FROM hint_sessions hs
+           LEFT JOIN exercises e ON e.id = hs.exercise_id OR e.slug = hs.exercise_id
+           WHERE hs.student_id = ?
+           ORDER BY hs.updated_at DESC`
+        )
+        .all(studentId) as Array<{
+          sessionId: string;
+          exerciseId: string;
+          exerciseTitle: string;
+          state: string;
+          createdAt: string;
+          updatedAt: string;
+        }>;
+
+      return sessions.map((s) => {
+        const counts = sqlite
+          .prepare(
+            `SELECT type, COUNT(*) AS n
+             FROM session_events
+             WHERE session_id = ?
+             GROUP BY type
+             ORDER BY type`
+          )
+          .all(s.sessionId) as Array<{ type: string; n: number }>;
+        const total = counts.reduce((sum, c) => sum + c.n, 0);
+        return {
+          ...s,
+          eventCount: total,
+          eventTypes: counts.map((c) => ({ type: c.type, count: c.n })),
+        };
+      });
+    },
+
+    /**
      * All events for a session, oldest first. Returns rows with the
      * payload already parsed.
      */
@@ -2520,6 +2575,13 @@ export const db = {
   },
 
   hintSessions: {
+    async findById(id: string): Promise<HintSession | null> {
+      const row = sqlite
+        .prepare('SELECT * FROM hint_sessions WHERE id = ?')
+        .get(id) as any;
+      return row ? rowToSession(row) : null;
+    },
+
     async find(studentId: string, exerciseId: string): Promise<HintSession | null> {
       const row = stmt.findSession.get(studentId, exerciseId);
       return row ? rowToSession(row) : null;
