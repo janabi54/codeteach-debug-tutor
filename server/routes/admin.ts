@@ -1,6 +1,7 @@
 import express from 'express';
 import { getDebugTutorHealth } from '../admin/healthService.js';
 import { getClassFingerprint } from '../admin/classFingerprint.js';
+import { getCohortAnalytics } from '../admin/cohortAnalytics.js';
 import { requireInstructor } from '../middleware/requireAuth.js';
 import { requireAdmin } from '../middleware/requireAdmin.js';
 import { generateInviteCode } from '../auth/inviteCodes.js';
@@ -17,6 +18,28 @@ router.get('/class-fingerprint', requireInstructor, async (req, res) => {
   const hours = Math.min(720, Math.max(1, Number(req.query.hours) || 168));
   const cohort = await db.cohorts.ensureForInstructor(req.user!.id);
   res.json(await getClassFingerprint(hours, cohort.id));
+});
+
+// ─────────────────────────────────────────────────────────────
+// GET /api/admin/analytics/:cohortId
+// Cohort-level analytics for the Analytics tab.
+// Instructor must own the cohort.
+// ─────────────────────────────────────────────────────────────
+router.get('/analytics/:cohortId', requireInstructor, async (req, res) => {
+  const { cohortId } = req.params;
+  const cohort = await db.cohorts.findById(cohortId);
+  if (!cohort) {
+    return res.status(404).json({ error: 'Cohort not found.' });
+  }
+  if (cohort.instructorId !== req.user!.id) {
+    return res.status(403).json({ error: 'You do not teach this cohort.' });
+  }
+  try {
+    const data = getCohortAnalytics(cohortId);
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Could not compute analytics.' });
+  }
 });
 
 // ── Invite codes ──
