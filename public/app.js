@@ -2318,13 +2318,27 @@ function renderCohortComparison(cc) {
   const el = $('sdCohortComparison');
   if (!el) return;
 
-  if (!cc || cc.peerCount === 0) {
+  // No cohort at all → hide the panel entirely.
+  if (!cc || !cc.cohortNames || cc.cohortNames.length === 0) {
     el.style.display = 'none';
     el.innerHTML = '';
     return;
   }
 
   const cohortLabel = (cc.cohortNames || []).join(', ') || 'your cohort';
+
+  // In a cohort, but no peers yet — show a friendly note instead of
+  // silently hiding the panel, so the instructor knows comparison
+  // will be possible once more students join.
+  if (cc.peerCount === 0) {
+    el.style.display = 'block';
+    el.innerHTML =
+      '<h3 class="sd-section-heading">Compared with ' + escapeHtml(cohortLabel) + '</h3>' +
+      '<div class="sd-cc-empty-note">' +
+        'Not enough peers yet — this is the only student in the cohort.' +
+      '</div>';
+    return;
+  }
 
   // Row renderer for one metric
   function row(label, metric, formatValue, formatPct) {

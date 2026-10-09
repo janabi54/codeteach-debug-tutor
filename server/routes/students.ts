@@ -262,8 +262,13 @@ router.get('/:studentId', requireInstructor, async (req, res) => {
   // Cohort comparison: same-cohort peers only
   const { peerIds, cohortNames } = cohortPeersFor(instructorId, studentId);
   let cohortComparison: CohortComparison | null = null;
-  if (peerIds.length > 0) {
-    const peerRows = db.students.cohortPeerMetricsFor(peerIds, exerciseIds);
+  // Build the comparison whenever the student is in a shared cohort —
+  // even when peerCount is 0 the client shows a "not enough peers"
+  // note instead of hiding the whole panel.
+  if (cohortNames.length > 0) {
+    const peerRows = peerIds.length > 0
+      ? db.students.cohortPeerMetricsFor(peerIds, exerciseIds)
+      : [];
 
     const reasoningValues = peerRows
       .map((r) => r.reasoningQuality)

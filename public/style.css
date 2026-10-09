@@ -2821,3 +2821,15 @@ body.privacy-open .privacy-view {
   flex-direction: column;
   gap: 6px;
 }
+
+/* ── Cohort comparison: empty note ── */
+.sd-cc-empty-note {
+  padding: 16px 20px;
+  margin-top: 8px;
+  background: #f8fafc;
+  border: 1px dashed #d1d5db;
+  border-radius: 8px;
+  color: #7a7f88;
+  font-size: 13px;
+  text-align: center;
+}

@@ -151,31 +151,44 @@ export function cohortPeersFor(
   instructorId: string,
   studentId: string
 ): { peerIds: string[]; cohortNames: string[] } {
-  const rows = sqlite
+  // Step 1: which cohorts do the instructor and this student share?
+  // This uses only the target student's membership — it must succeed
+  // even when the cohort has no other members (in which case the
+  // client shows a "not enough peers yet" note).
+  const cohortRows = sqlite
     .prepare(
-      `SELECT DISTINCT cm.user_id AS peerId, c.name AS cohortName
+      `SELECT DISTINCT c.id AS cohortId, c.name AS cohortName
        FROM cohort_members cm_target
        JOIN cohorts c ON c.id = cm_target.cohort_id
-       JOIN cohort_members cm ON cm.cohort_id = c.id
        WHERE cm_target.user_id = ?
-         AND c.instructor_id = ?
-         AND cm.user_id != ?`
+         AND c.instructor_id = ?`
     )
-    .all(studentId, instructorId, studentId) as Array<{
-      peerId: string;
+    .all(studentId, instructorId) as Array<{
+      cohortId: string;
       cohortName: string;
     }>;
 
-  const peerSet = new Set<string>();
-  const cohortSet = new Set<string>();
-  for (const r of rows) {
-    peerSet.add(r.peerId);
-    cohortSet.add(r.cohortName);
+  if (cohortRows.length === 0) {
+    return { peerIds: [], cohortNames: [] };
   }
-  return {
-    peerIds: Array.from(peerSet),
-    cohortNames: Array.from(cohortSet),
-  };
+
+  const cohortIds = Array.from(new Set(cohortRows.map((r) => r.cohortId)));
+  const cohortNames = Array.from(new Set(cohortRows.map((r) => r.cohortName)));
+  const placeholders = cohortIds.map(() => '?').join(',');
+
+  // Step 2: which other users are members of those cohorts?
+  const peerRows = sqlite
+    .prepare(
+      `SELECT DISTINCT user_id AS peerId
+       FROM cohort_members
+       WHERE cohort_id IN (${placeholders})
+         AND user_id != ?`
+    )
+    .all(...cohortIds, studentId) as Array<{ peerId: string }>;
+
+  const peerIds = Array.from(new Set(peerRows.map((r) => r.peerId)));
+
+  return { peerIds, cohortNames };
 }
 
 /**
