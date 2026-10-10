@@ -3942,3 +3942,35 @@ body.privacy-open .privacy-view {
   transform: translateX(2px);
   color: #4f46e5;
 }
+
+/* ── Highlights panel ── */
+.analytics-highlights {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.analytics-highlight {
+  display: flex;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid #a7f3d0;
+  background: #ecfdf5;
+}
+.analytics-highlight-icon {
+  font-size: 14px;
+  line-height: 1.4;
+  flex-shrink: 0;
+}
+.analytics-highlight-body { flex: 1; min-width: 0; }
+.analytics-highlight-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #065f46;
+  margin-bottom: 2px;
+}
+.analytics-highlight-detail {
+  font-size: 12px;
+  color: #047857;
+  line-height: 1.5;
+}

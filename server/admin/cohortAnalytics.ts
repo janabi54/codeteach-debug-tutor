@@ -18,6 +18,7 @@ import { sqlite, db } from '../db.js';
 import { deriveRosterStatus, escalateWithTrends } from '../util/status.js';
 import { fillWeeks, lastNWeekStarts } from '../util/weeks.js';
 import { getCohortOpportunities, type Opportunity } from './cohortOpportunities.js';
+import { getCohortHighlights, type Highlight } from './cohortHighlights.js';
 
 export interface TrendPoint {
   weekStart: string;
@@ -52,6 +53,9 @@ export interface CohortAnalytics {
 
   /** Ranked teaching opportunities — see cohortOpportunities.ts. */
   opportunities: Opportunity[];
+
+  /** Positive highlights — see cohortHighlights.ts. */
+  highlights: Highlight[];
 }
 
 function median(values: number[]): number | null {
@@ -150,6 +154,7 @@ export function getCohortAnalytics(cohortId: string): CohortAnalytics {
   };
 
   const opportunities = getCohortOpportunities(cohortId);
+  const highlights = getCohortHighlights(cohortId);
 
   return {
     cohortId: cohort.id,
@@ -165,6 +170,7 @@ export function getCohortAnalytics(cohortId: string): CohortAnalytics {
     statusBreakdown: statusCounts,
     weeklyTrends,
     opportunities,
+    highlights,
   };
 }
 

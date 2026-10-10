@@ -3321,6 +3321,31 @@ function renderOpportunities(opportunities) {
   );
 }
 
+/**
+ * Render the "Highlights" panel from the analytics payload.
+ * Returns HTML string, or '' if there are no highlights (panel hidden).
+ */
+function renderHighlights(highlights) {
+  if (!highlights || highlights.length === 0) return '';
+
+  const rows = highlights.map((h) => (
+    '<div class="analytics-highlight ' + escapeHtml(h.kind) + '">' +
+      '<div class="analytics-highlight-icon">🎉</div>' +
+      '<div class="analytics-highlight-body">' +
+        '<div class="analytics-highlight-title">' + escapeHtml(h.title) + '</div>' +
+        '<div class="analytics-highlight-detail">' + escapeHtml(h.detail) + '</div>' +
+      '</div>' +
+    '</div>'
+  )).join('');
+
+  return (
+    '<div class="analytics-section">' +
+      '<h3 class="analytics-section-title">Highlights</h3>' +
+      '<div class="analytics-highlights">' + rows + '</div>' +
+    '</div>'
+  );
+}
+
 function renderAnalytics(container, data) {
   const s = data.summary;
   const bd = data.statusBreakdown;
@@ -3365,6 +3390,8 @@ function renderAnalytics(container, data) {
     </div>
 
     ${renderOpportunities(data.opportunities)}
+
+    ${renderHighlights(data.highlights)}
 
     <div class="analytics-section">
       <h3 class="analytics-section-title">Status breakdown</h3>
