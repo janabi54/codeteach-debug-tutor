@@ -3328,15 +3328,22 @@ function renderOpportunities(opportunities) {
 function renderHighlights(highlights) {
   if (!highlights || highlights.length === 0) return '';
 
-  const rows = highlights.map((h) => (
-    '<div class="analytics-highlight ' + escapeHtml(h.kind) + '">' +
-      '<div class="analytics-highlight-icon">🎉</div>' +
-      '<div class="analytics-highlight-body">' +
-        '<div class="analytics-highlight-title">' + escapeHtml(h.title) + '</div>' +
-        '<div class="analytics-highlight-detail">' + escapeHtml(h.detail) + '</div>' +
-      '</div>' +
-    '</div>'
-  )).join('');
+  const rows = highlights.map((h) => {
+    const clickable = !!h.filter;
+    const clickAttrs = clickable
+      ? ' role="button" tabindex="0" style="cursor:pointer;" data-filter-by="' + escapeHtml(h.filter.by) + '" data-filter-value="' + escapeHtml(h.filter.value) + '"'
+      : '';
+    return (
+      '<div class="analytics-highlight ' + escapeHtml(h.kind) + (clickable ? ' analytics-highlight-clickable' : '') + '"' + clickAttrs + '>' +
+        '<div class="analytics-highlight-icon">🎉</div>' +
+        '<div class="analytics-highlight-body">' +
+          '<div class="analytics-highlight-title">' + escapeHtml(h.title) + '</div>' +
+          '<div class="analytics-highlight-detail">' + escapeHtml(h.detail) + '</div>' +
+        '</div>' +
+        (clickable ? '<div class="analytics-highlight-arrow">→</div>' : '') +
+      '</div>'
+    );
+  }).join('');
 
   return (
     '<div class="analytics-section">' +

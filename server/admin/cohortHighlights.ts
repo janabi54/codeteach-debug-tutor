@@ -22,6 +22,21 @@ export interface Highlight {
   title: string;
   detail: string;
   count: number;
+  // When set, the client renders the card as a clickable link to
+  // GET /api/admin/students/filter?by=<by>&value=<value>.
+  filter?: {
+    by:
+      | 'pattern'
+      | 'exercise-stall'
+      | 'low-post-mortems'
+      | 'inactive'
+      | 'never-active'
+      | 'no-post-mortems'
+      | 'hint-heavy'
+      | 'regressed'
+      | 'streak';
+    value: string;
+  };
 }
 
 export function getCohortHighlights(cohortId: string): Highlight[] {
@@ -127,6 +142,7 @@ export function getCohortHighlights(cohortId: string): Highlight[] {
         title: count + ' student' + (count === 1 ? '' : 's') + ' on a ' + STREAK_MIN_DAYS + '+ day streak',
         detail: 'Consistent practice is paying off.',
         count,
+        filter: { by: 'streak', value: '' },
       });
     }
   } catch {

@@ -3974,3 +3974,28 @@ body.privacy-open .privacy-view {
   color: #047857;
   line-height: 1.5;
 }
+
+/* ── Clickable highlights (mirrors .analytics-opportunity-clickable) ── */
+.analytics-highlight-clickable {
+  cursor: pointer;
+  transition: border-color 0.12s ease, transform 0.12s ease;
+}
+.analytics-highlight-clickable:hover {
+  border-color: #6ee7b7;
+  transform: translateY(-1px);
+}
+.analytics-highlight-clickable:focus-visible {
+  outline: 2px solid #059669;
+  outline-offset: 2px;
+}
+.analytics-highlight-arrow {
+  align-self: center;
+  color: #7a7f88;
+  font-size: 18px;
+  line-height: 1;
+  transition: transform 0.12s ease;
+}
+.analytics-highlight-clickable:hover .analytics-highlight-arrow {
+  transform: translateX(2px);
+  color: #059669;
+}
