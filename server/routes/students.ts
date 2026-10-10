@@ -121,6 +121,11 @@ const FILTER_TYPES = new Set([
   'inactive',
 ]);
 
+// Filters that take no `value` — their criteria is fixed in the query.
+const VALUELESS_FILTERS = new Set([
+  'inactive',
+]);
+
 router.get('/filter', requireInstructor, async (req, res) => {
   const instructorId = req.user!.id;
   const by = String(req.query.by ?? '').trim();
@@ -129,7 +134,7 @@ router.get('/filter', requireInstructor, async (req, res) => {
   if (!FILTER_TYPES.has(by)) {
     return res.status(400).json({ error: 'Unknown filter type.' });
   }
-  if (!value) {
+  if (!VALUELESS_FILTERS.has(by) && !value) {
     return res.status(400).json({ error: 'Filter value is required.' });
   }
 
