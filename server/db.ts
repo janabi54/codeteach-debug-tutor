@@ -1299,6 +1299,22 @@ export const db = {
     },
 
     /**
+     * Exercise slugs in every cohort this student is a member of.
+     * Student-scoped counterpart to viewableExerciseIdsFor (which
+     * takes an instructor). Used by the student progress dashboard.
+     */
+    exerciseSlugsForStudent(studentId: string): string[] {
+      return (sqlite
+        .prepare(
+          `SELECT DISTINCT e.slug AS slug
+           FROM exercises e
+           JOIN cohort_members cm ON cm.cohort_id = e.cohort_id
+           WHERE cm.user_id = ?`
+        )
+        .all(studentId) as Array<{ slug: string }>).map((r) => r.slug);
+    },
+
+    /**
      * Aggregate metrics for a set of peer students — used by the cohort
      * comparison panel. Returns one row per student with:
      *   - reasoning: precise / total (as a 0..1 ratio, or null if no data)

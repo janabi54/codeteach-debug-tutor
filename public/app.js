@@ -23,6 +23,7 @@ document.querySelectorAll('.tab').forEach(tab => {
     if (tab.dataset.tab === 'weak-spots') loadWeakSpots();
     if (tab.dataset.tab === 'class' && typeof loadAnalytics === 'function') loadAnalytics();
     if (tab.dataset.tab === 'my-sessions' && typeof loadMySessions === 'function') loadMySessions();
+    if (tab.dataset.tab === 'my-progress' && typeof loadMyProgress === 'function') loadMyProgress();
   });
 });
 
@@ -937,7 +938,7 @@ function showAppView() {
 
 function applyRoleVisibility() {
   const adminTabs = ['health', 'class', 'students', 'exercises'];
-  const studentOnlyTabs = ['weak-spots', 'my-sessions'];
+  const studentOnlyTabs = ['weak-spots', 'my-sessions', 'my-progress'];
   const isInstructor = currentUser.role === 'instructor' || currentUser.role === 'admin';
   document.querySelectorAll('.tab').forEach(tab => {
     const t = tab.dataset.tab;
@@ -3435,6 +3436,105 @@ function renderAnalytics(container, data) {
  *
  * opts.scale = fixed numeric max; null for auto-scale to the max value.
  */
+// ═══════════════════════════════════════════════════════════
+// My progress tab (student self-view)
+// ═══════════════════════════════════════════════════════════
+
+async function loadMyProgress() {
+  const body = $('myProgressBody');
+  if (!body) return;
+  body.innerHTML = '<p class="empty-state">Loading…</p>';
+
+  try {
+    const res = await fetch('/api/me/progress', { credentials: 'same-origin' });
+    if (!res.ok) {
+      body.innerHTML = '<p class="empty-state">Could not load your progress.</p>';
+      return;
+    }
+    const data = await res.json();
+    renderMyProgress(body, data);
+  } catch (err) {
+    body.innerHTML = '<p class="empty-state">Failed: ' + escapeHtml(err.message) + '</p>';
+  }
+}
+
+function renderMyProgress(container, data) {
+  const s = data.summary || {};
+  const cards = [
+    { label: 'Completed', value: s.completed + ' / ' + s.assigned },
+    { label: 'Reasoning', value: s.reasoningPct === null || s.reasoningPct === undefined ? '—' : s.reasoningPct + '%' },
+    { label: 'Hints / session', value: (s.avgHintsPerSession || 0).toFixed ? s.avgHintsPerSession.toFixed(1) : s.avgHintsPerSession },
+    { label: 'Current streak', value: s.currentStreak + (s.currentStreak === 1 ? ' day' : ' days') },
+  ];
+
+  const summaryHtml = `
+    <div class="analytics-summary-row">
+      ${cards.map((c) => `
+        <div class="analytics-card">
+          <div class="analytics-card-label">${escapeHtml(c.label)}</div>
+          <div class="analytics-card-value">${escapeHtml(String(c.value))}</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+
+  // Trends: three sparklines
+  const trends = data.trends || {};
+  const trendsHtml = `
+    <div class="analytics-section">
+      <h3 class="analytics-section-title">Trends (last 12 weeks)</h3>
+      <div class="my-progress-trends">
+        <div class="my-progress-trend">
+          <div class="my-progress-trend-label">Reasoning quality</div>
+          ${renderAnalyticsSparkline((trends.reasoningQuality || {}).points || [], { classification: 'stable', scale: null })}
+        </div>
+        <div class="my-progress-trend">
+          <div class="my-progress-trend-label">Hints per session</div>
+          ${renderAnalyticsSparkline((trends.hintDependency || {}).points || [], { classification: 'stable', scale: null })}
+        </div>
+        <div class="my-progress-trend">
+          <div class="my-progress-trend-label">Progress</div>
+          ${renderAnalyticsSparkline((trends.progress || {}).points || [], { classification: 'stable', scale: null })}
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Weak spots
+  const weak = data.weakSpots || [];
+  const weakHtml = weak.length === 0
+    ? ''
+    : `
+      <div class="analytics-section">
+        <h3 class="analytics-section-title">Patterns to watch</h3>
+        <ul class="my-progress-list">
+          ${weak.slice(0, 5).map((w) => `<li><strong>${escapeHtml(w.pattern)}</strong> — hit ${w.count} time${w.count === 1 ? '' : 's'}</li>`).join('')}
+        </ul>
+      </div>
+    `;
+
+  // Recent sessions
+  const sessions = data.recentSessions || [];
+  const sessionsHtml = sessions.length === 0
+    ? ''
+    : `
+      <div class="analytics-section">
+        <h3 class="analytics-section-title">Recent sessions</h3>
+        <ul class="my-progress-list">
+          ${sessions.map((sess) => `
+            <li>
+              <strong>${escapeHtml(sess.exerciseTitle || sess.exerciseId)}</strong>
+              — <span class="my-progress-session-state">${escapeHtml(sess.state)}</span>
+              ${sess.struggleMinutes ? ' · ' + sess.struggleMinutes + ' min' : ''}
+            </li>
+          `).join('')}
+        </ul>
+      </div>
+    `;
+
+  container.innerHTML = summaryHtml + trendsHtml + weakHtml + sessionsHtml;
+}
+
 function renderAnalyticsSparkline(points, opts) {
   if (!points || points.length === 0) {
     return '<p class="empty-state">No data.</p>';
@@ -5520,7 +5620,7 @@ document.addEventListener('click', (e) => {
 // Tab persistence via URL hash
 // ═══════════════════════════════════════════════════════════
 
-const VALID_TABS = ['tutor', 'weak-spots', 'health', 'class', 'students', 'exercises', 'my-sessions'];
+const VALID_TABS = ['tutor', 'weak-spots', 'health', 'class', 'students', 'exercises', 'my-sessions', 'my-progress'];
 
 function activateTabFromHash() {
   const raw = (window.location.hash || '').replace(/^#/, '');

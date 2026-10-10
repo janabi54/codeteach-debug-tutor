@@ -52,6 +52,7 @@
     <button class="tab active" data-tab="tutor">Tutor</button>
     <button class="tab" data-tab="weak-spots">Weak Spots</button>
     <button class="tab" data-tab="my-sessions">My sessions</button>
+    <button class="tab" data-tab="my-progress">My progress</button>
     <button class="tab" data-tab="health">Health</button>
     <button class="tab" data-tab="class">Analytics</button>
     <button class="tab" data-tab="students">Students</button>
@@ -201,6 +202,16 @@ for (let i = 0; i < arr.length; i++) {
     <p class="subtitle">A record of everything the tutor has captured about your debugging work.</p>
 
     <div id="mySessionsBody" class="my-sessions-body">
+      <p class="empty-state">Loading…</p>
+    </div>
+  </div>
+</section>
+
+<section id="tab-my-progress" class="tab-panel">
+  <div class="panel-wrap">
+    <h1>My progress</h1>
+    <p class="subtitle">A snapshot of how your debugging is going.</p>
+    <div id="myProgressBody" class="my-progress-body">
       <p class="empty-state">Loading…</p>
     </div>
   </div>

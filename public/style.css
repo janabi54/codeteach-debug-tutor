@@ -3999,3 +3999,39 @@ body.privacy-open .privacy-view {
   transform: translateX(2px);
   color: #059669;
 }
+
+/* ── My progress tab ── */
+.my-progress-body {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.my-progress-trends {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.my-progress-trend {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.my-progress-trend-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+}
+.my-progress-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  color: #334155;
+}
+.my-progress-session-state {
+  color: #64748b;
+  font-style: italic;
+}

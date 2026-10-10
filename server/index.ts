@@ -14,6 +14,7 @@ import { pruneExpiredSessions } from './auth/sessions.js';
 import { seedExercisesFromConfig } from './db/seedExercises.js';
 import { attachWebSocketServer } from './websocket.js';
 import nudgeRoutes from './routes/nudges.js';
+import meRoutes from './routes/me.js';
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -29,6 +30,7 @@ app.use('/api/admin/cohorts', cohortAdminRoutes);
 app.use('/api/admin/students', studentRoutes);
 app.use('/api/admin', notesRoutes);
 app.use('/api', nudgeRoutes);
+app.use('/api', meRoutes);
 
 const PORT = Number(process.env.PORT ?? 3001);
 
