@@ -5523,8 +5523,8 @@ function activateTabFromHash() {
     const qs = raw.slice('filter?'.length);
     const params = new URLSearchParams(qs);
     const by = params.get('by');
-    const value = params.get('value');
-    if (by && value) {
+    const value = params.get('value') || '';
+    if (by) {
       showFilteredStudents();
       loadFilteredStudents(by, value);
       return;
