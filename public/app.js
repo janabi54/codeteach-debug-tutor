@@ -3707,10 +3707,11 @@ async function loadFilteredStudents(by, value) {
  * Navigate to the filtered students view.
  */
 function openFilteredStudents(by, value) {
-  if (!by || !value) return;
-  window.location.hash = 'filter?by=' + encodeURIComponent(by) + '&value=' + encodeURIComponent(value);
+  if (!by) return;
+  window.location.hash = 'filter?by=' + encodeURIComponent(by) +
+    (value ? '&value=' + encodeURIComponent(value) : '');
   showFilteredStudents();
-  loadFilteredStudents(by, value);
+  loadFilteredStudents(by, value || '');
 }
 
 /**

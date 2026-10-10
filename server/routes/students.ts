@@ -122,6 +122,11 @@ const FILTERS = {
   'exercise-stall':   { valueless: false, label: (v: string) => 'Students stalled on "' + v + '"' },
   'low-post-mortems': { valueless: true,  label: ()          => 'Students with weak post-mortems this week' },
   'inactive':         { valueless: true,  label: ()          => 'Students with no activity in 10+ days' },
+  'never-active':     { valueless: true,  label: ()          => 'Students who have never started a session' },
+  'no-post-mortems':  { valueless: true,  label: ()          => 'Students who completed sessions but wrote no post-mortem this week' },
+  'hint-heavy':       { valueless: false, label: (v: string) => 'Students averaging more than ' + v + ' hints per session' },
+  'regressed':        { valueless: true,  label: ()          => 'Students whose reasoning quality dropped this week' },
+  'streak':           { valueless: true,  label: ()          => 'Students on a 5+ day streak' },
 } as const;
 
 type FilterType = keyof typeof FILTERS;
@@ -290,6 +295,111 @@ function getFilteredStudentIds(
            GROUP BY hs.student_id
          )
          WHERE last_active < datetime('now','-10 days')`
+      )
+      .all(...allowedStudentIds) as Array<{ id: string }>).map((r) => r.id);
+  }
+
+  if (by === 'never-active') {
+    return (sqlite
+      .prepare(
+        `SELECT cm.user_id AS id
+         FROM cohort_members cm
+         WHERE cm.user_id IN (${sPh})
+           AND NOT EXISTS (
+             SELECT 1 FROM hint_sessions hs WHERE hs.student_id = cm.user_id
+           )`
+      )
+      .all(...allowedStudentIds) as Array<{ id: string }>).map((r) => r.id);
+  }
+
+  if (by === 'no-post-mortems') {
+    return (sqlite
+      .prepare(
+        `SELECT DISTINCT hs.student_id AS id
+         FROM hint_sessions hs
+         WHERE hs.student_id IN (${sPh})
+           AND hs.state = 'complete'
+           AND hs.updated_at >= datetime('now', '-7 days')
+           AND NOT EXISTS (
+             SELECT 1 FROM post_mortems pm WHERE pm.session_id = hs.id
+           )`
+      )
+      .all(...allowedStudentIds) as Array<{ id: string }>).map((r) => r.id);
+  }
+
+  if (by === 'hint-heavy') {
+    const threshold = Number(value) || 2;
+    return (sqlite
+      .prepare(
+        `SELECT t.student_id AS id
+         FROM telemetry t
+         WHERE t.type = 'hint-served'
+           AND t.student_id IN (${sPh})
+           AND t.recorded_at >= datetime('now', '-7 days')
+         GROUP BY t.student_id
+         HAVING COUNT(*) * 1.0 / NULLIF((
+           SELECT COUNT(*) FROM hint_sessions hs2
+           WHERE hs2.student_id = t.student_id
+         ), 0) > ?`
+      )
+      .all(...allowedStudentIds, threshold) as Array<{ id: string }>).map((r) => r.id);
+  }
+
+  if (by === 'regressed') {
+    return (sqlite
+      .prepare(
+        `WITH tw AS (
+           SELECT student_id,
+                  COUNT(*) AS total,
+                  SUM(CASE WHEN quality = 'precise' THEN 1 ELSE 0 END) AS precise
+           FROM hypotheses
+           WHERE student_id IN (${sPh})
+             AND quality IS NOT NULL
+             AND recorded_at >= datetime('now', '-7 days')
+           GROUP BY student_id
+         ),
+         lw AS (
+           SELECT student_id,
+                  COUNT(*) AS total,
+                  SUM(CASE WHEN quality = 'precise' THEN 1 ELSE 0 END) AS precise
+           FROM hypotheses
+           WHERE student_id IN (${sPh})
+             AND quality IS NOT NULL
+             AND recorded_at >= datetime('now', '-14 days')
+             AND recorded_at <  datetime('now', '-7 days')
+           GROUP BY student_id
+         )
+         SELECT tw.student_id AS id
+         FROM tw JOIN lw ON lw.student_id = tw.student_id
+         WHERE tw.total >= 4
+           AND lw.total >= 4
+           AND (lw.precise * 100.0 / lw.total) - (tw.precise * 100.0 / tw.total) >= 20`
+      )
+      .all(...allowedStudentIds, ...allowedStudentIds) as Array<{ id: string }>).map((r) => r.id);
+  }
+
+  if (by === 'streak') {
+    return (sqlite
+      .prepare(
+        `WITH days AS (
+           SELECT DISTINCT student_id, date(updated_at) AS d
+           FROM hint_sessions
+           WHERE student_id IN (${sPh})
+             AND updated_at >= datetime('now', '-30 days')
+         ),
+         ranked AS (
+           SELECT student_id, d,
+                  julianday(d) - ROW_NUMBER() OVER (PARTITION BY student_id ORDER BY d) AS grp
+           FROM days
+         ),
+         runs AS (
+           SELECT student_id, COUNT(*) AS len, MAX(d) AS last_day
+           FROM ranked
+           GROUP BY student_id, grp
+         )
+         SELECT student_id AS id FROM runs
+         WHERE len >= 5
+           AND last_day >= date('now', '-1 day')`
       )
       .all(...allowedStudentIds) as Array<{ id: string }>).map((r) => r.id);
   }

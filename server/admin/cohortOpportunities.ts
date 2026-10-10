@@ -30,7 +30,11 @@ export type OpportunityKind =
   | 'exercise-stall'
   | 'reasoning-dip'
   | 'post-mortem-quality'
-  | 'untouched-exercises';
+  | 'untouched-exercises'
+  | 'never-active'
+  | 'no-post-mortems'
+  | 'hint-heavy'
+  | 'regressed';
 
 export type OpportunitySeverity = 'high' | 'medium' | 'info';
 
@@ -45,7 +49,19 @@ export interface Opportunity {
   pattern?: string;
   // When set, the client renders the card as a clickable link to
   // GET /api/admin/students/filter?by=<by>&value=<value>.
-  filter?: { by: 'pattern' | 'exercise-stall' | 'low-post-mortems' | 'inactive'; value: string };
+  filter?: {
+    by:
+      | 'pattern'
+      | 'exercise-stall'
+      | 'low-post-mortems'
+      | 'inactive'
+      | 'never-active'
+      | 'no-post-mortems'
+      | 'hint-heavy'
+      | 'regressed'
+      | 'streak';
+    value: string;
+  };
 }
 
 export function getCohortOpportunities(cohortId: string): Opportunity[] {
@@ -218,6 +234,132 @@ export function getCohortOpportunities(cohortId: string): Opportunity[] {
       detail: 'Including "' + first.title + '". Consider assigning one.',
       count: untouched.length,
       exerciseId: first.slug,
+    });
+  }
+
+  // ── Rule 7: never-active students ───────────────────────────────
+  const neverActiveRow = sqlite
+    .prepare(
+      `SELECT COUNT(*) AS n FROM cohort_members cm
+       WHERE cm.cohort_id = ?
+         AND NOT EXISTS (
+           SELECT 1 FROM hint_sessions hs WHERE hs.student_id = cm.user_id
+         )`
+    )
+    .get(cohortId) as { n: number };
+
+  if (neverActiveRow.n > 0) {
+    opportunities.push({
+      kind: 'never-active',
+      severity: 'info',
+      title: neverActiveRow.n + ' student' + (neverActiveRow.n === 1 ? '' : 's') + ' never started',
+      detail: 'Enrolled but no sessions yet. Consider a nudge or a check-in.',
+      count: neverActiveRow.n,
+      filter: { by: 'never-active', value: '' },
+    });
+  }
+
+  // ── Rule 8: completed sessions but no post-mortem ───────────────
+  const noPmRow = sqlite
+    .prepare(
+      `SELECT COUNT(DISTINCT hs.student_id) AS n
+       FROM hint_sessions hs
+       WHERE hs.student_id IN (${sPh})
+         AND hs.exercise_id IN (${ePh})
+         AND hs.state = 'complete'
+         AND hs.updated_at >= datetime('now', '-${WINDOW_DAYS} days')
+         AND NOT EXISTS (
+           SELECT 1 FROM post_mortems pm WHERE pm.session_id = hs.id
+         )`
+    )
+    .get(...studentIds, ...exerciseIds) as { n: number };
+
+  if (noPmRow.n > 0) {
+    opportunities.push({
+      kind: 'no-post-mortems',
+      severity: 'info',
+      title: noPmRow.n + ' student' + (noPmRow.n === 1 ? '' : 's') + ' finished without a post-mortem',
+      detail: 'They completed sessions this week but wrote no reflection.',
+      count: noPmRow.n,
+      filter: { by: 'no-post-mortems', value: '' },
+    });
+  }
+
+  // ── Rule 9: hint-heavy students ─────────────────────────────────
+  const HINT_HEAVY_THRESHOLD = 2;
+  const heavyRow = sqlite
+    .prepare(
+      `SELECT COUNT(*) AS n FROM (
+         SELECT t.student_id,
+                COUNT(*) * 1.0 / NULLIF((
+                  SELECT COUNT(*) FROM hint_sessions hs2
+                  WHERE hs2.student_id = t.student_id
+                    AND hs2.exercise_id IN (${ePh})
+                ), 0) AS avg_hints
+         FROM telemetry t
+         WHERE t.type = 'hint-served'
+           AND t.student_id IN (${sPh})
+           AND t.exercise_id IN (${ePh})
+           AND t.recorded_at >= datetime('now', '-${WINDOW_DAYS} days')
+         GROUP BY t.student_id
+       ) WHERE avg_hints > ${HINT_HEAVY_THRESHOLD}`
+    )
+    .get(...exerciseIds, ...studentIds, ...exerciseIds) as { n: number };
+
+  if (heavyRow.n > 0) {
+    opportunities.push({
+      kind: 'hint-heavy',
+      severity: 'medium',
+      title: heavyRow.n + ' student' + (heavyRow.n === 1 ? '' : 's') + ' leaning on hints',
+      detail: 'Averaging more than ' + HINT_HEAVY_THRESHOLD + ' hints per session this week.',
+      count: heavyRow.n,
+      filter: { by: 'hint-heavy', value: String(HINT_HEAVY_THRESHOLD) },
+    });
+  }
+
+  // ── Rule 10: reasoning regression (per-student count) ───────────
+  const regressedRow = sqlite
+    .prepare(
+      `WITH this_week AS (
+         SELECT student_id,
+                COUNT(*) AS total,
+                SUM(CASE WHEN quality = 'precise' THEN 1 ELSE 0 END) AS precise
+         FROM hypotheses
+         WHERE student_id IN (${sPh})
+           AND exercise_id IN (${ePh})
+           AND quality IS NOT NULL
+           AND recorded_at >= datetime('now', '-${WINDOW_DAYS} days')
+         GROUP BY student_id
+       ),
+       last_week AS (
+         SELECT student_id,
+                COUNT(*) AS total,
+                SUM(CASE WHEN quality = 'precise' THEN 1 ELSE 0 END) AS precise
+         FROM hypotheses
+         WHERE student_id IN (${sPh})
+           AND exercise_id IN (${ePh})
+           AND quality IS NOT NULL
+           AND recorded_at >= datetime('now', '-${2 * WINDOW_DAYS} days')
+           AND recorded_at <  datetime('now', '-${WINDOW_DAYS} days')
+         GROUP BY student_id
+       )
+       SELECT COUNT(*) AS n
+       FROM this_week tw
+       JOIN last_week lw ON lw.student_id = tw.student_id
+       WHERE tw.total >= ${REASONING_MIN_SAMPLE}
+         AND lw.total >= ${REASONING_MIN_SAMPLE}
+         AND (lw.precise * 100.0 / lw.total) - (tw.precise * 100.0 / tw.total) >= ${REASONING_DROP_PCT}`
+    )
+    .get(...studentIds, ...exerciseIds, ...studentIds, ...exerciseIds) as { n: number };
+
+  if (regressedRow.n > 0) {
+    opportunities.push({
+      kind: 'regressed',
+      severity: 'medium',
+      title: regressedRow.n + ' student' + (regressedRow.n === 1 ? '' : 's') + ' slipped in reasoning',
+      detail: 'Precise-hypothesis rate dropped 20+ points vs last week.',
+      count: regressedRow.n,
+      filter: { by: 'regressed', value: '' },
     });
   }
 
