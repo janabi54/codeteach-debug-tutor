@@ -340,6 +340,7 @@ function getFilteredStudentIds(
          HAVING COUNT(*) * 1.0 / NULLIF((
            SELECT COUNT(*) FROM hint_sessions hs2
            WHERE hs2.student_id = t.student_id
+             AND hs2.updated_at >= datetime('now', '-7 days')
          ), 0) > ?`
       )
       .all(...allowedStudentIds, threshold) as Array<{ id: string }>).map((r) => r.id);

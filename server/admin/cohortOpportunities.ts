@@ -295,6 +295,7 @@ export function getCohortOpportunities(cohortId: string): Opportunity[] {
                   SELECT COUNT(*) FROM hint_sessions hs2
                   WHERE hs2.student_id = t.student_id
                     AND hs2.exercise_id IN (${ePh})
+                    AND hs2.updated_at >= datetime('now', '-${WINDOW_DAYS} days')
                 ), 0) AS avg_hints
          FROM telemetry t
          WHERE t.type = 'hint-served'
