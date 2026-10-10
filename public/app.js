@@ -1,10 +1,25 @@
 // --- Tab switching ---
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
+    // Reset every top-level view: sections + detail views + filter view.
+    // Then explicitly unhide only the target panel. This makes the tab
+    // switcher the single source of truth for section visibility.
+    document.querySelectorAll('section').forEach((sec) => { sec.hidden = true; });
+    const sd = document.getElementById('studentDetailView');
+    if (sd) sd.hidden = true;
+    const sed = document.getElementById('studentExerciseDetailView');
+    if (sed) sed.hidden = true;
+    const fv = document.getElementById('filteredStudentsView');
+    if (fv) fv.hidden = true;
+
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
     tab.classList.add('active');
-    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+    const panel = document.getElementById('tab-' + tab.dataset.tab);
+    if (panel) {
+      panel.classList.add('active');
+      panel.hidden = false;
+    }
     if (tab.dataset.tab === 'weak-spots') loadWeakSpots();
     if (tab.dataset.tab === 'class' && typeof loadAnalytics === 'function') loadAnalytics();
     if (tab.dataset.tab === 'my-sessions' && typeof loadMySessions === 'function') loadMySessions();
@@ -3281,13 +3296,19 @@ function renderOpportunities(opportunities) {
       o.pattern ? 'data-pattern="' + escapeHtml(o.pattern) + '"' : '',
     ].filter(Boolean).join(' ');
 
+    const clickable = !!o.filter;
+    const clickAttrs = clickable
+      ? ' role="button" tabindex="0" style="cursor:pointer;" data-filter-by="' + escapeHtml(o.filter.by) + '" data-filter-value="' + escapeHtml(o.filter.value) + '"'
+      : '';
+
     return (
-      '<div class="analytics-opportunity ' + o.severity + '" ' + dataAttrs + '>' +
+      '<div class="analytics-opportunity ' + o.severity + (clickable ? ' analytics-opportunity-clickable' : '') + '" ' + dataAttrs + clickAttrs + '>' +
         '<div class="analytics-opportunity-icon">' + icon + '</div>' +
         '<div class="analytics-opportunity-body">' +
           '<div class="analytics-opportunity-title">' + escapeHtml(o.title) + '</div>' +
           '<div class="analytics-opportunity-detail">' + escapeHtml(o.detail) + '</div>' +
         '</div>' +
+        (clickable ? '<div class="analytics-opportunity-arrow">→</div>' : '') +
       '</div>'
     );
   }).join('');
@@ -3370,6 +3391,8 @@ function renderAnalytics(container, data) {
       <div class="analytics-spark-wrap">${sessionsSpark}</div>
     </div>
   `;
+
+  if (typeof wireAnalyticsClicks === 'function') wireAnalyticsClicks();
 }
 
 /**
@@ -3550,6 +3573,143 @@ async function loadMySessionEvents(sessionId) {
   } catch (err) {
     container.innerHTML = '<p class="empty-state">Failed: ' + escapeHtml(err.message) + '</p>';
   }
+}
+
+// ═══════════════════════════════════════════════════════════
+// Filtered students view (Analytics → opportunity → filter)
+// ═══════════════════════════════════════════════════════════
+
+function showFilteredStudents() {
+  // Hide top-level sections that share the layout
+  document.querySelectorAll('section').forEach((sec) => {
+    sec.hidden = true;
+  });
+  const sd = document.getElementById('studentDetailView');
+  if (sd) sd.hidden = true;
+  const sed = document.getElementById('studentExerciseDetailView');
+  if (sed) sed.hidden = true;
+
+  const view = document.getElementById('filteredStudentsView');
+  if (view) view.hidden = false;
+
+  window.scrollTo(0, 0);
+}
+
+async function loadFilteredStudents(by, value) {
+  const titleEl = $('filteredStudentsTitle');
+  const subEl = $('filteredStudentsSubtitle');
+  const tableEl = $('filteredStudentsTable');
+  if (!titleEl || !tableEl) return;
+
+  titleEl.textContent = 'Loading…';
+  subEl.textContent = '';
+  tableEl.innerHTML = '<p class="empty-state">Loading…</p>';
+
+  try {
+    const url = '/api/admin/students/filter?by=' + encodeURIComponent(by) +
+                '&value=' + encodeURIComponent(value);
+    const res = await fetch(url, { credentials: 'same-origin' });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      tableEl.innerHTML = '<p class="empty-state">' + escapeHtml(data.error || 'Could not load.') + '</p>';
+      return;
+    }
+    const data = await res.json();
+    const students = data.students || [];
+    const label = (data.filter && data.filter.label) || 'Filtered students';
+
+    titleEl.textContent = label;
+    subEl.textContent = students.length + ' student' + (students.length === 1 ? '' : 's');
+
+    if (students.length === 0) {
+      tableEl.innerHTML = '<p class="empty-state">No students match this filter right now.</p>';
+      return;
+    }
+
+    // Reuse the roster table markup by duplicating the essential parts.
+    // We could refactor into a shared helper later.
+    const rows = students.map((s) => {
+      const activityHtml = typeof renderRosterActivity === 'function'
+        ? renderRosterActivity(s.activity30d)
+        : '—';
+      const progressHtml = typeof renderCompactProgress === 'function'
+        ? renderCompactProgress(s.exercisesCompleted, s.assigned)
+        : (s.exercisesCompleted + ' / ' + s.assigned);
+      return `
+        <tr data-student-id="${escapeHtml(s.studentId)}" style="cursor:pointer;">
+          <td>
+            <span class="student-name-cell">${escapeHtml(s.displayName)}</span>
+            <span class="student-email-cell">${escapeHtml(s.email)}</span>
+          </td>
+          <td>${(s.cohortNames || []).map((n) => escapeHtml(n)).join(', ')}</td>
+          <td>${activityHtml}</td>
+          <td>${progressHtml}</td>
+          <td>${s.lastActiveAt ? relativeTime(s.lastActiveAt) : '—'}</td>
+          <td>${renderStatusBadge(s.status, s.statusReasons)}</td>
+        </tr>
+      `;
+    }).join('');
+
+    tableEl.innerHTML = `
+      <table class="students-table">
+        <thead>
+          <tr>
+            <th>Student</th>
+            <th>Classes</th>
+            <th>Activity (30d)</th>
+            <th>Completed</th>
+            <th>Last active</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+
+    tableEl.querySelectorAll('tr[data-student-id]').forEach((row) => {
+      row.addEventListener('click', () => {
+        openStudentDetail(row.dataset.studentId);
+      });
+    });
+  } catch (err) {
+    tableEl.innerHTML = '<p class="empty-state">Failed: ' + escapeHtml(err.message) + '</p>';
+  }
+}
+
+/**
+ * Navigate to the filtered students view.
+ */
+function openFilteredStudents(by, value) {
+  if (!by || !value) return;
+  window.location.hash = 'filter?by=' + encodeURIComponent(by) + '&value=' + encodeURIComponent(value);
+  showFilteredStudents();
+  loadFilteredStudents(by, value);
+}
+
+/**
+ * Delegate click handlers on the analytics body — opportunity cards
+ * navigate to the filter view when they carry data-filter-*.
+ */
+function wireAnalyticsClicks() {
+  const body = document.getElementById('analyticsBody');
+  if (!body || body.__wiredFilters) return;
+  body.__wiredFilters = true;
+  body.addEventListener('click', (e) => {
+    const card = e.target.closest && e.target.closest('[data-filter-by]');
+    if (!card) return;
+    const by = card.dataset.filterBy;
+    const value = card.dataset.filterValue;
+    if (by && value) openFilteredStudents(by, value);
+  });
+  body.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const card = e.target.closest && e.target.closest('[data-filter-by]');
+    if (!card) return;
+    e.preventDefault();
+    const by = card.dataset.filterBy;
+    const value = card.dataset.filterValue;
+    if (by && value) openFilteredStudents(by, value);
+  });
 }
 
 function renderNextAction(nextAction) {
@@ -5040,7 +5200,14 @@ document.addEventListener('click', (e) => {
   const t = e.target;
   if (!t || !t.id) return;
 
-  if (t.id === 'backToStudentBtn') {
+  if (t.id === 'backToAnalyticsBtn') {
+    // Set hash first so deep-links and reload land on Analytics
+    window.location.hash = 'class';
+    // Then trigger the standard tab switch (handles visibility)
+    const analyticsTab = document.querySelector('.tab[data-tab="class"]');
+    if (analyticsTab) analyticsTab.click();
+    return;
+  } else if (t.id === 'backToStudentBtn') {
     showStudentDetailFromExercise();
     // Refresh the parent student detail so session history reflects changes
     if (currentStudentId) openStudentDetail(currentStudentId);
@@ -5322,6 +5489,20 @@ const VALID_TABS = ['tutor', 'weak-spots', 'health', 'class', 'students', 'exerc
 
 function activateTabFromHash() {
   const raw = (window.location.hash || '').replace(/^#/, '');
+
+  // Special-case the filtered students view: '#filter?by=...&value=...'
+  if (raw.startsWith('filter?')) {
+    const qs = raw.slice('filter?'.length);
+    const params = new URLSearchParams(qs);
+    const by = params.get('by');
+    const value = params.get('value');
+    if (by && value) {
+      showFilteredStudents();
+      loadFilteredStudents(by, value);
+      return;
+    }
+  }
+
   const tabName = VALID_TABS.includes(raw) ? raw : 'tutor';
 
   const tab = document.querySelector('.tab[data-tab="' + tabName + '"]');

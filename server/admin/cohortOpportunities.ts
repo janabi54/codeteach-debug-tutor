@@ -40,9 +40,12 @@ export interface Opportunity {
   title: string;
   detail: string;
   count: number;
-  // Optional navigation hint for the client
+  // Optional navigation hints for the client
   exerciseId?: string;
   pattern?: string;
+  // When set, the client renders the card as a clickable link to
+  // GET /api/admin/students/filter?by=<by>&value=<value>.
+  filter?: { by: 'pattern' | 'exercise-stall' | 'low-post-mortems' | 'inactive'; value: string };
 }
 
 export function getCohortOpportunities(cohortId: string): Opportunity[] {
@@ -86,6 +89,7 @@ export function getCohortOpportunities(cohortId: string): Opportunity[] {
       detail: 'Consider reviewing this pattern — it keeps coming up.',
       count: r.students,
       pattern: r.pattern,
+      filter: { by: 'pattern', value: r.pattern },
     });
   }
 
@@ -140,6 +144,7 @@ export function getCohortOpportunities(cohortId: string): Opportunity[] {
       detail: 'Consider a live walkthrough or extra time on this exercise.',
       count: r.students,
       exerciseId: r.exerciseId,
+      filter: { by: 'exercise-stall', value: r.exerciseId },
     });
   }
 

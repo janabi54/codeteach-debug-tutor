@@ -1,5 +1,5 @@
 import express from 'express';
-import { db } from '../db.js';
+import { db, sqlite } from '../db.js';
 import { requireInstructor } from '../middleware/requireAuth.js';
 import {
   rosterFor,
@@ -106,6 +106,202 @@ router.get('/', requireInstructor, async (req, res) => {
 
   res.json(students);
 });
+
+// ─────────────────────────────────────────────────────────────
+// GET /api/admin/students/filter?by=<type>&value=<value>
+// Returns a roster-shaped list of students matching a given filter.
+// Used by the Analytics tab's teaching-opportunities links.
+// Registered BEFORE /:studentId so Express doesn't route 'filter'
+// as a student ID.
+// ─────────────────────────────────────────────────────────────
+const FILTER_TYPES = new Set([
+  'pattern',
+  'exercise-stall',
+  'low-post-mortems',
+  'inactive',
+]);
+
+router.get('/filter', requireInstructor, async (req, res) => {
+  const instructorId = req.user!.id;
+  const by = String(req.query.by ?? '').trim();
+  const value = String(req.query.value ?? '').trim();
+
+  if (!FILTER_TYPES.has(by)) {
+    return res.status(400).json({ error: 'Unknown filter type.' });
+  }
+  if (!value) {
+    return res.status(400).json({ error: 'Filter value is required.' });
+  }
+
+  // Which cohort students is this instructor allowed to see?
+  const roster = rosterFor(instructorId);
+  const allowedStudentIds = Array.from(new Set(roster.map((r) => r.studentId)));
+  if (allowedStudentIds.length === 0) {
+    return res.json({
+      filter: { by, value, label: filterLabel(by, value) },
+      students: [],
+    });
+  }
+
+  // Query the matching students for this filter
+  const matchingIds = getFilteredStudentIds(by, value, allowedStudentIds);
+  if (matchingIds.length === 0) {
+    return res.json({
+      filter: { by, value, label: filterLabel(by, value) },
+      students: [],
+    });
+  }
+
+  // Build roster rows for the matching students, reusing the same
+  // shape and derivation the roster view uses.
+  const matchingSet = new Set(matchingIds);
+  const byStudent = new Map<string, {
+    studentId: string;
+    cohortIds: Set<string>;
+    cohortNames: Set<string>;
+    joinedAt: string;
+  }>();
+  for (const entry of roster) {
+    if (!matchingSet.has(entry.studentId)) continue;
+    if (!byStudent.has(entry.studentId)) {
+      byStudent.set(entry.studentId, {
+        studentId: entry.studentId,
+        cohortIds: new Set(),
+        cohortNames: new Set(),
+        joinedAt: entry.joinedAt,
+      });
+    }
+    const s = byStudent.get(entry.studentId)!;
+    s.cohortIds.add(entry.cohortId);
+    s.cohortNames.add(entry.cohortName);
+    if (entry.joinedAt < s.joinedAt) s.joinedAt = entry.joinedAt;
+  }
+
+  // Batch activity for these students
+  const studentIds = Array.from(byStudent.keys());
+  const allExercises = Array.from(new Set(
+    studentIds.flatMap((sid) => viewableExerciseIdsFor(instructorId, sid))
+  ));
+  const activityMap = db.students.activityForMany(studentIds, allExercises, 30);
+
+  const students = [];
+  for (const s of byStudent.values()) {
+    const user = await db.users.findById(s.studentId);
+    if (!user) continue;
+    const exerciseIds = viewableExerciseIdsFor(instructorId, s.studentId);
+    if (exerciseIds.length === 0) continue;
+
+    const stats = db.students.statsFor(s.studentId, exerciseIds);
+    const statusResult = deriveRosterStatus({
+      exercisesAttempted: stats.exercisesAttempted,
+      exercisesCompleted: stats.exercisesCompleted,
+      lastActiveAt: stats.lastActiveAt,
+    });
+
+    students.push({
+      studentId: s.studentId,
+      displayName: user.displayName,
+      email: user.email,
+      cohortNames: Array.from(s.cohortNames),
+      cohortIds: Array.from(s.cohortIds),
+      joinedAt: s.joinedAt,
+      exercisesAttempted: stats.exercisesAttempted,
+      exercisesCompleted: stats.exercisesCompleted,
+      lastActiveAt: stats.lastActiveAt,
+      status: statusResult.status,
+      statusReasons: statusResult.reasons,
+      assigned: exerciseIds.length,
+      activity30d: activityMap.get(s.studentId) || null,
+    });
+  }
+
+  students.sort((a, b) => {
+    const aTime = a.lastActiveAt ? new Date(a.lastActiveAt).getTime() : 0;
+    const bTime = b.lastActiveAt ? new Date(b.lastActiveAt).getTime() : 0;
+    if (aTime !== bTime) return bTime - aTime;
+    return a.displayName.localeCompare(b.displayName);
+  });
+
+  res.json({
+    filter: { by, value, label: filterLabel(by, value) },
+    students,
+  });
+});
+
+/**
+ * Human-readable label for a filter, shown as the page title.
+ */
+function filterLabel(by: string, value: string): string {
+  switch (by) {
+    case 'pattern':         return 'Students who hit "' + value + '" this week';
+    case 'exercise-stall':  return 'Students stalled on "' + value + '"';
+    case 'low-post-mortems':return 'Students with weak post-mortems this week';
+    case 'inactive':        return 'Students with no activity in 10+ days';
+    default:                return 'Filtered students';
+  }
+}
+
+/**
+ * Resolve a filter to a list of matching student IDs, scoped to the
+ * instructor's allowed students.
+ */
+function getFilteredStudentIds(
+  by: string,
+  value: string,
+  allowedStudentIds: string[]
+): string[] {
+  if (allowedStudentIds.length === 0) return [];
+  const sPh = allowedStudentIds.map(() => '?').join(',');
+
+  if (by === 'pattern') {
+    return (sqlite
+      .prepare(
+        `SELECT DISTINCT student_id AS id FROM mistake_patterns
+         WHERE student_id IN (${sPh})
+           AND pattern = ?
+           AND recorded_at >= datetime('now','-7 days')`
+      )
+      .all(...allowedStudentIds, value) as Array<{ id: string }>).map((r) => r.id);
+  }
+
+  if (by === 'exercise-stall') {
+    return (sqlite
+      .prepare(
+        `SELECT DISTINCT student_id AS id FROM hint_sessions
+         WHERE student_id IN (${sPh})
+           AND exercise_id = ?
+           AND state != 'complete'`
+      )
+      .all(...allowedStudentIds, value) as Array<{ id: string }>).map((r) => r.id);
+  }
+
+  if (by === 'low-post-mortems') {
+    return (sqlite
+      .prepare(
+        `SELECT DISTINCT student_id AS id FROM post_mortems
+         WHERE student_id IN (${sPh})
+           AND recorded_at >= datetime('now','-7 days')
+           AND (score IS NULL OR score != 'strong')`
+      )
+      .all(...allowedStudentIds) as Array<{ id: string }>).map((r) => r.id);
+  }
+
+  if (by === 'inactive') {
+    return (sqlite
+      .prepare(
+        `SELECT student_id AS id FROM (
+           SELECT hs.student_id, MAX(hs.updated_at) AS last_active
+           FROM hint_sessions hs
+           WHERE hs.student_id IN (${sPh})
+           GROUP BY hs.student_id
+         )
+         WHERE last_active < datetime('now','-10 days')`
+      )
+      .all(...allowedStudentIds) as Array<{ id: string }>).map((r) => r.id);
+  }
+
+  return [];
+}
 
 // ─────────────────────────────────────────────────────────────
 // GET /api/admin/students/export.csv

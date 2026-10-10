@@ -3902,3 +3902,43 @@ body.privacy-open .privacy-view {
   border: 1px solid #a7f3d0;
   border-radius: 8px;
 }
+
+/* ── Filtered students view ── */
+.filtered-students-header {
+  margin-bottom: 20px;
+}
+.filtered-students-header h1 {
+  margin: 0 0 4px;
+  font-size: 22px;
+  color: #1a1d23;
+}
+.filtered-students-header .subtitle {
+  margin: 0;
+  color: #7a7f88;
+  font-size: 14px;
+}
+
+/* Clickable opportunity cards */
+.analytics-opportunity-clickable {
+  cursor: pointer;
+  transition: border-color 0.12s ease, transform 0.12s ease;
+}
+.analytics-opportunity-clickable:hover {
+  border-color: #94a3b8;
+  transform: translateY(-1px);
+}
+.analytics-opportunity-clickable:focus-visible {
+  outline: 2px solid #4f46e5;
+  outline-offset: 2px;
+}
+.analytics-opportunity-arrow {
+  align-self: center;
+  color: #7a7f88;
+  font-size: 18px;
+  line-height: 1;
+  transition: transform 0.12s ease;
+}
+.analytics-opportunity-clickable:hover .analytics-opportunity-arrow {
+  transform: translateX(2px);
+  color: #4f46e5;
+}
