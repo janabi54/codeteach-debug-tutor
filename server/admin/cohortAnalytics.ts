@@ -17,6 +17,7 @@
 import { sqlite, db } from '../db.js';
 import { deriveRosterStatus, escalateWithTrends } from '../util/status.js';
 import { fillWeeks, lastNWeekStarts } from '../util/weeks.js';
+import { getCohortOpportunities, type Opportunity } from './cohortOpportunities.js';
 
 export interface TrendPoint {
   weekStart: string;
@@ -48,6 +49,9 @@ export interface CohortAnalytics {
     reasoningQuality: TrendPoint[];
     sessions: TrendPoint[];
   };
+
+  /** Ranked teaching opportunities — see cohortOpportunities.ts. */
+  opportunities: Opportunity[];
 }
 
 function median(values: number[]): number | null {
@@ -145,6 +149,8 @@ export function getCohortAnalytics(cohortId: string): CohortAnalytics {
     sessions: fillWeeks(cohortSessionsTrendFor(cohortId, exerciseIds), weekStarts),
   };
 
+  const opportunities = getCohortOpportunities(cohortId);
+
   return {
     cohortId: cohort.id,
     cohortName: cohort.name,
@@ -158,6 +164,7 @@ export function getCohortAnalytics(cohortId: string): CohortAnalytics {
     },
     statusBreakdown: statusCounts,
     weeklyTrends,
+    opportunities,
   };
 }
 

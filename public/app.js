@@ -3252,6 +3252,54 @@ async function loadAnalyticsFor(cohortId) {
   }
 }
 
+/**
+ * Render the "Teaching opportunities" panel from the analytics payload.
+ * Returns HTML string. Empty array → friendly empty state.
+ */
+function renderOpportunities(opportunities) {
+  if (!opportunities || opportunities.length === 0) {
+    return (
+      '<div class="analytics-section">' +
+        '<h3 class="analytics-section-title">Teaching opportunities</h3>' +
+        '<p class="analytics-opportunities-empty">' +
+          '✅ No notable signals this week. Keep going.' +
+        '</p>' +
+      '</div>'
+    );
+  }
+
+  const sevIcon = {
+    high:   '🔴',
+    medium: '🟡',
+    info:   'ℹ️',
+  };
+
+  const rows = opportunities.map((o) => {
+    const icon = sevIcon[o.severity] || '•';
+    const dataAttrs = [
+      o.exerciseId ? 'data-exercise-id="' + escapeHtml(o.exerciseId) + '"' : '',
+      o.pattern ? 'data-pattern="' + escapeHtml(o.pattern) + '"' : '',
+    ].filter(Boolean).join(' ');
+
+    return (
+      '<div class="analytics-opportunity ' + o.severity + '" ' + dataAttrs + '>' +
+        '<div class="analytics-opportunity-icon">' + icon + '</div>' +
+        '<div class="analytics-opportunity-body">' +
+          '<div class="analytics-opportunity-title">' + escapeHtml(o.title) + '</div>' +
+          '<div class="analytics-opportunity-detail">' + escapeHtml(o.detail) + '</div>' +
+        '</div>' +
+      '</div>'
+    );
+  }).join('');
+
+  return (
+    '<div class="analytics-section">' +
+      '<h3 class="analytics-section-title">Teaching opportunities</h3>' +
+      '<div class="analytics-opportunities">' + rows + '</div>' +
+    '</div>'
+  );
+}
+
 function renderAnalytics(container, data) {
   const s = data.summary;
   const bd = data.statusBreakdown;
@@ -3294,6 +3342,8 @@ function renderAnalytics(container, data) {
         </div>
       `).join('')}
     </div>
+
+    ${renderOpportunities(data.opportunities)}
 
     <div class="analytics-section">
       <h3 class="analytics-section-title">Status breakdown</h3>
