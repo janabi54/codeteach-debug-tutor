@@ -3727,7 +3727,7 @@ function wireAnalyticsClicks() {
     if (!card) return;
     const by = card.dataset.filterBy;
     const value = card.dataset.filterValue;
-    if (by && value) openFilteredStudents(by, value);
+    if (by) openFilteredStudents(by, value || '');
   });
   body.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter' && e.key !== ' ') return;
@@ -3736,7 +3736,7 @@ function wireAnalyticsClicks() {
     e.preventDefault();
     const by = card.dataset.filterBy;
     const value = card.dataset.filterValue;
-    if (by && value) openFilteredStudents(by, value);
+    if (by) openFilteredStudents(by, value || '');
   });
 }
 
