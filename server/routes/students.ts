@@ -114,27 +114,28 @@ router.get('/', requireInstructor, async (req, res) => {
 // Registered BEFORE /:studentId so Express doesn't route 'filter'
 // as a student ID.
 // ─────────────────────────────────────────────────────────────
-const FILTER_TYPES = new Set([
-  'pattern',
-  'exercise-stall',
-  'low-post-mortems',
-  'inactive',
-]);
+// Single source of truth for student filters.
+// - valueless: takes no `value` query param (criteria fixed in SQL)
+// - label:     human-readable title shown on the filtered-students page
+const FILTERS = {
+  'pattern':          { valueless: false, label: (v: string) => 'Students who hit "' + v + '" this week' },
+  'exercise-stall':   { valueless: false, label: (v: string) => 'Students stalled on "' + v + '"' },
+  'low-post-mortems': { valueless: true,  label: ()          => 'Students with weak post-mortems this week' },
+  'inactive':         { valueless: true,  label: ()          => 'Students with no activity in 10+ days' },
+} as const;
 
-// Filters that take no `value` — their criteria is fixed in the query.
-const VALUELESS_FILTERS = new Set([
-  'inactive',
-]);
+type FilterType = keyof typeof FILTERS;
+const FILTER_TYPES = new Set(Object.keys(FILTERS) as FilterType[]);
 
 router.get('/filter', requireInstructor, async (req, res) => {
   const instructorId = req.user!.id;
   const by = String(req.query.by ?? '').trim();
   const value = String(req.query.value ?? '').trim();
 
-  if (!FILTER_TYPES.has(by)) {
+  if (!FILTER_TYPES.has(by as FilterType)) {
     return res.status(400).json({ error: 'Unknown filter type.' });
   }
-  if (!VALUELESS_FILTERS.has(by) && !value) {
+  if (!FILTERS[by as FilterType].valueless && !value) {
     return res.status(400).json({ error: 'Filter value is required.' });
   }
 
@@ -143,7 +144,7 @@ router.get('/filter', requireInstructor, async (req, res) => {
   const allowedStudentIds = Array.from(new Set(roster.map((r) => r.studentId)));
   if (allowedStudentIds.length === 0) {
     return res.json({
-      filter: { by, value, label: filterLabel(by, value) },
+      filter: { by, value, label: FILTERS[by as FilterType].label(value) },
       students: [],
     });
   }
@@ -152,7 +153,7 @@ router.get('/filter', requireInstructor, async (req, res) => {
   const matchingIds = getFilteredStudentIds(by, value, allowedStudentIds);
   if (matchingIds.length === 0) {
     return res.json({
-      filter: { by, value, label: filterLabel(by, value) },
+      filter: { by, value, label: FILTERS[by as FilterType].label(value) },
       students: [],
     });
   }
@@ -228,23 +229,11 @@ router.get('/filter', requireInstructor, async (req, res) => {
   });
 
   res.json({
-    filter: { by, value, label: filterLabel(by, value) },
+    filter: { by, value, label: FILTERS[by as FilterType].label(value) },
     students,
   });
 });
 
-/**
- * Human-readable label for a filter, shown as the page title.
- */
-function filterLabel(by: string, value: string): string {
-  switch (by) {
-    case 'pattern':         return 'Students who hit "' + value + '" this week';
-    case 'exercise-stall':  return 'Students stalled on "' + value + '"';
-    case 'low-post-mortems':return 'Students with weak post-mortems this week';
-    case 'inactive':        return 'Students with no activity in 10+ days';
-    default:                return 'Filtered students';
-  }
-}
 
 /**
  * Resolve a filter to a list of matching student IDs, scoped to the
