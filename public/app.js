@@ -4141,6 +4141,10 @@ async function openExerciseDetail(studentId, exerciseId, exerciseTitle) {
 // Replay panel (exercise detail page)
 // ═══════════════════════════════════════════════════════════
 
+function __replaySessionKey(studentId, exerciseId) {
+  return 'replay-pos:' + studentId + ':' + exerciseId;
+}
+
 const __replay = {
   events: [],
   index: 0,
@@ -4179,6 +4183,19 @@ async function loadReplayPanel(studentId, exerciseId) {
       return;
     }
     __replay.events = events;
+    // Restore the last position for this (student, exercise) pair if
+    // the user is coming back to it in the same browser session.
+    try {
+      const stored = sessionStorage.getItem(__replaySessionKey(studentId, exerciseId));
+      if (stored !== null) {
+        const parsed = Number(stored);
+        if (Number.isFinite(parsed) && parsed >= 0 && parsed < events.length) {
+          __replay.index = parsed;
+        }
+      }
+    } catch {
+      // sessionStorage unavailable — ignore
+    }
     wrap.style.display = 'block';
     renderReplayPanel(body);
   } catch {
@@ -4234,6 +4251,10 @@ function formatReplayTime(iso) {
  */
 function renderReplayCodeHtml(current, previous) {
   const curLines = String(current || '').split('\n');
+  // If there is no previous snapshot, nothing is "new" — render plain.
+  if (!previous) {
+    return curLines.map((line) => escapeHtml(line)).join('\n');
+  }
   const prevSet = new Set(String(previous || '').split('\n'));
   return curLines.map((line) => {
     const isNew = line.trim().length > 0 && !prevSet.has(line);
@@ -4379,6 +4400,7 @@ function wireReplayKeyboard() {
     const total = __replay.events.length;
     if (total === 0) return;
 
+    console.log('[rp-key] key=', e.key, 'code=', e.code, 'index=', __replay.index, 'total=', total);
     switch (e.key) {
       case ' ':
       case 'Spacebar':
@@ -4421,6 +4443,17 @@ function setReplayIndex(idx, opts) {
   if (__replay.playing && idx === total - 1) {
     __replay.playing = false;
     if (__replay.timer) { clearInterval(__replay.timer); __replay.timer = null; }
+  }
+  // Persist the new position for this (student, exercise) pair
+  try {
+    if (__replay.studentId && __replay.exerciseId) {
+      sessionStorage.setItem(
+        __replaySessionKey(__replay.studentId, __replay.exerciseId),
+        String(__replay.index)
+      );
+    }
+  } catch {
+    // ignore
   }
   const body = $('sedReplayBody');
   if (body) renderReplayPanel(body);
