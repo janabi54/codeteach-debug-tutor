@@ -1,5 +1,5 @@
 import express from 'express';
-import { db } from '../db.js';
+import { db, sqlite } from '../db.js';
 import { requireAuth, requireInstructor } from '../middleware/requireAuth.js';
 import { canInstructorMessageStudent } from '../auth/authorization.js';
 import { sendMail, appBaseUrl } from '../mailer.js';
@@ -117,6 +117,109 @@ router.get(
     }
     const messages = db.nudges.listMessages(thread.id);
     res.json({ thread, messages });
+  }
+);
+
+// ─────────────────────────────────────────────────────────────
+// POST /api/admin/cohorts/:cohortId/announce
+// Instructor broadcasts a message to every student in a cohort.
+// Fans out to one nudge_message per student thread (creating
+// threads as needed), marked is_announcement = 1.
+// Body: { body: string }
+// ─────────────────────────────────────────────────────────────
+router.post(
+  '/admin/cohorts/:cohortId/announce',
+  requireInstructor,
+  async (req, res) => {
+    const instructorId = req.user!.id;
+    const instructorEmail = req.user!.email ?? null;
+    const { cohortId } = req.params;
+    const { body } = req.body as { body?: string };
+
+    // Verify the instructor owns this cohort.
+    const cohort = await db.cohorts.findById(cohortId);
+    if (!cohort) {
+      return res.status(404).json({ error: 'Cohort not found.' });
+    }
+    if (cohort.instructorId !== instructorId) {
+      return res.status(403).json({ error: 'You do not teach this cohort.' });
+    }
+
+    const trimmedBody = (body ?? '').trim();
+    if (trimmedBody.length === 0) {
+      return res.status(400).json({ error: 'Message body is required.' });
+    }
+    if (trimmedBody.length > MAX_BODY_LENGTH) {
+      return res.status(400).json({ error: 'Message body must be ' + MAX_BODY_LENGTH + ' characters or fewer.' });
+    }
+
+    // Every student in the cohort.
+    const memberRows = sqlite
+      .prepare('SELECT user_id AS id FROM cohort_members WHERE cohort_id = ?')
+      .all(cohortId) as Array<{ id: string }>;
+
+    let sent = 0;
+    const dispatched: Array<{ studentId: string; threadId: string }> = [];
+
+    for (const m of memberRows) {
+      const student = await db.users.findById(m.id);
+      if (!student) continue;
+
+      const thread = db.nudges.ensureThread(instructorId, m.id, null);
+      db.nudges.addMessage({
+        threadId: thread.id,
+        authorId: instructorId,
+        authorRole: 'instructor',
+        body: trimmedBody,
+        isAnnouncement: true,
+      });
+      sent++;
+      dispatched.push({ studentId: m.id, threadId: thread.id });
+    }
+
+    // Fire-and-forget per-student email + WebSocket push.
+    for (const d of dispatched) {
+      const student = await db.users.findById(d.studentId);
+      if (!student) continue;
+
+      void (async () => {
+        try {
+          const base = appBaseUrl();
+          const subjectLine = 'Announcement from ' + (req.user!.displayName || 'your tutor');
+          const htmlBody =
+            '<p>Hi ' + escapeHtml(student.displayName) + ',</p>' +
+            '<p><strong>' + escapeHtml(req.user!.displayName || 'Your tutor') + '</strong> posted an announcement to your class:</p>' +
+            '<blockquote style="border-left:3px solid #6366f1;padding:8px 12px;color:#333;background:#f8fafc;">' +
+            escapeHtml(trimmedBody).replace(/\n/g, '<br>') +
+            '</blockquote>' +
+            '<p><a href="' + base + '/#messages">Open CodeTeach</a></p>';
+          await sendMail({
+            to: student.email,
+            subject: subjectLine,
+            body: htmlBody,
+            text: 'Hi ' + student.displayName + ',\n\n' + trimmedBody + '\n\nOpen ' + base + '/#messages',
+          });
+        } catch (err) {
+          console.error('[announce] email failed:', err);
+        }
+      })();
+
+      broadcastToUser(d.studentId, {
+        type: 'nudge:new',
+        threadId: d.threadId,
+        from: {
+          id: instructorId,
+          name: req.user!.displayName,
+          email: instructorEmail,
+        },
+        body: trimmedBody,
+        isAnnouncement: true,
+        createdAt: new Date().toISOString(),
+      });
+      void pushUnreadCount(d.studentId);
+    }
+
+    res.status(201).json({ sent, cohortId });
   }
 );
 

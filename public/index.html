@@ -257,6 +257,7 @@ for (let i = 0; i < arr.length; i++) {
         <select id="analyticsCohort">
           <option value="">Loading…</option>
         </select>
+        <button id="announceBtn" type="button" class="ghost small" style="margin-left: 8px;">📢 Announce</button>
       </div>
     </div>
 
@@ -828,6 +829,29 @@ for (let i = 0; i < arr.length; i++) {
     </div>
     <div id="messagesModalBody" class="nudge-modal-body">
       <!-- rendered dynamically -->
+    </div>
+  </div>
+</div>
+
+<!-- ANNOUNCE MODAL (instructor-side: broadcast to a cohort) -->
+<div id="announceModal" class="nudge-modal-backdrop" hidden>
+  <div class="nudge-modal">
+    <div class="nudge-modal-header">
+      <h2 id="announceModalTitle" class="nudge-modal-title">Announce to cohort</h2>
+      <button id="announceModalClose" class="nudge-modal-close" title="Close">×</button>
+    </div>
+    <div id="announceModalBody" class="nudge-modal-body">
+      <p class="nudge-modal-hint">
+        Goes to every student in this class. They can't reply directly to an
+        announcement, but can still reply in their existing thread.
+      </p>
+      <textarea id="announceText" class="nudge-compose-textarea" rows="5"
+        placeholder="Class is cancelled tomorrow…" maxlength="2000"></textarea>
+      <div class="nudge-compose-actions">
+        <span id="announceStatus" class="nudge-compose-status"></span>
+        <span id="announceCounter" class="nudge-char-counter">0 / 2000</span>
+        <button type="button" id="announceSend" class="primary small">Send announcement</button>
+      </div>
     </div>
   </div>
 </div>

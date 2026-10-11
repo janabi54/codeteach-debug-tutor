@@ -202,6 +202,14 @@ if (!hasConfidence) {
   console.log('[db] migrated: added post_mortems.confidence');
 }
 
+// One-time migration: nudge_messages.is_announcement (cohort broadcasts)
+const nudgeMessageColumns = sqlite.prepare('PRAGMA table_info(nudge_messages)').all() as Array<{ name: string }>;
+const hasIsAnnouncement = nudgeMessageColumns.some((c) => c.name === 'is_announcement');
+if (!hasIsAnnouncement) {
+  sqlite.exec('ALTER TABLE nudge_messages ADD COLUMN is_announcement INTEGER NOT NULL DEFAULT 0');
+  console.log('[db] migrated: added nudge_messages.is_announcement');
+}
+
 
 export interface DeletionAudit {
   id: string;
@@ -972,6 +980,7 @@ export const db = {
       authorId: string;
       authorRole: 'instructor' | 'student';
       body: string;
+      isAnnouncement?: boolean;
     }): {
       id: string;
       threadId: string;
@@ -981,43 +990,49 @@ export const db = {
       readAt: string | null;
       emailSentAt: string | null;
       createdAt: string;
+      isAnnouncement: boolean;
     } {
       const id = randomUUID();
+      const flag = data.isAnnouncement ? 1 : 0;
       const tx = sqlite.transaction(() => {
         sqlite
           .prepare(
             `INSERT INTO nudge_messages
-               (id, thread_id, author_id, author_role, body)
-             VALUES (?, ?, ?, ?, ?)`
+               (id, thread_id, author_id, author_role, body, is_announcement)
+             VALUES (?, ?, ?, ?, ?, ?)`
           )
-          .run(id, data.threadId, data.authorId, data.authorRole, data.body);
+          .run(id, data.threadId, data.authorId, data.authorRole, data.body, flag);
         sqlite
           .prepare(`UPDATE nudge_threads SET last_message_at = datetime('now') WHERE id = ?`)
           .run(data.threadId);
       });
       tx();
 
-      return sqlite
+      const row = sqlite
         .prepare(
           `SELECT id, thread_id AS threadId, author_id AS authorId,
                   author_role AS authorRole, body, read_at AS readAt,
-                  email_sent_at AS emailSentAt, created_at AS createdAt
+                  email_sent_at AS emailSentAt, created_at AS createdAt,
+                  is_announcement AS isAnnouncement
            FROM nudge_messages WHERE id = ?`
         )
         .get(id) as any;
+      return { ...row, isAnnouncement: row.isAnnouncement === 1 };
     },
 
     listMessages(threadId: string): any[] {
-      return sqlite
+      const rows = sqlite
         .prepare(
           `SELECT id, thread_id AS threadId, author_id AS authorId,
                   author_role AS authorRole, body, read_at AS readAt,
-                  email_sent_at AS emailSentAt, created_at AS createdAt
+                  email_sent_at AS emailSentAt, created_at AS createdAt,
+                  is_announcement AS isAnnouncement
            FROM nudge_messages
            WHERE thread_id = ?
            ORDER BY created_at ASC`
         )
         .all(threadId) as any[];
+      return rows.map((r) => ({ ...r, isAnnouncement: r.isAnnouncement === 1 }));
     },
 
     markThreadRead(threadId: string, readerId: string): number {

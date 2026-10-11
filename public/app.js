@@ -691,6 +691,83 @@ async function hydrateSession() {
 
 // (persistIds removed — identity comes from session)
 
+// --- Announce-to-cohort modal (instructor-side) ---
+function openAnnounceModal() {
+  const modal = $('announceModal');
+  if (!modal) return;
+  modal.hidden = false;
+  const ta = $('announceText');
+  const status = $('announceStatus');
+  const counter = $('announceCounter');
+  if (status) { status.textContent = ''; status.className = 'nudge-compose-status'; }
+  if (ta) {
+    ta.value = '';
+    ta.focus();
+    if (counter) counter.textContent = '0 / 2000';
+    ta.oninput = () => { if (counter) counter.textContent = ta.value.length + ' / 2000'; };
+  }
+}
+
+function closeAnnounceModal() {
+  const modal = $('announceModal');
+  if (modal) modal.hidden = true;
+}
+
+async function sendAnnouncement() {
+  const ta = $('announceText');
+  const status = $('announceStatus');
+  const sendBtn = $('announceSend');
+  if (!ta || !sendBtn) return;
+
+  const body = ta.value.trim();
+  if (!body) {
+    if (status) { status.textContent = 'Write a message first.'; status.className = 'nudge-compose-status error'; }
+    return;
+  }
+  const cohortSel = $('analyticsCohort');
+  const cohortId = selectedCohortId || (cohortSel ? cohortSel.value : null);
+  if (!cohortId) {
+    if (status) { status.textContent = 'No cohort selected.'; status.className = 'nudge-compose-status error'; }
+    return;
+  }
+
+  sendBtn.disabled = true;
+  const originalText = sendBtn.textContent;
+  sendBtn.textContent = 'Sending…';
+  if (status) { status.textContent = ''; status.className = 'nudge-compose-status'; }
+
+  try {
+    const res = await fetch('/api/admin/cohorts/' + encodeURIComponent(cohortId) + '/announce', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ body }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      if (status) { status.textContent = data.error || 'Could not send.'; status.className = 'nudge-compose-status error'; }
+      return;
+    }
+    if (status) { status.textContent = 'Sent to ' + (data.sent || 0) + ' student' + (data.sent === 1 ? '' : 's') + '.'; status.className = 'nudge-compose-status ok'; }
+    setTimeout(closeAnnounceModal, 900);
+  } catch (err) {
+    if (status) { status.textContent = 'Failed: ' + err.message; status.className = 'nudge-compose-status error'; }
+  } finally {
+    sendBtn.disabled = false;
+    sendBtn.textContent = originalText;
+  }
+}
+
+// Wire up the announce modal once the DOM is ready.
+document.addEventListener('DOMContentLoaded', () => {
+  const openBtn = $('announceBtn');
+  const closeBtn = $('announceModalClose');
+  const sendBtn = $('announceSend');
+  if (openBtn) openBtn.addEventListener('click', openAnnounceModal);
+  if (closeBtn) closeBtn.addEventListener('click', closeAnnounceModal);
+  if (sendBtn) sendBtn.addEventListener('click', sendAnnouncement);
+});
+
 // --- Class fingerprint tab (legacy — the tab UI was replaced by
 // Analytics, but the endpoint and renderClassFingerprint are kept so
 // the loader can be revived without a rewrite. Guarded so the missing
@@ -2719,9 +2796,13 @@ function renderNudgeThread(container, data) {
     : messages.map((m) => {
         const mine = m.authorRole === 'instructor';
         const when = m.createdAt ? new Date(m.createdAt.replace(' ', 'T') + 'Z').toLocaleString() : '';
+        const isAnn = !!m.isAnnouncement;
+        const bubbleClass = 'nudge-bubble' + (isAnn ? ' nudge-msg-announcement' : '');
+        const annLabel = isAnn ? '<div class="nudge-msg-announcement-label">📢 Announcement</div>' : '';
         return `
           <div class="nudge-bubble-row ${mine ? 'mine' : 'theirs'}">
-            <div class="nudge-bubble">
+            <div class="${bubbleClass}">
+              ${annLabel}
               <div class="nudge-bubble-body">${escapeHtml(m.body).replace(/\n/g, '<br>')}</div>
               <div class="nudge-bubble-time">${escapeHtml(when)}</div>
             </div>
@@ -3059,9 +3140,13 @@ async function openThreadView(threadId) {
           const when = m.createdAt
             ? new Date(m.createdAt.replace(' ', 'T') + 'Z').toLocaleString()
             : '';
+          const isAnn = !!m.isAnnouncement;
+          const bubbleClass = 'nudge-bubble' + (isAnn ? ' nudge-msg-announcement' : '');
+          const annLabel = isAnn ? '<div class="nudge-msg-announcement-label">📢 Announcement</div>' : '';
           return (
             '<div class="nudge-bubble-row ' + (mine ? 'mine' : 'theirs') + '">' +
-              '<div class="nudge-bubble">' +
+              '<div class="' + bubbleClass + '">' +
+                annLabel +
                 '<div class="nudge-bubble-body">' + escapeHtml(m.body).replace(/\n/g, '<br>') + '</div>' +
                 '<div class="nudge-bubble-time">' + escapeHtml(when) + '</div>' +
               '</div>' +
