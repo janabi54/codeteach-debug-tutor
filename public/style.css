@@ -4035,3 +4035,26 @@ body.privacy-open .privacy-view {
   color: #64748b;
   font-style: italic;
 }
+
+/* ── Post-mortem confidence selector ── */
+.msg.post-mortem-gate .post-mortem-confidence {
+  margin-top: 10px;
+  font-size: 13px;
+}
+.msg.post-mortem-gate .post-mortem-confidence-label {
+  margin-bottom: 6px;
+  color: #4b5563;
+}
+.msg.post-mortem-gate .post-mortem-confidence-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+  align-items: center;
+}
+.msg.post-mortem-gate .post-mortem-confidence-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  color: #374151;
+}

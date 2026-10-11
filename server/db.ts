@@ -194,6 +194,14 @@ if (!hasOutcome) {
   console.log('[db] migrated: added hypotheses.outcome');
 }
 
+// One-time migration: post_mortems.confidence (1-5 self-assessment, optional)
+const postMortemColumns = sqlite.prepare('PRAGMA table_info(post_mortems)').all() as Array<{ name: string }>;
+const hasConfidence = postMortemColumns.some((c) => c.name === 'confidence');
+if (!hasConfidence) {
+  sqlite.exec('ALTER TABLE post_mortems ADD COLUMN confidence INTEGER');
+  console.log('[db] migrated: added post_mortems.confidence');
+}
+
 
 export interface DeletionAudit {
   id: string;
@@ -399,7 +407,7 @@ const stmt = {
     "SELECT COALESCE(quality, 'unscored') AS quality, COUNT(*) AS n FROM hypotheses WHERE quality IS NOT NULL AND recorded_at >= ? GROUP BY quality"
   ),
   insertPostMortem: sqlite.prepare(
-    'INSERT INTO post_mortems (session_id, student_id, exercise_id, pattern, text, score, feedback) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO post_mortems (session_id, student_id, exercise_id, pattern, text, score, feedback, confidence) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
   ),
   postMortemBySession: sqlite.prepare(
     'SELECT * FROM post_mortems WHERE session_id = ? ORDER BY recorded_at DESC LIMIT 1'
@@ -2831,11 +2839,27 @@ export const db = {
       text: string;
       score: string;
       feedback: string;
+      confidence?: number | null;
     }): Promise<void> {
       stmt.insertPostMortem.run(
         rec.sessionId, rec.studentId, rec.exerciseId, rec.pattern,
-        rec.text, rec.score, rec.feedback
+        rec.text, rec.score, rec.feedback, rec.confidence ?? null
       );
+    },
+
+    /**
+     * Average self-reported confidence (1-5) across all post-mortems
+     * with a confidence value. Null avg when none reported yet.
+     */
+    postMortemConfidenceFor(studentId: string): { avg: number | null; count: number } {
+      const row = sqlite
+        .prepare(
+          `SELECT AVG(confidence) AS avg, COUNT(confidence) AS count
+           FROM post_mortems
+           WHERE student_id = ? AND confidence IS NOT NULL`
+        )
+        .get(studentId) as { avg: number | null; count: number };
+      return { avg: row?.avg ?? null, count: row?.count ?? 0 };
     },
     async findBySession(sessionId: string) {
       const row = stmt.postMortemBySession.get(sessionId) as any;

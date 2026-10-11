@@ -56,6 +56,15 @@ router.post('/hint', requireAuth, async (req, res) => {
     const pattern = recent[0]?.pattern ?? null;
     const result = await scorePostMortem(String(postMortem), pattern);
 
+    // Confidence: 1-5 if provided, else null. Out-of-range silently dropped.
+    const rawConf = req.body.confidence;
+    const confidence =
+      typeof rawConf === 'number' &&
+      Number.isInteger(rawConf) &&
+      rawConf >= 1 && rawConf <= 5
+        ? rawConf
+        : null;
+
     await db.postMortems.record({
       sessionId: session.id,
       studentId,
@@ -64,6 +73,7 @@ router.post('/hint', requireAuth, async (req, res) => {
       text: String(postMortem).trim(),
       score: result.score,
       feedback: result.feedback,
+      confidence,
     });
 
     await db.hintSessions.update(session.id, { state: 'complete' });

@@ -47,6 +47,7 @@ router.get('/me/progress', requireAuth, async (req, res) => {
 
   res.json({
     nextAction,
+    confidenceSummary: db.postMortems.postMortemConfidenceFor(studentId),
     summary: {
       assigned,
       completed,

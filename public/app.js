@@ -566,6 +566,16 @@ function renderPostMortemPrompt(prompt) {
     <div class="msg-header">Post-mortem</div>
     <div class="post-mortem-prompt">${escapeHtml(prompt)}</div>
     <textarea class="post-mortem-input" placeholder="In my own words, the bug happened because..." rows="3"></textarea>
+    <div class="post-mortem-confidence">
+      <div class="post-mortem-confidence-label">How confident are you in this concept now?</div>
+      <div class="post-mortem-confidence-options">
+        <label><input type="radio" name="confidence" value="1"> Still lost</label>
+        <label><input type="radio" name="confidence" value="2"> Shaky</label>
+        <label><input type="radio" name="confidence" value="3"> Getting it</label>
+        <label><input type="radio" name="confidence" value="4"> Solid</label>
+        <label><input type="radio" name="confidence" value="5"> Could teach it</label>
+      </div>
+    </div>
     <button class="post-mortem-submit primary small">Submit explanation</button>
   `;
   messagesEl.appendChild(div);
@@ -582,6 +592,9 @@ function renderPostMortemPrompt(prompt) {
       setTimeout(() => input.classList.remove('shake'), 400);
       return;
     }
+    // Read the confidence selection BEFORE we destroy the form DOM.
+    const confidenceEl = div.querySelector('input[name="confidence"]:checked');
+    const confidence = confidenceEl ? Number(confidenceEl.value) : null;
     div.outerHTML = '';
     appendMessage({ kind: 'student', text, label: 'Your explanation' });
 
@@ -606,6 +619,7 @@ function renderPostMortemPrompt(prompt) {
             expectedConcepts: ['for loop', 'array.length'],
           },
           postMortem: text,
+          confidence,
         }),
       });
       const data = await res.json();
@@ -3466,6 +3480,10 @@ function renderMyProgress(container, data) {
     { label: 'Hints / session', value: (s.avgHintsPerSession || 0).toFixed ? s.avgHintsPerSession.toFixed(1) : s.avgHintsPerSession },
     { label: 'Current streak', value: s.currentStreak + (s.currentStreak === 1 ? ' day' : ' days') },
   ];
+  const conf = data.confidenceSummary;
+  if (conf && conf.count > 0 && conf.avg !== null) {
+    cards.push({ label: 'Confidence', value: conf.avg.toFixed(1) + ' / 5' });
+  }
 
   const summaryHtml = `
     <div class="analytics-summary-row">
