@@ -1315,6 +1315,42 @@ export const db = {
     },
 
     /**
+     * Full exercise rows for every cohort this student is in.
+     * Returns the shape deriveNextAction expects.
+     */
+    exercisesForStudent(studentId: string): Array<{
+      slug: string;
+      title: string;
+      expectedConcepts: string[];
+    }> {
+      const rows = sqlite
+        .prepare(
+          `SELECT DISTINCT e.slug AS slug, e.title AS title, e.expected_concepts AS expectedConcepts
+           FROM exercises e
+           JOIN cohort_members cm ON cm.cohort_id = e.cohort_id
+           WHERE cm.user_id = ?`
+        )
+        .all(studentId) as Array<{ slug: string; title: string; expectedConcepts: string | null }>;
+      return rows.map((r) => {
+        let concepts: string[] = [];
+        if (r.expectedConcepts) {
+          try {
+            const parsed = JSON.parse(r.expectedConcepts);
+            if (Array.isArray(parsed)) concepts = parsed.map(String);
+          } catch {
+            // Not JSON — fall back to comma-split for legacy rows.
+            concepts = r.expectedConcepts.split(',').map((c) => c.trim()).filter(Boolean);
+          }
+        }
+        return {
+          slug: r.slug,
+          title: r.title || r.slug,
+          expectedConcepts: concepts,
+        };
+      });
+    },
+
+    /**
      * Aggregate metrics for a set of peer students — used by the cohort
      * comparison panel. Returns one row per student with:
      *   - reasoning: precise / total (as a 0..1 ratio, or null if no data)

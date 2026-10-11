@@ -3532,7 +3532,18 @@ function renderMyProgress(container, data) {
       </div>
     `;
 
-  container.innerHTML = summaryHtml + trendsHtml + weakHtml + sessionsHtml;
+  container.innerHTML =
+    '<div id="myProgressNextAction" style="display:none"></div>' +
+    summaryHtml + trendsHtml + weakHtml + sessionsHtml;
+
+  // Render the next-action banner if present.
+  if (data.nextAction && data.nextAction.kind !== 'none') {
+    const naEl = document.getElementById('myProgressNextAction');
+    if (naEl) {
+      naEl.style.display = 'block';
+      renderNextAction(data.nextAction, naEl, currentUser ? currentUser.id : null);
+    }
+  }
 }
 
 function renderAnalyticsSparkline(points, opts) {
@@ -3847,8 +3858,8 @@ function wireAnalyticsClicks() {
   });
 }
 
-function renderNextAction(nextAction) {
-  const el = $('sdNextAction');
+function renderNextAction(nextAction, targetEl, studentIdForLinks) {
+  const el = targetEl || $('sdNextAction');
   if (!el) return;
 
   if (!nextAction || nextAction.kind === 'none') {
@@ -3864,7 +3875,8 @@ function renderNextAction(nextAction) {
   // (with an optional "Nudge" button).
   const titleHtml = '<div class="sd-next-action-title">' + escapeHtml(nextAction.title) + '</div>';
   const detailHtml = '<div class="sd-next-action-detail">' + escapeHtml(nextAction.detail) + '</div>';
-  const nudgeBtnHtml = currentStudentId
+  // Nudge button only for the tutor-side panel (not the student dashboard).
+  const nudgeBtnHtml = (currentStudentId && !studentIdForLinks)
     ? '<button type="button" class="sd-next-action-nudge" data-nudge-open="1">✉ Nudge</button>'
     : '';
 
@@ -3876,7 +3888,7 @@ function renderNextAction(nextAction) {
 
   // Wire the nudge button if present
   const nudgeBtn = el.querySelector('[data-nudge-open]');
-  if (nudgeBtn && currentStudentId) {
+  if (nudgeBtn && currentStudentId && !studentIdForLinks) {
     nudgeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       openNudgeModal('compose');
@@ -3889,7 +3901,7 @@ function renderNextAction(nextAction) {
     el.setAttribute('role', 'button');
     el.setAttribute('tabindex', '0');
     const go = () => openExerciseDetail(
-      currentStudentId,
+      studentIdForLinks || currentStudentId,
       nextAction.exerciseId,
       nextAction.exerciseTitle || nextAction.exerciseId
     );

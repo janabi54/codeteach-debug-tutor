@@ -1,6 +1,8 @@
 import express from 'express';
 import { db } from '../db.js';
 import { requireAuth } from '../middleware/requireAuth.js';
+import { deriveStudentNextAction } from '../util/nextAction.js';
+import { deriveRosterStatus } from '../util/status.js';
 
 const router = express.Router();
 
@@ -27,7 +29,24 @@ router.get('/me/progress', requireAuth, async (req, res) => {
   const completed = stats.exercisesCompleted;
   const rq = detail.metrics.reasoningQuality;
 
+  // ── Next action (student-facing) ─────────────────────────────
+  const rosterStatus = deriveRosterStatus({
+    exercisesAttempted: stats.exercisesAttempted,
+    exercisesCompleted: stats.exercisesCompleted,
+    lastActiveAt: stats.lastActiveAt,
+  });
+  const viewableExercises = db.students.exercisesForStudent(studentId);
+  const nextAction = deriveStudentNextAction({
+    status: rosterStatus.status,
+    statusReasons: rosterStatus.reasons,
+    studentName: req.user!.displayName,
+    viewableExercises,
+    sessionHistory: detail.sessionHistory,
+    weakSpots: detail.weakSpots,
+  });
+
   res.json({
+    nextAction,
     summary: {
       assigned,
       completed,

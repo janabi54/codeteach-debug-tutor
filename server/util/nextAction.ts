@@ -167,3 +167,114 @@ export function deriveNextAction(input: NextActionInput): NextAction {
     clickable: false,
   };
 }
+
+/**
+ * Student-facing variant of deriveNextAction.
+ *
+ * Same rule priority, but written in the student's voice ("Try X next"
+ * rather than "Assign X to Y"). Used by GET /api/me/progress.
+ *
+ * Unlike the tutor version, 'assign' and 're-engage' are both clickable:
+ * the student opens the exercise directly.
+ */
+export function deriveStudentNextAction(input: NextActionInput): NextAction {
+  const {
+    status,
+    statusReasons,
+    viewableExercises,
+    sessionHistory,
+    weakSpots,
+  } = input;
+
+  // ── Rule 1: get back into it ───────────────────────────────────
+  if (status === 'at-risk') {
+    const reason = firstReason(statusReasons);
+    return {
+      kind: 'reach-out',
+      title: 'Pick up where you left off',
+      detail: reason
+        ? reason + '. Even one short session helps.'
+        : 'It\'s been a few days. Even one short session helps.',
+      clickable: false,
+    };
+  }
+
+  // ── Rule 2: a gentle push ──────────────────────────────────────
+  if (status === 'slipping') {
+    return {
+      kind: 'nudge',
+      title: 'A little practice would help',
+      detail: firstReason(statusReasons) || 'Try a short session this week.',
+      clickable: false,
+    };
+  }
+
+  // ── Rule 3: finish what you started ────────────────────────────
+  const incomplete = sessionHistory.filter((s) => s.state !== 'complete');
+  if (incomplete.length > 0) {
+    const target = incomplete
+      .slice()
+      .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))[0];
+    return {
+      kind: 're-engage',
+      title: 'Finish ' + (target.exerciseTitle || target.exerciseId),
+      detail: 'You started this one — picking it back up is the fastest win.',
+      exerciseId: target.exerciseId,
+      exerciseTitle: target.exerciseTitle,
+      clickable: true,
+    };
+  }
+
+  // ── Rule 4: try something new ──────────────────────────────────
+  const attemptedSlugs = new Set(sessionHistory.map((s) => s.exerciseId));
+  const unattempted = viewableExercises.filter((e) => !attemptedSlugs.has(e.slug));
+  if (unattempted.length > 0) {
+    const weakSet = new Set(weakSpots.map((w) => w.pattern));
+    let chosen = unattempted[0];
+    for (const ex of unattempted) {
+      if (ex.expectedConcepts.some((c) => weakSet.has(c))) {
+        chosen = ex;
+        break;
+      }
+    }
+
+    const concepts = chosen.expectedConcepts;
+    let detail: string;
+    if (concepts.length > 0 && concepts.some((c) => weakSet.has(c))) {
+      const matching = concepts.filter((c) => weakSet.has(c));
+      detail = 'Targets ' + matching.join(', ') + ' — a recent pattern.';
+    } else if (concepts.length > 0) {
+      detail = 'Covers ' + concepts.slice(0, 3).join(', ') + '.';
+    } else {
+      detail = 'Not yet attempted.';
+    }
+
+    return {
+      kind: 'assign',
+      title: 'Try ' + (chosen.title || chosen.slug) + ' next',
+      detail,
+      exerciseId: chosen.slug,
+      exerciseTitle: chosen.title,
+      clickable: true,
+    };
+  }
+
+  // ── Rule 5: celebrate ──────────────────────────────────────────
+  if (viewableExercises.length > 0 && sessionHistory.length >= viewableExercises.length) {
+    return {
+      kind: 'celebrate',
+      title: 'All done — nice work',
+      detail: 'Every assigned exercise is complete.',
+      clickable: false,
+    };
+  }
+
+  // ── Fallback ───────────────────────────────────────────────────
+  return {
+    kind: 'none',
+    title: 'You\'re on track',
+    detail: '',
+    clickable: false,
+  };
+}
+
