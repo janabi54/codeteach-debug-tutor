@@ -169,22 +169,37 @@ for (let i = 0; i < arr.length; i++) {
       <button id="resetBtn" class="ghost">Reset hint ladder</button>
     </div>
 
-    <div class="tutor-pane">
-      <div class="hint-level">
-        <div class="hint-level-label">Hint level</div>
-        <div class="hint-dots">
-          <span class="dot" data-level="1"></span>
-          <span class="dot" data-level="2"></span>
-          <span class="dot" data-level="3"></span>
-          <span class="dot" data-level="4"></span>
+    <div class="tutor-pane" id="tutorPane">
+      <button type="button" class="tutor-pane-strip" id="tutorPaneStrip" aria-expanded="true" aria-label="Toggle hint panel">
+        <div class="hint-dots-vertical">
+          <span class="dot dot-v" data-level="1"></span>
+          <span class="dot dot-v" data-level="2"></span>
+          <span class="dot dot-v" data-level="3"></span>
+          <span class="dot dot-v" data-level="4"></span>
         </div>
-        <div id="hintLevelText" class="hint-level-text">Vague nudge</div>
-      </div>
+        <span class="tutor-pane-chevron" id="tutorPaneChevron">›</span>
+      </button>
 
-      <div id="messages" class="messages">
-        <p class="empty-state">
-          Stuck? Ask for a hint. The tutor won't give you the answer — it'll help you find it.
-        </p>
+      <div class="tutor-pane-body" id="tutorPaneBody">
+        <div class="hint-level">
+          <div class="hint-level-header">
+            <div class="hint-level-label">Hint level</div>
+            <button type="button" class="hint-level-collapse" id="tutorPaneCollapseBtn" title="Collapse hint panel" aria-label="Collapse">‹</button>
+          </div>
+          <div class="hint-dots">
+            <span class="dot" data-level="1"></span>
+            <span class="dot" data-level="2"></span>
+            <span class="dot" data-level="3"></span>
+            <span class="dot" data-level="4"></span>
+          </div>
+          <div id="hintLevelText" class="hint-level-text">Vague nudge</div>
+        </div>
+
+        <div id="messages" class="messages">
+          <p class="empty-state">
+            Stuck? Ask for a hint. The tutor won't give you the answer — it'll help you find it.
+          </p>
+        </div>
       </div>
     </div>
   </div>

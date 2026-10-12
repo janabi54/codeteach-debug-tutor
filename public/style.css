@@ -4384,3 +4384,103 @@ body.modal-open { overflow: hidden; }
   resize: vertical;
   min-height: 90px;
 }
+
+/* ── Tutor pane collapse (Phase 2) ── */
+.tutor-pane {
+  position: relative;
+  transition: width 0.15s ease;
+}
+/* Shrink the grid track itself when the pane collapses — the pane's
+   own width is ignored by the grid unless the template says so. */
+.tutor-layout:has(.tutor-pane.collapsed) {
+  grid-template-columns: 1fr 46px;
+}
+.tutor-pane.collapsed {
+  width: 46px;
+  min-width: 46px;
+}
+.tutor-pane.collapsed .tutor-pane-body { display: none; }
+.tutor-pane-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.tutor-pane-strip {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  height: 100%;
+  padding: 12px 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #7a7f88;
+}
+.tutor-pane.collapsed .tutor-pane-strip { display: flex; }
+.hint-dots-vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 8px;
+}
+.hint-dots-vertical .dot-v {
+  width: 8px;
+  height: 24px;
+  border-radius: 4px;
+  background: #e4e6eb;
+  transition: background 0.2s;
+}
+.hint-dots-vertical .dot-v.active { background: #4f46e5; }
+.tutor-pane-chevron {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1;
+  color: #94a3b8;
+  margin-bottom: 8px;
+}
+.hint-dots-vertical {
+  margin-top: 8px;
+}
+.tutor-pane-strip:hover .tutor-pane-chevron { color: #4f46e5; }
+
+/* ── Header collapse button + clearer strip ── */
+.hint-level-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.hint-level-header .hint-level-label { margin-bottom: 0; }
+.hint-level-collapse {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 0 6px;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.hint-level-collapse:hover {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+  color: #4f46e5;
+}
+.hint-level-collapse:focus-visible {
+  outline: 2px solid #4f46e5;
+  outline-offset: 1px;
+}
+
+/* Strip: make the dots and chevron more visible when collapsed. */
+.tutor-pane-strip .dot-v { background: #cbd5e1; }
+.tutor-pane-strip .dot-v.active { background: #4f46e5; }
+.tutor-pane-chevron {
+  font-size: 18px;
+  color: #64748b;
+}
+.tutor-pane-strip:hover .tutor-pane-chevron { color: #4f46e5; }

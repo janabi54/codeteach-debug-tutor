@@ -126,6 +126,58 @@ function armCapture(sessionId, exerciseId) {
 document.addEventListener('DOMContentLoaded', () => {
   setTimeout(wireCaptureListeners, 500);
 });
+// --- Tutor pane collapse controller (Phase 2) ---
+// Collapsed by default when there is no conversation yet. Auto-expands
+// on the first real message, unless the user has manually collapsed it.
+let __tutorPaneUserCollapsed = false;
+
+function setTutorPaneCollapsed(collapsed) {
+  const pane = $('tutorPane');
+  const toggle = $('tutorPaneStrip');
+  const chevron = $('tutorPaneChevron');
+  if (!pane) return;
+  pane.classList.toggle('collapsed', collapsed);
+  if (toggle) toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  if (chevron) chevron.textContent = collapsed ? '‹' : '›';
+}
+
+function expandTutorPane() {
+  setTutorPaneCollapsed(false);
+}
+
+function initTutorPane() {
+  const pane = $('tutorPane');
+  const strip = $('tutorPaneStrip');
+  if (!pane) return;
+
+  // Starting state: collapsed if no real messages yet.
+  const hasMessages = messagesEl && messagesEl.querySelector('.msg');
+  setTutorPaneCollapsed(!hasMessages);
+
+  if (strip) {
+    strip.addEventListener('click', () => {
+      const isCollapsed = pane.classList.contains('collapsed');
+      __tutorPaneUserCollapsed = !isCollapsed; // true if we just collapsed
+      setTutorPaneCollapsed(!isCollapsed);
+    });
+  }
+}
+
+document.addEventListener('DOMContentLoaded', initTutorPane);
+
+// Header collapse button (visible inside the expanded pane). Wires
+// once on load; separate from the strip button, which only appears
+// when the pane is collapsed.
+document.addEventListener('DOMContentLoaded', () => {
+  const btn = $('tutorPaneCollapseBtn');
+  if (btn) {
+    btn.addEventListener('click', () => {
+      __tutorPaneUserCollapsed = true;
+      setTutorPaneCollapsed(true);
+    });
+  }
+});
+
 const messagesEl = $('messages');
 const hintLevelText = $('hintLevelText');
 const hintDots = document.querySelectorAll('.dot');
@@ -144,6 +196,12 @@ function setLevel(level) {
 
 function appendMessage({ kind, text, pattern, level, reason, label }) {
   if (messagesEl.querySelector('.empty-state')) messagesEl.innerHTML = '';
+  // Auto-expand the tutor pane on a real message, unless the user
+  // collapsed it manually this session.
+  if (typeof expandTutorPane === 'function' && !__tutorPaneUserCollapsed) {
+    const pane = $('tutorPane');
+    if (pane && pane.classList.contains('collapsed')) expandTutorPane();
+  }
   const div = document.createElement('div');
   div.className = 'msg ' + kind + (kind === 'tutor' && reason ? ' fallback' : '');
   let header = '';
@@ -262,6 +320,13 @@ function setSessionCompleteButtons(exerciseId, isComplete) {
 }
 
 function handleHintResponse(data) {
+  // Any tutor response (hint, hypothesis prompt, post-mortem) should
+  // reveal the pane. Manual collapse is still respected.
+  if (typeof expandTutorPane === 'function' && !__tutorPaneUserCollapsed) {
+    const pane = $('tutorPane');
+    if (pane && pane.classList.contains('collapsed')) expandTutorPane();
+  }
+
   // Replay: learn the session ID from every response that carries one,
   // so future events know where to attach.
   const __exerciseId = ($('exerciseId') && $('exerciseId').value.trim()) || 'ex-1';
