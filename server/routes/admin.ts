@@ -72,6 +72,15 @@ router.post('/invite-codes', requireAdmin, async (req, res) => {
       role: desiredRole,
       expiresAt: expiresAt.toISOString(),
     });
+    db.audit.record({
+      actorId: req.user!.id,
+      actorEmail: req.user!.email ?? null,
+      action: 'invite.create',
+      targetType: 'invite_code',
+      targetId: code,
+      targetLabel: desiredRole,
+      metadata: { expiresAt: expiresAt.toISOString() },
+    });
 
     return res.status(201).json({ inviteCode: created });
   }
@@ -87,6 +96,13 @@ router.delete('/invite-codes/:code', requireAdmin, async (req, res) => {
   if (!deleted) {
     return res.status(404).json({ error: 'Code not found or already used.' });
   }
+  db.audit.record({
+    actorId: req.user!.id,
+    actorEmail: req.user!.email ?? null,
+    action: 'invite.revoke',
+    targetType: 'invite_code',
+    targetId: req.params.code,
+  });
   res.json({ ok: true });
 });
 
@@ -118,6 +134,14 @@ router.post('/groups/:groupId/approve', requireInstructor, async (req, res) => {
   }
   const ok = db.studyGroups.setStatus(groupId, 'approved', instructorId);
   if (!ok) return res.status(400).json({ error: 'Group is not pending.' });
+  db.audit.record({
+    actorId: instructorId,
+    actorEmail: req.user!.email ?? null,
+    action: 'study_group.approve',
+    targetType: 'study_group',
+    targetId: groupId,
+    targetLabel: group.name,
+  });
   res.json({ ok: true, status: 'approved' });
 });
 
@@ -133,7 +157,22 @@ router.post('/groups/:groupId/reject', requireInstructor, async (req, res) => {
   }
   const ok = db.studyGroups.setStatus(groupId, 'rejected', instructorId);
   if (!ok) return res.status(400).json({ error: 'Group is not pending.' });
+  db.audit.record({
+    actorId: instructorId,
+    actorEmail: req.user!.email ?? null,
+    action: 'study_group.reject',
+    targetType: 'study_group',
+    targetId: groupId,
+    targetLabel: group.name,
+  });
   res.json({ ok: true, status: 'rejected' });
+});
+
+// GET /api/admin/audit?limit=100
+// Read-only. Returns recent admin/instructor actions, newest first.
+router.get('/audit', requireAdmin, async (req, res) => {
+  const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 500);
+  res.json({ entries: db.audit.listRecent(limit) });
 });
 
 export default router;

@@ -334,3 +334,27 @@ CREATE TABLE IF NOT EXISTS study_group_messages (
 
 CREATE INDEX IF NOT EXISTS idx_study_group_messages_group
   ON study_group_messages(group_id, created_at DESC);
+
+-- ── Admin audit log ──
+-- One row per admin/instructor action with a side effect: cohort
+-- create/rename/delete, invite create/revoke, study group approve/
+-- reject, exercise create/update/delete, note create/update/delete.
+-- Complements the older deletion_audit and invite_audit tables,
+-- which are left in place.
+
+CREATE TABLE IF NOT EXISTS admin_audit (
+  id TEXT PRIMARY KEY,
+  actor_id TEXT NOT NULL,
+  actor_email TEXT,
+  action TEXT NOT NULL,
+  target_type TEXT,
+  target_id TEXT,
+  target_label TEXT,
+  metadata_json TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_admin_audit_created ON admin_audit(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_admin_audit_actor ON admin_audit(actor_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_admin_audit_target ON admin_audit(target_type, target_id);

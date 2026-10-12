@@ -80,6 +80,15 @@ router.post('/students/:studentId/notes', requireInstructor, async (req, res) =>
     text: text.trim(),
   });
 
+  db.audit.record({
+    actorId: instructorId,
+    actorEmail: req.user!.email ?? null,
+    action: 'note.create',
+    targetType: 'student',
+    targetId: studentId,
+    metadata: { noteId: note.id, cohortId: resolved.cohortId },
+  });
+
   res.status(201).json({
     id: note.id,
     studentId: note.studentId,
@@ -134,6 +143,14 @@ router.delete('/notes/:noteId', requireInstructor, async (req, res) => {
   if (!deleted) {
     return res.status(500).json({ error: 'Could not delete note.' });
   }
+  db.audit.record({
+    actorId: instructorId,
+    actorEmail: req.user!.email ?? null,
+    action: 'note.delete',
+    targetType: 'student',
+    targetId: note.studentId,
+    metadata: { noteId },
+  });
   res.json({ ok: true });
 });
 
@@ -165,6 +182,14 @@ router.patch('/notes/:noteId', requireInstructor, async (req, res) => {
   if (!updated) {
     return res.status(500).json({ error: 'Could not update note.' });
   }
+  db.audit.record({
+    actorId: instructorId,
+    actorEmail: req.user!.email ?? null,
+    action: 'note.update',
+    targetType: 'student',
+    targetId: note.studentId,
+    metadata: { noteId },
+  });
 
   res.json({
     id: updated.id,

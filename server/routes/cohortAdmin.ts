@@ -47,6 +47,15 @@ router.post('/', requireInstructor, async (req, res) => {
     enrollmentCode: code,
   });
 
+  db.audit.record({
+    actorId: req.user!.id,
+    actorEmail: req.user!.email ?? null,
+    action: 'cohort.create',
+    targetType: 'cohort',
+    targetId: cohort.id,
+    targetLabel: cohort.name,
+  });
+
   res.status(201).json({
     id: cohort.id,
     name: cohort.name,
@@ -68,6 +77,15 @@ router.patch('/:id', requireInstructor, async (req, res) => {
     return res.status(403).json({ error: 'You do not teach that class.' });
   }
   await db.cohorts.rename(cohort.id, name.trim());
+  db.audit.record({
+    actorId: req.user!.id,
+    actorEmail: req.user!.email ?? null,
+    action: 'cohort.rename',
+    targetType: 'cohort',
+    targetId: cohort.id,
+    targetLabel: name.trim(),
+    metadata: { previousName: cohort.name },
+  });
   res.json({ ok: true, name: name.trim() });
 });
 
@@ -87,6 +105,14 @@ router.delete('/:id', requireInstructor, async (req, res) => {
   }
 
   await db.cohorts.delete(cohort.id);
+  db.audit.record({
+    actorId: req.user!.id,
+    actorEmail: req.user!.email ?? null,
+    action: 'cohort.delete',
+    targetType: 'cohort',
+    targetId: cohort.id,
+    targetLabel: cohort.name,
+  });
   res.json({ ok: true });
 });
 

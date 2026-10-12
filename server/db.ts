@@ -1063,6 +1063,81 @@ export const db = {
     },
   },
 
+  audit: {
+    /**
+     * Record an admin/instructor action. Fire-and-forget from the
+     * route — callers do not await unless they want to surface an
+     * error (they usually don't).
+     */
+    record(data: {
+      actorId: string;
+      actorEmail?: string | null;
+      action: string;
+      targetType?: string | null;
+      targetId?: string | null;
+      targetLabel?: string | null;
+      metadata?: Record<string, unknown> | null;
+    }): { id: string } {
+      const id = randomUUID();
+      sqlite
+        .prepare(
+          `INSERT INTO admin_audit
+             (id, actor_id, actor_email, action, target_type, target_id, target_label, metadata_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          id,
+          data.actorId,
+          data.actorEmail ?? null,
+          data.action,
+          data.targetType ?? null,
+          data.targetId ?? null,
+          data.targetLabel ?? null,
+          data.metadata ? JSON.stringify(data.metadata) : null
+        );
+      return { id };
+    },
+
+    listRecent(limit = 100): Array<{
+      id: string;
+      actorId: string;
+      actorEmail: string | null;
+      action: string;
+      targetType: string | null;
+      targetId: string | null;
+      targetLabel: string | null;
+      metadataJson: string | null;
+      createdAt: string;
+    }> {
+      return sqlite
+        .prepare(
+          `SELECT id, actor_id AS actorId, actor_email AS actorEmail,
+                  action, target_type AS targetType, target_id AS targetId,
+                  target_label AS targetLabel, metadata_json AS metadataJson,
+                  created_at AS createdAt
+           FROM admin_audit
+           ORDER BY created_at DESC
+           LIMIT ?`
+        )
+        .all(limit) as any[];
+    },
+
+    listForActor(actorId: string, limit = 100): Array<any> {
+      return sqlite
+        .prepare(
+          `SELECT id, actor_id AS actorId, actor_email AS actorEmail,
+                  action, target_type AS targetType, target_id AS targetId,
+                  target_label AS targetLabel, metadata_json AS metadataJson,
+                  created_at AS createdAt
+           FROM admin_audit
+           WHERE actor_id = ?
+           ORDER BY created_at DESC
+           LIMIT ?`
+        )
+        .all(actorId, limit) as any[];
+    },
+  },
+
   cohorts: {
     async findById(id: string): Promise<Cohort | null> {
       const row = stmt.findCohortById.get(id) as any;

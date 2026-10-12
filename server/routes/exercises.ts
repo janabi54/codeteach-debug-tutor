@@ -125,6 +125,16 @@ router.post('/', requireInstructor, async (req, res) => {
     createdBy: req.user?.id ?? null,
   });
 
+  db.audit.record({
+    actorId: req.user!.id,
+    actorEmail: req.user!.email ?? null,
+    action: 'exercise.create',
+    targetType: 'exercise',
+    targetId: exercise.slug,
+    targetLabel: exercise.title,
+    metadata: { cohortId: cohort.id },
+  });
+
   res.status(201).json(exerciseShape(exercise));
 });
 
@@ -168,6 +178,15 @@ router.put('/:slug', requireInstructor, async (req, res) => {
 
   await db.exercises.update(existing.id, patch);
   const updated = await db.exercises.findById(existing.id);
+  db.audit.record({
+    actorId: req.user!.id,
+    actorEmail: req.user!.email ?? null,
+    action: 'exercise.update',
+    targetType: 'exercise',
+    targetId: existing.slug,
+    targetLabel: updated?.title ?? existing.title,
+    metadata: { fields: Object.keys(patch) },
+  });
   res.json(exerciseShape(updated));
 });
 
@@ -187,6 +206,14 @@ router.delete('/:slug', requireInstructor, async (req, res) => {
   if (!deleted) {
     return res.status(500).json({ error: 'Could not delete exercise.' });
   }
+  db.audit.record({
+    actorId: req.user!.id,
+    actorEmail: req.user!.email ?? null,
+    action: 'exercise.delete',
+    targetType: 'exercise',
+    targetId: existing.slug,
+    targetLabel: existing.title,
+  });
   res.json({ ok: true });
 });
 
