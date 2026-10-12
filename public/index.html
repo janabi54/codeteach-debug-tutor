@@ -145,10 +145,16 @@ for (let i = 0; i < arr.length; i++) {
   console.log(arr[i]);
 }</textarea>
 
-      <div class="pane-header">
-        <label for="errorOutput">Error output (optional)</label>
+      <div class="console-drawer" id="consoleDrawer">
+        <button type="button" class="console-toggle" id="consoleToggle" aria-expanded="false">
+          <span class="console-caret" id="consoleCaret">▶</span>
+          <span class="console-label">Console</span>
+          <span class="console-preview" id="consolePreview">no errors</span>
+        </button>
+        <div class="console-body" id="consoleBody" hidden>
+          <textarea id="errorOutput" spellcheck="false" placeholder="Paste any error message here..."></textarea>
+        </div>
       </div>
-      <textarea id="errorOutput" spellcheck="false" placeholder="Paste any error message here...">TypeError: Cannot read properties of undefined (reading '0')</textarea>
 
       <div class="pane-header">
         <label for="exerciseId">Exercise</label>

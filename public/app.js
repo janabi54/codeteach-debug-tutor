@@ -1304,6 +1304,61 @@ document.addEventListener('DOMContentLoaded', () => {
   modal.addEventListener('click', (e) => { if (e.target === modal) closeGenericConfirm(); });
 });
 
+// --- Console drawer (error output) ---
+
+function updateConsolePreview() {
+  const ta = $('errorOutput');
+  const preview = $('consolePreview');
+  if (!ta || !preview) return;
+  const text = (ta.value || '').trim();
+  if (!text) {
+    preview.textContent = 'no errors';
+    preview.classList.remove('has-error');
+    return;
+  }
+  const firstLine = text.split(/\r?\n/, 1)[0] || text;
+  preview.textContent = firstLine.length > 80 ? firstLine.slice(0, 77) + '…' : firstLine;
+  preview.classList.add('has-error');
+}
+
+function setConsoleOpen(open) {
+  const body = $('consoleBody');
+  const toggle = $('consoleToggle');
+  if (!body || !toggle) return;
+  body.hidden = !open;
+  toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+function initConsoleDrawer() {
+  const toggle = $('consoleToggle');
+  const ta = $('errorOutput');
+  if (!toggle || !ta) return;
+
+  // Toggle on click.
+  toggle.addEventListener('click', () => {
+    const isOpen = toggle.getAttribute('aria-expanded') === 'true';
+    setConsoleOpen(!isOpen);
+  });
+
+  // Auto-open when the error field gains content; auto-close when it empties.
+  // Also refreshes the preview text.
+  const onInput = () => {
+    const hasText = (ta.value || '').trim().length > 0;
+    updateConsolePreview();
+    if (hasText) setConsoleOpen(true);
+    else setConsoleOpen(false);
+  };
+  ta.addEventListener('input', onInput);
+  ta.addEventListener('change', onInput);
+
+  // Initial state: if the field already has content (e.g. saved value), open.
+  const initialHasText = (ta.value || '').trim().length > 0;
+  updateConsolePreview();
+  if (initialHasText) setConsoleOpen(true);
+}
+
+document.addEventListener('DOMContentLoaded', initConsoleDrawer);
+
 // --- Class fingerprint tab (legacy — the tab UI was replaced by
 // Analytics, but the endpoint and renderClassFingerprint are kept so
 // the loader can be revived without a rewrite. Guarded so the missing
