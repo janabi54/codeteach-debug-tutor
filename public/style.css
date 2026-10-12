@@ -4255,3 +4255,32 @@ body.modal-open { overflow: hidden; }
 .group-chat-messages .nudge-bubble {
   max-width: 85%;
 }
+
+/* ── Exercise difficulty badges ── */
+.exercises-sort-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: #4b5563;
+}
+.exercises-sort-row select {
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid #cbd5e1;
+  font-size: 13px;
+}
+.diff-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.diff-easy      { background: #d1fae5; color: #065f46; }
+.diff-moderate  { background: #fef3c7; color: #92400e; }
+.diff-hard      { background: #fed7aa; color: #9a3412; }
+.diff-very-hard { background: #fee2e2; color: #991b1b; }
+.diff-none      { color: #94a3b8; font-weight: 400; }

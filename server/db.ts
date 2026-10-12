@@ -2467,6 +2467,78 @@ export const db = {
     async listByCohort(cohortId: string): Promise<Exercise[]> {
       return (stmt.listExercisesByCohort.all(cohortId) as any[]).map(rowToExercise);
     },
+
+    /**
+     * Empirical difficulty per exercise, from actual student work.
+     * Two aggregate queries, merged in JS:
+     *   - completion rate: distinct students attempted vs completed
+     *   - average hints served per session
+     * Returns a map exerciseId -> difficulty summary. A difficulty
+     * label is only assigned when attempted >= 3 (otherwise null).
+     */
+    difficultyFor(exerciseIds: string[]): Record<string, {
+      attempted: number;
+      completed: number;
+      completionPct: number;
+      avgHints: number | null;
+      label: 'Easy' | 'Moderate' | 'Hard' | 'Very hard' | null;
+    }> {
+      const out: Record<string, any> = {};
+      if (exerciseIds.length === 0) return out;
+      const ph = exerciseIds.map(() => '?').join(',');
+
+      const rows = sqlite
+        .prepare(
+          `SELECT exercise_id AS exerciseId,
+                  COUNT(DISTINCT student_id) AS attempted,
+                  COUNT(DISTINCT CASE WHEN state = 'complete' THEN student_id END) AS completed
+           FROM hint_sessions
+           WHERE exercise_id IN (${ph})
+           GROUP BY exercise_id`
+        )
+        .all(...exerciseIds) as Array<{ exerciseId: string; attempted: number; completed: number }>;
+
+      const hintRows = sqlite
+        .prepare(
+          `SELECT hs.exercise_id AS exerciseId,
+                  (SELECT COUNT(*) FROM telemetry t
+                   WHERE t.exercise_id = hs.exercise_id
+                     AND t.type = 'hint-served') * 1.0
+                  / NULLIF(COUNT(*), 0) AS avgHints
+           FROM hint_sessions hs
+           WHERE hs.exercise_id IN (${ph})
+           GROUP BY hs.exercise_id`
+        )
+        .all(...exerciseIds) as Array<{ exerciseId: string; avgHints: number | null }>;
+
+      const hintMap = new Map(hintRows.map((r) => [r.exerciseId, r.avgHints]));
+
+      for (const r of rows) {
+        const attempted = r.attempted;
+        const completed = r.completed;
+        const completionPct = attempted > 0 ? (completed / attempted) * 100 : 0;
+        const avgHints = hintMap.has(r.exerciseId)
+          ? (hintMap.get(r.exerciseId) as number | null)
+          : null;
+
+        let label: 'Easy' | 'Moderate' | 'Hard' | 'Very hard' | null = null;
+        if (attempted >= 3) {
+          if (completionPct >= 80) label = 'Easy';
+          else if (completionPct >= 50) label = 'Moderate';
+          else if (completionPct >= 25) label = 'Hard';
+          else label = 'Very hard';
+        }
+
+        out[r.exerciseId] = {
+          attempted,
+          completed,
+          completionPct: Math.round(completionPct),
+          avgHints: avgHints === null ? null : Math.round(avgHints * 10) / 10,
+          label,
+        };
+      }
+      return out;
+    },
     async create(data: {
       slug: string;
       title: string;

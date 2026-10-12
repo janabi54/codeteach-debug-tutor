@@ -1904,7 +1904,26 @@ const exercisesState = {
   currentSlug: null,
   conceptsTagify: null,
   objectivesTagify: null,
+  sortMode: 'newest',
 };
+
+// Difficulty sort helper — unrated exercises sink to the bottom.
+const __DIFF_ORDER = { 'Very hard': 0, 'Hard': 1, 'Moderate': 2, 'Easy': 3 };
+function __sortExercises(list, mode) {
+  const copy = (list || []).slice();
+  if (mode === 'title') {
+    copy.sort((a, b) => String(a.title || '').localeCompare(String(b.title || '')));
+  } else if (mode === 'difficulty') {
+    copy.sort((a, b) => {
+      const da = (a.difficulty && a.difficulty.label) ? __DIFF_ORDER[a.difficulty.label] : 99;
+      const dbv = (b.difficulty && b.difficulty.label) ? __DIFF_ORDER[b.difficulty.label] : 99;
+      if (da !== dbv) return da - dbv;
+      return String(a.title || '').localeCompare(String(b.title || ''));
+    });
+  }
+  // 'newest' — server already returns created_at DESC
+  return copy;
+}
 
 function showExercisesList() {
   $('exercisesListView').hidden = false;
@@ -1950,7 +1969,8 @@ async function loadExercises() {
       return;
     }
 
-    list.innerHTML = renderExercisesTable(data);
+    const sorted = __sortExercises(data, exercisesState.sortMode || 'newest');
+    list.innerHTML = renderExercisesTable(sorted);
     wireExercisesTable();
   } catch (err) {
     list.innerHTML = '<p class="empty-state">Failed: ' + escapeHtml(err.message) + '</p>';
@@ -1958,11 +1978,21 @@ async function loadExercises() {
 }
 
 function renderExercisesTable(exercises) {
+  const diffBadge = (d) => {
+    if (!d || !d.label) return '<span class="diff-badge diff-none">—</span>';
+    const cls = 'diff-' + d.label.toLowerCase().replace(/\s+/g, '-');
+    const tip = d.attempted + ' student' + (d.attempted === 1 ? '' : 's') +
+      ' · ' + d.completionPct + '% finish' +
+      (d.avgHints !== null && d.avgHints !== undefined ? ' · ' + d.avgHints + ' avg hints' : '');
+    return '<span class="diff-badge ' + cls + '" title="' + escapeHtml(tip) + '">' + escapeHtml(d.label) + '</span>';
+  };
+
   return `
     <table class="exercises-table">
       <thead>
         <tr>
           <th>Title</th>
+          <th>Difficulty</th>
           <th>Language</th>
           <th>Struggle</th>
           <th>Updated</th>
@@ -1976,6 +2006,7 @@ function renderExercisesTable(exercises) {
               <span class="exercise-title-cell">${escapeHtml(e.title)}</span>
               <span class="exercise-slug-cell">${escapeHtml(e.slug)}</span>
             </td>
+            <td>${diffBadge(e.difficulty)}</td>
             <td>${escapeHtml(e.language)}</td>
             <td>${e.struggleMinutes === 0 ? '<span class="muted">none</span>' : e.struggleMinutes + ' min'}</td>
             <td>${new Date(e.updatedAt).toLocaleDateString()}</td>
@@ -1992,6 +2023,20 @@ function renderExercisesTable(exercises) {
 }
 
 function wireExercisesTable() {
+  const sortSel = $('exercisesSort');
+  if (sortSel && !sortSel.__wired) {
+    sortSel.__wired = true;
+    sortSel.value = exercisesState.sortMode || 'newest';
+    sortSel.addEventListener('change', () => {
+      exercisesState.sortMode = sortSel.value;
+      const list = $('exercisesList');
+      if (list) {
+        list.innerHTML = renderExercisesTable(__sortExercises(exercisesState.list, exercisesState.sortMode));
+        wireExercisesTable();
+      }
+    });
+  }
+
   document.querySelectorAll('.exercises-table tbody tr').forEach((row) => {
     const slug = row.dataset.slug;
     row.querySelectorAll('button[data-action]').forEach((btn) => {

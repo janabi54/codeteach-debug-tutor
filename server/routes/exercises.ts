@@ -51,7 +51,12 @@ router.get('/', requireInstructor, async (req, res) => {
   }
 
   const exercises = await db.exercises.listByCohort(cohortId);
-  res.json(exercises.map(exerciseShape));
+  const slugs = exercises.map((e) => e.slug);
+  const difficulty = db.exercises.difficultyFor(slugs);
+  res.json(exercises.map((e) => ({
+    ...exerciseShape(e),
+    difficulty: difficulty[e.slug] ?? null,
+  })));
 });
 
 // ─── Get one ───
