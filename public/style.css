@@ -56,7 +56,15 @@ main { height: calc(100vh - 53px); overflow: hidden; }
 }
 #errorOutput { min-height: 90px; }
 
-#exerciseId { width: 100%; border: 1px solid #dfe2e7; border-radius: 8px; padding: 8px 12px; font-size: 13px; font-family: inherit; margin-bottom: 16px; }
+#exerciseId {
+  border: 1px solid #dfe2e7;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  background: #fff;
+  min-width: 180px;
+}
 
 button.primary { background: #4f46e5; color: #fff; border: 0; padding: 10px 16px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; }
 button.primary:hover { background: #4338ca; }
@@ -1545,7 +1553,7 @@ button.ghost.small {
 .hint-level-chip.level-3 { background: #f59e0b; }
 .hint-level-chip.level-4 { background: #ef4444; }
 
-.exercise-select {
+.tutor-toolbar .exercise-select {
   width: 100%;
   border: 1px solid #dfe2e7;
   border-radius: 8px;
@@ -4484,3 +4492,51 @@ body.modal-open { overflow: hidden; }
   color: #64748b;
 }
 .tutor-pane-strip:hover .tutor-pane-chevron { color: #4f46e5; }
+
+
+/* ── Tutor toolbar (Phase 3) ── */
+.tutor-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 8px 0 12px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid #eef1f5;
+  flex-shrink: 0;
+}
+.toolbar-exercise {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.toolbar-exercise label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #7a7f88;
+  font-weight: 600;
+}
+.toolbar-exercise #exerciseHint {
+  margin: 0;
+  font-size: 12px;
+  color: #94a3b8;
+  max-width: 260px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+/* Reset hint ladder keeps its ghost look but loses the margin-top. */
+.tutor-toolbar .toolbar-actions button { margin-top: 0; }
+/* I fixed it — green (was inline style). */
+.fixed-btn { background: #059669 !important; }
+.fixed-btn:hover { background: #047857 !important; }
