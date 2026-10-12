@@ -880,6 +880,40 @@ export const db = {
         .run(status, reviewerId, groupId);
       return (r.changes ?? 0) > 0;
     },
+
+    /**
+     * Recent completions by any member of this group.
+     * Feeds the group-detail modal. Positive signal only: completed
+     * exercises. No hints, no mistakes, no scores.
+     */
+    feedFor(groupId: string, opts?: { days?: number; limit?: number }): Array<{
+      studentId: string;
+      displayName: string;
+      exerciseId: string;
+      exerciseTitle: string;
+      completedAt: string;
+    }> {
+      const days = opts?.days ?? 30;
+      const limit = opts?.limit ?? 50;
+      return sqlite
+        .prepare(
+          `SELECT hs.student_id AS studentId,
+                  u.display_name AS displayName,
+                  hs.exercise_id AS exerciseId,
+                  COALESCE(e.title, hs.exercise_id) AS exerciseTitle,
+                  hs.updated_at AS completedAt
+           FROM hint_sessions hs
+           JOIN study_group_members m ON m.user_id = hs.student_id
+           JOIN users u ON u.id = hs.student_id
+           LEFT JOIN exercises e ON e.slug = hs.exercise_id
+           WHERE m.group_id = ?
+             AND hs.state = 'complete'
+             AND hs.updated_at >= datetime('now', '-' || ? || ' days')
+           ORDER BY hs.updated_at DESC
+           LIMIT ?`
+        )
+        .all(groupId, days, limit) as any[];
+    },
   },
 
   cohorts: {

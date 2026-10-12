@@ -866,6 +866,20 @@ for (let i = 0; i < arr.length; i++) {
   </div>
 </div>
 
+<!-- GROUP DETAIL MODAL (student-side: members + feed) -->
+<div id="groupDetailModal" class="nudge-modal-backdrop" hidden>
+  <div class="nudge-modal">
+    <div class="nudge-modal-header">
+      <button id="groupDetailBack" class="nudge-modal-back nudge-modal-back-left" type="button">← Back</button>
+      <h2 id="groupDetailTitle" class="nudge-modal-title">Group</h2>
+      <button id="groupDetailClose" class="nudge-modal-close" title="Close">×</button>
+    </div>
+    <div id="groupDetailBody" class="nudge-modal-body">
+      <p class="empty-state">Loading…</p>
+    </div>
+  </div>
+</div>
+
 <!-- ANNOUNCE MODAL (instructor-side: broadcast to a cohort) -->
 <div id="announceModal" class="nudge-modal-backdrop" hidden>
   <div class="nudge-modal">

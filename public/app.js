@@ -796,11 +796,16 @@ async function loadSettingsGroups() {
         const code = g.status === 'approved'
           ? 'Code: <code>' + escapeHtml(g.inviteCode) + '</code>'
           : '';
-        return '<div class="settings-class-row">' +
+        const clickable = g.status === 'approved';
+        const attrs = clickable
+          ? ' role="button" tabindex="0" style="cursor:pointer;" data-group-open="' + escapeHtml(g.id) + '"'
+          : '';
+        return '<div class="settings-class-row' + (clickable ? ' settings-class-row-clickable' : '') + '"' + attrs + '>' +
           '<div class="settings-class-info">' +
             '<div class="settings-class-name">' + escapeHtml(g.name) + ' ' + badge + '</div>' +
             '<div class="settings-class-meta">' + escapeHtml(g.cohortName) + ' · ' + g.memberCount + ' member' + (g.memberCount === 1 ? '' : 's') + (code ? ' · ' + code : '') + '</div>' +
           '</div>' +
+          (clickable ? '<div class="settings-class-arrow">→</div>' : '') +
         '</div>';
       }).join('');
     }
@@ -980,6 +985,115 @@ document.addEventListener('DOMContentLoaded', () => {
   const jg = $('groupJoinBtn');
   if (cg) cg.addEventListener('click', createStudyGroup);
   if (jg) jg.addEventListener('click', joinStudyGroup);
+});
+
+// --- Group detail modal (student-side) ---
+
+async function openGroupDetailModal(groupId) {
+  const modal = $('groupDetailModal');
+  if (!modal) return;
+  modal.hidden = false;
+  document.body.classList.add('modal-open');
+  const body = $('groupDetailBody');
+  const title = $('groupDetailTitle');
+  if (body) body.innerHTML = '<p class="empty-state">Loading…</p>';
+
+  try {
+    const [detailRes, feedRes] = await Promise.all([
+      fetch('/api/me/groups/' + encodeURIComponent(groupId), { credentials: 'same-origin' }),
+      fetch('/api/me/groups/' + encodeURIComponent(groupId) + '/feed', { credentials: 'same-origin' }),
+    ]);
+    if (!detailRes.ok) {
+      body.innerHTML = '<p class="empty-state">Could not load this group.</p>';
+      return;
+    }
+    const detail = await detailRes.json();
+    const feed = feedRes.ok ? (await feedRes.json()).feed || [] : [];
+
+    if (title) title.textContent = detail.group.name;
+    renderGroupDetail(body, detail, feed);
+  } catch (err) {
+    body.innerHTML = '<p class="empty-state">Failed: ' + escapeHtml(err.message) + '</p>';
+  }
+}
+
+function closeGroupDetailModal() {
+  const modal = $('groupDetailModal');
+  if (modal) modal.hidden = true;
+  document.body.classList.remove('modal-open');
+}
+
+function renderGroupDetail(container, detail, feed) {
+  const membersHtml = (detail.members || []).map((m) =>
+    '<span class="group-member-chip">' + escapeHtml(m.displayName) + '</span>'
+  ).join(' ');
+
+  const feedHtml = feed.length === 0
+    ? '<p class="empty-state">No activity from this group yet — completions will show up here.</p>'
+    : '<ul class="group-feed-list">' + feed.map((f) => {
+        const when = f.completedAt ? timeAgo(f.completedAt) : '';
+        return '<li class="group-feed-item">' +
+          '<div class="group-feed-avatar">' + escapeHtml(initialsOf(f.displayName)) + '</div>' +
+          '<div class="group-feed-body">' +
+            '<div class="group-feed-line"><strong>' + escapeHtml(f.displayName) + '</strong> completed <em>' + escapeHtml(f.exerciseTitle) + '</em></div>' +
+            '<div class="group-feed-time">' + escapeHtml(when) + '</div>' +
+          '</div>' +
+        '</li>';
+      }).join('') + '</ul>';
+
+  container.innerHTML =
+    '<div class="group-detail-section">' +
+      '<div class="group-detail-label">Members (' + (detail.members || []).length + ')</div>' +
+      '<div class="group-members-row">' + membersHtml + '</div>' +
+    '</div>' +
+    '<div class="group-detail-section">' +
+      '<div class="group-detail-label">Recent activity</div>' +
+      feedHtml +
+    '</div>';
+}
+
+function initialsOf(name) {
+  const parts = String(name || '').trim().split(/\s+/);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function timeAgo(sqliteTs) {
+  if (!sqliteTs) return '';
+  const t = new Date(String(sqliteTs).replace(' ', 'T') + 'Z').getTime();
+  const seconds = Math.max(0, Math.floor((Date.now() - t) / 1000));
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return minutes + 'm ago';
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return hours + 'h ago';
+  const days = Math.floor(hours / 24);
+  if (days < 30) return days + 'd ago';
+  const months = Math.floor(days / 30);
+  return months + 'mo ago';
+}
+
+// Wire click-through: any [data-group-open] in the settings modal opens the detail modal.
+document.addEventListener('DOMContentLoaded', () => {
+  const settings = $('settingsModal');
+  if (settings) {
+    settings.addEventListener('click', (e) => {
+      const row = e.target.closest && e.target.closest('[data-group-open]');
+      if (row) openGroupDetailModal(row.dataset.groupOpen);
+    });
+    settings.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      const row = e.target.closest && e.target.closest('[data-group-open]');
+      if (row) { e.preventDefault(); openGroupDetailModal(row.dataset.groupOpen); }
+    });
+  }
+  const back = $('groupDetailBack');
+  const close = $('groupDetailClose');
+  if (back) back.addEventListener('click', closeGroupDetailModal);
+  if (close) close.addEventListener('click', closeGroupDetailModal);
+  const modal = $('groupDetailModal');
+  if (modal) modal.addEventListener('click', (e) => { if (e.target === modal) closeGroupDetailModal(); });
 });
 
 // --- Class fingerprint tab (legacy — the tab UI was replaced by

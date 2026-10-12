@@ -126,6 +126,21 @@ router.get('/me/groups/:groupId', requireAuth, async (req, res) => {
   res.json({ group, members: db.studyGroups.listMembers(groupId) });
 });
 
+// GET /api/me/groups/:groupId/feed
+router.get('/me/groups/:groupId/feed', requireAuth, async (req, res) => {
+  const userId = req.user!.id;
+  const { groupId } = req.params;
+  const group = db.studyGroups.findById(groupId);
+  if (!group) return res.status(404).json({ error: 'Group not found.' });
+  if (!db.studyGroups.isMember(groupId, userId)) {
+    return res.status(403).json({ error: 'You are not in this group.' });
+  }
+  const days = Math.min(Math.max(Number(req.query.days) || 30, 1), 365);
+  const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
+  const feed = db.studyGroups.feedFor(groupId, { days, limit });
+  res.json({ feed });
+});
+
 // POST /api/me/groups/:groupId/leave
 router.post('/me/groups/:groupId/leave', requireAuth, async (req, res) => {
   const userId = req.user!.id;
