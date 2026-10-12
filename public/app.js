@@ -768,6 +768,220 @@ document.addEventListener('DOMContentLoaded', () => {
   if (sendBtn) sendBtn.addEventListener('click', sendAnnouncement);
 });
 
+// --- Study groups (student + tutor) ---
+
+async function loadSettingsGroups() {
+  const list = $('settingsGroupList');
+  if (!list) return;
+  list.innerHTML = '<p class="empty-state">Loading...</p>';
+
+  try {
+    const res = await fetch('/api/me/groups', { credentials: 'same-origin' });
+    if (!res.ok) {
+      list.innerHTML = '<p class="empty-state">Could not load your groups.</p>';
+      return;
+    }
+    const data = await res.json();
+    const groups = data.groups || [];
+
+    if (groups.length === 0) {
+      list.innerHTML = '<p class="empty-state">You are not in any study groups yet. Create one below, or ask a classmate for a code.</p>';
+    } else {
+      list.innerHTML = groups.map((g) => {
+        const badge = g.status === 'pending'
+          ? '<span class="group-status-badge pending">Awaiting approval</span>'
+          : g.status === 'rejected'
+            ? '<span class="group-status-badge rejected">Rejected</span>'
+            : '<span class="group-status-badge approved">Approved</span>';
+        const code = g.status === 'approved'
+          ? 'Code: <code>' + escapeHtml(g.inviteCode) + '</code>'
+          : '';
+        return '<div class="settings-class-row">' +
+          '<div class="settings-class-info">' +
+            '<div class="settings-class-name">' + escapeHtml(g.name) + ' ' + badge + '</div>' +
+            '<div class="settings-class-meta">' + escapeHtml(g.cohortName) + ' · ' + g.memberCount + ' member' + (g.memberCount === 1 ? '' : 's') + (code ? ' · ' + code : '') + '</div>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+    }
+  } catch (err) {
+    list.innerHTML = '<p class="empty-state">Failed: ' + escapeHtml(err.message) + '</p>';
+  }
+}
+
+async function populateGroupCohortPicker() {
+  const sel = $('newGroupCohort');
+  if (!sel) return;
+  try {
+    const res = await fetch('/api/cohorts/mine', { credentials: 'same-origin' });
+    if (!res.ok) return;
+    const cohorts = await res.json();
+    if (!cohorts.length) {
+      sel.innerHTML = '<option value="">(not in a class)</option>';
+      return;
+    }
+    sel.innerHTML = cohorts.map((c) =>
+      '<option value="' + escapeHtml(c.id) + '">' + escapeHtml(c.name) + '</option>'
+    ).join('');
+  } catch {
+    sel.innerHTML = '<option value="">(error)</option>';
+  }
+}
+
+async function createStudyGroup() {
+  const nameEl = $('newGroupName');
+  const cohortEl = $('newGroupCohort');
+  const msg = $('createGroupMessage');
+  const btn = $('createGroupBtn');
+  if (!nameEl || !cohortEl || !msg) return;
+
+  const name = nameEl.value.trim();
+  const cohortId = cohortEl.value;
+  if (!name) { msg.textContent = 'Enter a group name.'; msg.className = 'settings-join-message error'; msg.hidden = false; return; }
+  if (!cohortId) { msg.textContent = 'Pick a class first.'; msg.className = 'settings-join-message error'; msg.hidden = false; return; }
+
+  btn.disabled = true;
+  msg.hidden = true;
+  try {
+    const res = await fetch('/api/me/groups', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ name, cohortId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      msg.textContent = data.error || 'Could not create the group.';
+      msg.className = 'settings-join-message error';
+      msg.hidden = false;
+      return;
+    }
+    msg.textContent = 'Group created. Waiting for your tutor to approve it.';
+    msg.className = 'settings-join-message success';
+    msg.hidden = false;
+    nameEl.value = '';
+    await loadSettingsGroups();
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function joinStudyGroup() {
+  const codeEl = $('groupJoinCode');
+  const msg = $('groupJoinMessage');
+  const btn = $('groupJoinBtn');
+  if (!codeEl || !msg) return;
+
+  const code = codeEl.value.trim();
+  if (!code) { msg.textContent = 'Enter a code first.'; msg.className = 'settings-join-message error'; msg.hidden = false; return; }
+
+  btn.disabled = true;
+  msg.hidden = true;
+  try {
+    const res = await fetch('/api/me/groups/join', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ code }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      msg.textContent = data.error || 'Could not join the group.';
+      msg.className = 'settings-join-message error';
+      msg.hidden = false;
+      return;
+    }
+    msg.textContent = 'Joined!';
+    msg.className = 'settings-join-message success';
+    msg.hidden = false;
+    codeEl.value = '';
+    await loadSettingsGroups();
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function loadTutorGroups() {
+  const body = $('tutorGroupsBody');
+  if (!body) return;
+  const cohortId = selectedCohortId || (function(){ const s=$('analyticsCohort'); return s ? s.value : null; })();
+  if (!cohortId) {
+    body.innerHTML = '<p class="empty-state">Pick a cohort to see its groups.</p>';
+    return;
+  }
+  body.innerHTML = '<p class="empty-state">Loading…</p>';
+
+  try {
+    const res = await fetch('/api/admin/cohorts/' + encodeURIComponent(cohortId) + '/groups', { credentials: 'same-origin' });
+    if (!res.ok) {
+      body.innerHTML = '<p class="empty-state">Could not load groups.</p>';
+      return;
+    }
+    const data = await res.json();
+    const groups = data.groups || [];
+
+    if (groups.length === 0) {
+      body.innerHTML = '<p class="empty-state">No study groups in this cohort yet.</p>';
+      return;
+    }
+
+    body.innerHTML = groups.map((g) => {
+      const badge = g.status === 'pending'
+        ? '<span class="group-status-badge pending">Pending</span>'
+        : g.status === 'rejected'
+          ? '<span class="group-status-badge rejected">Rejected</span>'
+          : '<span class="group-status-badge approved">Approved</span>';
+
+      const actions = g.status === 'pending'
+        ? '<button class="primary small" data-group-approve="' + escapeHtml(g.id) + '">Approve</button> ' +
+          '<button class="ghost small" data-group-reject="' + escapeHtml(g.id) + '">Reject</button>'
+        : '';
+
+      return '<div class="tutor-group-row">' +
+        '<div class="tutor-group-info">' +
+          '<div class="tutor-group-name">' + escapeHtml(g.name) + ' ' + badge + '</div>' +
+          '<div class="tutor-group-meta">Created by ' + escapeHtml(g.createdByName) + ' · ' + g.memberCount + ' member' + (g.memberCount === 1 ? '' : 's') + '</div>' +
+        '</div>' +
+        '<div class="tutor-group-actions">' + actions + '</div>' +
+      '</div>';
+    }).join('');
+
+    body.querySelectorAll('[data-group-approve]').forEach((btn) => {
+      btn.addEventListener('click', () => moderateGroup(btn.dataset.groupApprove, 'approve'));
+    });
+    body.querySelectorAll('[data-group-reject]').forEach((btn) => {
+      btn.addEventListener('click', () => moderateGroup(btn.dataset.groupReject, 'reject'));
+    });
+  } catch (err) {
+    body.innerHTML = '<p class="empty-state">Failed: ' + escapeHtml(err.message) + '</p>';
+  }
+}
+
+async function moderateGroup(groupId, action) {
+  try {
+    const res = await fetch('/api/admin/groups/' + encodeURIComponent(groupId) + '/' + action, {
+      method: 'POST',
+      credentials: 'same-origin',
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || 'Could not ' + action + ' the group.');
+      return;
+    }
+    await loadTutorGroups();
+  } catch (err) {
+    alert('Failed: ' + err.message);
+  }
+}
+
+// Wire up controls once the DOM is ready.
+document.addEventListener('DOMContentLoaded', () => {
+  const cg = $('createGroupBtn');
+  const jg = $('groupJoinBtn');
+  if (cg) cg.addEventListener('click', createStudyGroup);
+  if (jg) jg.addEventListener('click', joinStudyGroup);
+});
+
 // --- Class fingerprint tab (legacy — the tab UI was replaced by
 // Analytics, but the endpoint and renderClassFingerprint are kept so
 // the loader can be revived without a rewrite. Guarded so the missing
@@ -1859,7 +2073,10 @@ async function openSettings() {
   $('settingsJoinMessage').hidden = true;
   $('settingsJoinMessage').className = 'settings-join-message';
 
+  document.body.classList.add('modal-open');
   await loadSettingsClasses();
+  if (typeof loadSettingsGroups === 'function') await loadSettingsGroups();
+  if (typeof populateGroupCohortPicker === 'function') await populateGroupCohortPicker();
 }
 
 async function loadSettingsClasses() {
@@ -2076,13 +2293,13 @@ document.addEventListener('click', (e) => {
   if (!t || !t.id) return;
 
   if (t.id === 'openSettingsBtn') openSettings();
-  else if (t.id === 'closeSettingsBtn') $('settingsModal').hidden = true;
+  else if (t.id === 'closeSettingsBtn') { $('settingsModal').hidden = true; document.body.classList.remove('modal-open'); }
   else if (t.id === 'settingsJoinBtn') joinClass();
 });
 
 document.addEventListener('click', (e) => {
   if (e.target && e.target.id === 'settingsModal') {
-    $('settingsModal').hidden = true;
+    $('settingsModal').hidden = true; document.body.classList.remove('modal-open');
   }
 });
 
@@ -3362,6 +3579,7 @@ async function loadAnalyticsFor(cohortId) {
     }
     const data = await res.json();
     renderAnalytics(body, data);
+    if (typeof loadTutorGroups === 'function') await loadTutorGroups();
   } catch (err) {
     body.innerHTML = '<p class="empty-state">Failed: ' + escapeHtml(err.message) + '</p>';
   }

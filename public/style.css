@@ -4074,3 +4074,49 @@ body.privacy-open .privacy-view {
   text-transform: uppercase;
   margin-bottom: 4px;
 }
+
+/* ── Study groups ── */
+.group-status-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  margin-left: 6px;
+  letter-spacing: 0.02em;
+}
+.group-status-badge.pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+.group-status-badge.approved {
+  background: #d1fae5;
+  color: #065f46;
+}
+.group-status-badge.rejected {
+  background: #fee2e2;
+  color: #991b1b;
+}
+.tutor-group-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid #f0f1f3;
+}
+.tutor-group-row:last-child { border-bottom: none; }
+.tutor-group-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: #1a1d23;
+}
+.tutor-group-meta {
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 2px;
+}
+.tutor-group-actions button { margin-left: 6px; }
+
+/* Modal scroll containment */
+body.modal-open { overflow: hidden; }
+.settings-modal { max-height: 90vh; overflow-y: auto; }

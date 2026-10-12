@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { generateEnrollmentCode } from './auth/enrollmentCodes.js';
 import { fillWeeks, lastNWeekStarts, classifyTrend } from './util/weeks.js';
 import { deriveStrengths, type Strength } from './util/strengths.js';
 import { buildActivitySummary, type ActivitySummary } from './util/activity.js';
@@ -704,6 +705,180 @@ export const db = {
     async deleteExpired(): Promise<number> {
       const info = stmt.deleteExpiredAuthSessions.run();
       return info.changes ?? 0;
+    },
+  },
+
+  studyGroups: {
+    /**
+     * Create a study group. Status defaults to 'pending' — the
+     * cohort's tutor must approve before anyone else can join.
+     * The creator is auto-added as the first member.
+     */
+    create(data: {
+      cohortId: string;
+      name: string;
+      createdBy: string;
+    }): { id: string; inviteCode: string } {
+      const id = randomUUID();
+      const inviteCode = generateEnrollmentCode();
+      const tx = sqlite.transaction(() => {
+        sqlite
+          .prepare(
+            `INSERT INTO study_groups (id, cohort_id, name, invite_code, status, created_by)
+             VALUES (?, ?, ?, ?, 'pending', ?)`
+          )
+          .run(id, data.cohortId, data.name, inviteCode, data.createdBy);
+        sqlite
+          .prepare(
+            `INSERT INTO study_group_members (group_id, user_id)
+             VALUES (?, ?)`
+          )
+          .run(id, data.createdBy);
+      });
+      tx();
+      return { id, inviteCode };
+    },
+
+    findById(groupId: string): {
+      id: string;
+      cohortId: string;
+      name: string;
+      inviteCode: string;
+      status: string;
+      createdBy: string;
+      createdAt: string;
+    } | null {
+      const row = sqlite
+        .prepare(
+          `SELECT id, cohort_id AS cohortId, name, invite_code AS inviteCode,
+                  status, created_by AS createdBy, created_at AS createdAt
+           FROM study_groups WHERE id = ?`
+        )
+        .get(groupId) as any;
+      return row ?? null;
+    },
+
+    findByCode(code: string): { id: string; status: string; cohortId: string; name: string } | null {
+      const row = sqlite
+        .prepare(
+          `SELECT id, status, cohort_id AS cohortId, name
+           FROM study_groups WHERE invite_code = ?`
+        )
+        .get(code) as any;
+      return row ?? null;
+    },
+
+    isMember(groupId: string, userId: string): boolean {
+      const row = sqlite
+        .prepare('SELECT 1 AS ok FROM study_group_members WHERE group_id = ? AND user_id = ?')
+        .get(groupId, userId) as { ok: number } | undefined;
+      return !!row;
+    },
+
+    memberCount(groupId: string): number {
+      const row = sqlite
+        .prepare('SELECT COUNT(*) AS n FROM study_group_members WHERE group_id = ?')
+        .get(groupId) as { n: number };
+      return row?.n ?? 0;
+    },
+
+    listMembers(groupId: string): Array<{ userId: string; displayName: string; joinedAt: string }> {
+      return sqlite
+        .prepare(
+          `SELECT m.user_id AS userId, u.display_name AS displayName, m.joined_at AS joinedAt
+           FROM study_group_members m
+           JOIN users u ON u.id = m.user_id
+           WHERE m.group_id = ?
+           ORDER BY m.joined_at ASC`
+        )
+        .all(groupId) as any[];
+    },
+
+    /** Groups this user is a member of. */
+    listForUser(userId: string): Array<{
+      id: string;
+      cohortId: string;
+      cohortName: string;
+      name: string;
+      inviteCode: string;
+      status: string;
+      memberCount: number;
+      joinedAt: string;
+    }> {
+      return sqlite
+        .prepare(
+          `SELECT g.id, g.cohort_id AS cohortId, c.name AS cohortName,
+                  g.name, g.invite_code AS inviteCode, g.status,
+                  (SELECT COUNT(*) FROM study_group_members m2 WHERE m2.group_id = g.id) AS memberCount,
+                  m.joined_at AS joinedAt
+           FROM study_group_members m
+           JOIN study_groups g ON g.id = m.group_id
+           JOIN cohorts c ON c.id = g.cohort_id
+           WHERE m.user_id = ?
+           ORDER BY m.joined_at DESC`
+        )
+        .all(userId) as any[];
+    },
+
+    /** Add a member to an approved, not-full group. Returns an error string on failure. */
+    addMemberByCode(code: string, userId: string): { ok: true; groupId: string } | { ok: false; error: string } {
+      const group = db.studyGroups.findByCode(code);
+      if (!group) return { ok: false, error: 'That group code is not valid.' };
+      if (group.status !== 'approved') {
+        return { ok: false, error: 'This group is still awaiting tutor approval.' };
+      }
+      if (db.studyGroups.isMember(group.id, userId)) {
+        return { ok: false, error: 'You are already in this group.' };
+      }
+      if (db.studyGroups.memberCount(group.id) >= 6) {
+        return { ok: false, error: 'This group is full (6 members max).' };
+      }
+      sqlite
+        .prepare('INSERT INTO study_group_members (group_id, user_id) VALUES (?, ?)')
+        .run(group.id, userId);
+      return { ok: true, groupId: group.id };
+    },
+
+    leave(groupId: string, userId: string): boolean {
+      const r = sqlite
+        .prepare('DELETE FROM study_group_members WHERE group_id = ? AND user_id = ?')
+        .run(groupId, userId);
+      return (r.changes ?? 0) > 0;
+    },
+
+    /** Tutor view: every group in a cohort, pending first. */
+    listForCohort(cohortId: string): Array<{
+      id: string;
+      name: string;
+      status: string;
+      createdBy: string;
+      createdByName: string;
+      memberCount: number;
+      createdAt: string;
+    }> {
+      return sqlite
+        .prepare(
+          `SELECT g.id, g.name, g.status,
+                  g.created_by AS createdBy, u.display_name AS createdByName,
+                  (SELECT COUNT(*) FROM study_group_members m WHERE m.group_id = g.id) AS memberCount,
+                  g.created_at AS createdAt
+           FROM study_groups g
+           JOIN users u ON u.id = g.created_by
+           WHERE g.cohort_id = ?
+           ORDER BY CASE g.status WHEN 'pending' THEN 0 ELSE 1 END, g.created_at DESC`
+        )
+        .all(cohortId) as any[];
+    },
+
+    setStatus(groupId: string, status: 'approved' | 'rejected', reviewerId: string): boolean {
+      const r = sqlite
+        .prepare(
+          `UPDATE study_groups
+           SET status = ?, reviewed_at = datetime('now'), reviewed_by = ?
+           WHERE id = ? AND status = 'pending'`
+        )
+        .run(status, reviewerId, groupId);
+      return (r.changes ?? 0) > 0;
     },
   },
 

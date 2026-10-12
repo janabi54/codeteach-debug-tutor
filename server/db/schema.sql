@@ -282,3 +282,38 @@ CREATE INDEX IF NOT EXISTS idx_session_events_session
 
 CREATE INDEX IF NOT EXISTS idx_session_events_student
   ON session_events(student_id, recorded_at);
+
+-- ── Study groups ──
+-- Small self-serve groups of students (3-6) within a cohort, working
+-- on the same material together. A group is created by a student and
+-- must be approved by the cohort's tutor before others can join.
+-- Joins are open-by-code once approved (no per-join approval in v1).
+
+CREATE TABLE IF NOT EXISTS study_groups (
+  id TEXT PRIMARY KEY,
+  cohort_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  invite_code TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL DEFAULT 'pending',
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  reviewed_at TEXT,
+  reviewed_by TEXT,
+  FOREIGN KEY (cohort_id) REFERENCES cohorts(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_study_groups_cohort
+  ON study_groups(cohort_id, status);
+
+CREATE TABLE IF NOT EXISTS study_group_members (
+  group_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  joined_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (group_id, user_id),
+  FOREIGN KEY (group_id) REFERENCES study_groups(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_study_group_members_user
+  ON study_group_members(user_id);

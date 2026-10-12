@@ -90,4 +90,50 @@ router.delete('/invite-codes/:code', requireAdmin, async (req, res) => {
   res.json({ ok: true });
 });
 
+// ─────────────────────────────────────────────────────────────
+// Study groups (tutor-facing)
+// ─────────────────────────────────────────────────────────────
+
+// GET /api/admin/cohorts/:cohortId/groups
+router.get('/cohorts/:cohortId/groups', requireInstructor, async (req, res) => {
+  const instructorId = req.user!.id;
+  const { cohortId } = req.params;
+  const cohort = await db.cohorts.findById(cohortId);
+  if (!cohort) return res.status(404).json({ error: 'Cohort not found.' });
+  if (cohort.instructorId !== instructorId) {
+    return res.status(403).json({ error: 'You do not teach this cohort.' });
+  }
+  res.json({ groups: db.studyGroups.listForCohort(cohortId) });
+});
+
+// POST /api/admin/groups/:groupId/approve
+router.post('/groups/:groupId/approve', requireInstructor, async (req, res) => {
+  const instructorId = req.user!.id;
+  const { groupId } = req.params;
+  const group = db.studyGroups.findById(groupId);
+  if (!group) return res.status(404).json({ error: 'Group not found.' });
+  const cohort = await db.cohorts.findById(group.cohortId);
+  if (!cohort || cohort.instructorId !== instructorId) {
+    return res.status(403).json({ error: 'You do not teach this cohort.' });
+  }
+  const ok = db.studyGroups.setStatus(groupId, 'approved', instructorId);
+  if (!ok) return res.status(400).json({ error: 'Group is not pending.' });
+  res.json({ ok: true, status: 'approved' });
+});
+
+// POST /api/admin/groups/:groupId/reject
+router.post('/groups/:groupId/reject', requireInstructor, async (req, res) => {
+  const instructorId = req.user!.id;
+  const { groupId } = req.params;
+  const group = db.studyGroups.findById(groupId);
+  if (!group) return res.status(404).json({ error: 'Group not found.' });
+  const cohort = await db.cohorts.findById(group.cohortId);
+  if (!cohort || cohort.instructorId !== instructorId) {
+    return res.status(403).json({ error: 'You do not teach this cohort.' });
+  }
+  const ok = db.studyGroups.setStatus(groupId, 'rejected', instructorId);
+  if (!ok) return res.status(400).json({ error: 'Group is not pending.' });
+  res.json({ ok: true, status: 'rejected' });
+});
+
 export default router;

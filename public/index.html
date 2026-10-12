@@ -264,6 +264,13 @@ for (let i = 0; i < arr.length; i++) {
     <div id="analyticsBody" class="analytics-body">
       <p class="empty-state">Loading…</p>
     </div>
+
+    <div id="tutorGroupsPanel" class="analytics-section" style="margin-top: 24px;">
+      <h3 class="analytics-section-title">Study groups</h3>
+      <div id="tutorGroupsBody">
+        <p class="empty-state">Loading…</p>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -778,6 +785,32 @@ for (let i = 0; i < arr.length; i++) {
       <h3 class="settings-heading">Your classes</h3>
       <div id="settingsClassList" class="settings-class-list">
         <p class="empty-state">Loading...</p>
+      </div>
+    </div>
+
+    <div class="settings-section" id="studyGroupsSection">
+      <h3 class="settings-heading">Study groups</h3>
+      <p class="settings-hint">Small groups (up to 6) working together. Your tutor approves each new group.</p>
+
+      <div id="settingsGroupList" class="settings-class-list">
+        <p class="empty-state">Loading...</p>
+      </div>
+
+      <div style="margin-top: 12px;">
+        <div class="settings-join-row">
+          <input id="newGroupName" type="text" spellcheck="false" placeholder="Group name" maxlength="40" autocomplete="off" />
+          <select id="newGroupCohort"></select>
+        </div>
+        <button id="createGroupBtn" class="primary small" style="margin-top: 8px;">Create a group</button>
+        <p id="createGroupMessage" class="settings-join-message" hidden></p>
+      </div>
+
+      <div style="margin-top: 12px;">
+        <div class="settings-join-row">
+          <input id="groupJoinCode" type="text" spellcheck="false" placeholder="Group code (XXXX-XXXX)" autocomplete="off" />
+          <button id="groupJoinBtn" class="primary small">Join</button>
+        </div>
+        <p id="groupJoinMessage" class="settings-join-message" hidden></p>
       </div>
     </div>
 
