@@ -91,6 +91,16 @@ router.post(
     });
     void pushUnreadCount(studentId);
 
+    db.audit.record({
+      actorId: instructorId,
+      actorEmail: instructorEmail,
+      action: 'nudge.send',
+      targetType: 'student',
+      targetId: studentId,
+      targetLabel: student.displayName,
+      metadata: { threadId: thread.id, preview: trimmedBody.slice(0, 80) },
+    });
+
     res.status(201).json({ threadId: thread.id, message });
   }
 );
