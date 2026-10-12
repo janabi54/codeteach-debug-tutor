@@ -435,7 +435,11 @@ for (let i = 0; i < arr.length; i++) {
         <p class="subtitle">Everyone enrolled in your classes. Click a row to see their work.</p>
       </div>
       <div class="range-picker">
-        <label for="studentsRange">Range</label>
+        <label for="studentsCohort">Class</label>
+        <select id="studentsCohort" class="class-picker">
+          <option value="">Loading…</option>
+        </select>
+        <label for="studentsRange" style="margin-left:12px;">Range</label>
         <select id="studentsRange">
           <option value="7">Last 7 days</option>
           <option value="30">Last 30 days</option>

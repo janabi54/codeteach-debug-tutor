@@ -21,7 +21,22 @@ const router = express.Router();
 // ─────────────────────────────────────────────────────────────
 router.get('/', requireInstructor, async (req, res) => {
   const instructorId = req.user!.id;
-  const roster = rosterFor(instructorId);
+  const cohortFilter = typeof req.query.cohortId === 'string' && req.query.cohortId.length > 0
+    ? req.query.cohortId
+    : null;
+
+  // If a cohort filter is set, verify the caller owns it.
+  if (cohortFilter) {
+    const cohort = await db.cohorts.findById(cohortFilter);
+    if (!cohort || cohort.instructorId !== instructorId) {
+      return res.status(404).json({ error: 'Class not found.' });
+    }
+  }
+
+  let roster = rosterFor(instructorId);
+  if (cohortFilter) {
+    roster = roster.filter((entry) => entry.cohortId === cohortFilter);
+  }
 
   // Deduplicate: a student in two of this instructor's cohorts
   // appears once. (Their work in both cohorts is still visible.)

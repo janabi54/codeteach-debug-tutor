@@ -2796,13 +2796,43 @@ document.addEventListener('click', async (e) => {
 // Students tab (roster view)
 // ═══════════════════════════════════════════════════════════
 
+// Populate the Students tab's cohort picker. Mirrors the Analytics
+// picker — shows every cohort the instructor teaches, defaults to
+// the first, and reloads the roster on change.
+async function populateStudentsCohortPicker() {
+  const sel = $('studentsCohort');
+  if (!sel) return;
+  try {
+    const res = await fetch('/api/cohorts/mine', { credentials: 'same-origin' });
+    if (!res.ok) { sel.innerHTML = '<option value="">(error)</option>'; return; }
+    const cohorts = await res.json();
+    if (!cohorts.length) {
+      sel.innerHTML = '<option value="">(no classes)</option>';
+      return;
+    }
+    // Preserve the current selection if it still exists.
+    const current = sel.value;
+    sel.innerHTML = cohorts.map((c) =>
+      '<option value="' + escapeHtml(c.id) + '">' + escapeHtml(c.name) + '</option>'
+    ).join('');
+    const stillValid = cohorts.some((c) => c.id === current);
+    sel.value = stillValid ? current : cohorts[0].id;
+  } catch {
+    sel.innerHTML = '<option value="">(error)</option>';
+  }
+}
+
 async function loadStudentsRoster() {
   const container = $('studentsRoster');
   if (!container) return;
   container.innerHTML = '<p class="empty-state">Loading...</p>';
 
   const rangeDays = Number($('studentsRange')?.value ?? 0);
-  const url = '/api/admin/students' + (rangeDays > 0 ? '?days=' + rangeDays : '');
+  const cohortId = $('studentsCohort')?.value || '';
+  const params = new URLSearchParams();
+  if (cohortId) params.set('cohortId', cohortId);
+  if (rangeDays > 0) params.set('days', String(rangeDays));
+  const url = '/api/admin/students' + (params.toString() ? '?' + params.toString() : '');
 
   try {
     const res = await fetch(url);
@@ -4686,8 +4716,20 @@ function relativeTime(iso) {
 document.querySelectorAll('.tab').forEach((tab) => {
   tab.addEventListener('click', () => {
     if (tab.dataset.tab === 'students') {
-      showStudentsRoster();
-      loadStudentsRoster();
+      // Populate the cohort picker first, wire its change listener
+      // once, then load the roster.
+      (async () => {
+        if (typeof populateStudentsCohortPicker === 'function') {
+          await populateStudentsCohortPicker();
+        }
+        const sel = $('studentsCohort');
+        if (sel && !sel.__wired) {
+          sel.__wired = true;
+          sel.addEventListener('change', loadStudentsRoster);
+        }
+        showStudentsRoster();
+        loadStudentsRoster();
+      })();
     }
   });
 });
