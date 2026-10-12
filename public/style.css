@@ -4284,3 +4284,38 @@ body.modal-open { overflow: hidden; }
 .diff-hard      { background: #fed7aa; color: #9a3412; }
 .diff-very-hard { background: #fee2e2; color: #991b1b; }
 .diff-none      { color: #94a3b8; font-weight: 400; }
+
+/* ── Bulk actions bar + roster checkboxes ── */
+.bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.bulk-bar #bulkCount {
+  font-weight: 600;
+  color: #3730a3;
+  margin-right: auto;
+}
+.bulk-check-col {
+  width: 28px;
+  text-align: center;
+  padding-left: 6px;
+}
+.bulk-check-col input[type="checkbox"] {
+  cursor: pointer;
+}
+/* Confirm modal */
+.confirm-modal { max-width: 420px; }
+.confirm-body {
+  margin: 8px 0 16px;
+  color: #4b5563;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.confirm-actions { display: flex; justify-content: flex-end; gap: 8px; }

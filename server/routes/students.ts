@@ -432,13 +432,31 @@ router.get('/export.csv', requireInstructor, async (req, res) => {
   const instructorId = req.user!.id;
   const days = Number(req.query.days ?? 30) || 30;
 
-  const roster = rosterFor(instructorId);
+  // Optional filters: ?cohortId=X&ids=a,b,c
+  const cohortFilter = typeof req.query.cohortId === 'string' && req.query.cohortId.length > 0
+    ? req.query.cohortId
+    : null;
+  const idsFilter = typeof req.query.ids === 'string' && req.query.ids.length > 0
+    ? new Set(req.query.ids.split(',').map((x) => x.trim()).filter(Boolean))
+    : null;
+
+  if (cohortFilter) {
+    const cohort = await db.cohorts.findById(cohortFilter);
+    if (!cohort || cohort.instructorId !== instructorId) {
+      return res.status(404).json({ error: 'Class not found.' });
+    }
+  }
+
+  let roster = rosterFor(instructorId);
+  if (cohortFilter) roster = roster.filter((e) => e.cohortId === cohortFilter);
+
   const byStudent = new Map<string, {
     studentId: string;
     cohortNames: Set<string>;
     joinedAt: string;
   }>();
   for (const entry of roster) {
+    if (idsFilter && !idsFilter.has(entry.studentId)) continue;
     if (!byStudent.has(entry.studentId)) {
       byStudent.set(entry.studentId, {
         studentId: entry.studentId,

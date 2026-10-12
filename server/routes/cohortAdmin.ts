@@ -116,4 +116,48 @@ router.delete('/:id', requireInstructor, async (req, res) => {
   res.json({ ok: true });
 });
 
+// ─────────────────────────────────────────────────────────────
+// POST /api/admin/cohorts/:cohortId/members/bulk-remove
+// Body: { userIds: string[] }
+// Removes N students from one cohort (scoped — no cross-cohort).
+// Audits the action with requested / removed counts.
+// ─────────────────────────────────────────────────────────────
+router.post('/:cohortId/members/bulk-remove', requireInstructor, async (req, res) => {
+  const instructorId = req.user!.id;
+  const { cohortId } = req.params;
+  const { userIds } = req.body ?? {};
+
+  if (!Array.isArray(userIds) || userIds.length === 0) {
+    return res.status(400).json({ error: 'userIds must be a non-empty array.' });
+  }
+  if (userIds.length > 500) {
+    return res.status(400).json({ error: 'Too many ids (max 500).' });
+  }
+
+  const cohort = await db.cohorts.findById(cohortId);
+  if (!cohort) return res.status(404).json({ error: 'Class not found.' });
+  if (cohort.instructorId !== instructorId) {
+    return res.status(403).json({ error: 'You do not teach that class.' });
+  }
+
+  let removed = 0;
+  for (const uid of userIds) {
+    if (typeof uid !== 'string' || uid.length === 0) continue;
+    const ok = await db.cohortMembers.remove(cohortId, uid);
+    if (ok) removed++;
+  }
+
+  db.audit.record({
+    actorId: instructorId,
+    actorEmail: req.user!.email ?? null,
+    action: 'cohort.members.bulk_remove',
+    targetType: 'cohort',
+    targetId: cohortId,
+    targetLabel: cohort.name,
+    metadata: { requested: userIds.length, removed },
+  });
+
+  res.json({ ok: true, removed, requested: userIds.length });
+});
+
 export default router;

@@ -878,6 +878,18 @@ for (let i = 0; i < arr.length; i++) {
   </div>
 </div>
 
+<!-- GENERIC CONFIRM MODAL (simple cancel/confirm; distinct from the type-to-confirm modal) -->
+<div id="genericConfirmModal" class="modal-backdrop" hidden>
+  <div class="modal confirm-modal">
+    <h2 id="genericConfirmTitle" class="modal-title">Confirm</h2>
+    <p id="genericConfirmBody" class="confirm-body"></p>
+    <div class="modal-footer confirm-actions">
+      <button id="genericConfirmCancel" class="ghost">Cancel</button>
+      <button id="genericConfirmOk" class="danger">Confirm</button>
+    </div>
+  </div>
+</div>
+
 <!-- GROUP DETAIL MODAL (student-side: members + feed) -->
 <div id="groupDetailModal" class="nudge-modal-backdrop" hidden>
   <div class="nudge-modal">

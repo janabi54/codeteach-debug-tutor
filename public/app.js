@@ -1269,6 +1269,41 @@ document.addEventListener('DOMContentLoaded', () => {
   if (modal) modal.addEventListener('click', (e) => { if (e.target === modal) closeGroupDetailModal(); });
 });
 
+// --- Generic confirm modal (distinct from the type-to-confirm modal) ---
+let __genericConfirmCallback = null;
+
+function openGenericConfirm(title, body, okLabel, onConfirm) {
+  const modal = $('genericConfirmModal');
+  if (!modal) { if (confirm(body)) onConfirm(); return; }
+  $('genericConfirmTitle').textContent = title;
+  $('genericConfirmBody').textContent = body;
+  $('genericConfirmOk').textContent = okLabel || 'Confirm';
+  __genericConfirmCallback = onConfirm;
+  modal.hidden = false;
+  document.body.classList.add('modal-open');
+}
+
+function closeGenericConfirm() {
+  const modal = $('genericConfirmModal');
+  if (modal) modal.hidden = true;
+  document.body.classList.remove('modal-open');
+  __genericConfirmCallback = null;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const modal = $('genericConfirmModal');
+  if (!modal) return;
+  const ok = $('genericConfirmOk');
+  const cancel = $('genericConfirmCancel');
+  if (ok) ok.addEventListener('click', () => {
+    const cb = __genericConfirmCallback;
+    closeGenericConfirm();
+    if (typeof cb === 'function') cb();
+  });
+  if (cancel) cancel.addEventListener('click', closeGenericConfirm);
+  modal.addEventListener('click', (e) => { if (e.target === modal) closeGenericConfirm(); });
+});
+
 // --- Class fingerprint tab (legacy — the tab UI was replaced by
 // Analytics, but the endpoint and renderClassFingerprint are kept so
 // the loader can be revived without a rewrite. Guarded so the missing
@@ -2848,9 +2883,16 @@ async function loadStudentsRoster() {
     }
 
     container.innerHTML = `
+      <div id="bulkBar" class="bulk-bar" hidden>
+        <span id="bulkCount">0 selected</span>
+        <button id="bulkRemoveBtn" class="danger small">Remove from class</button>
+        <button id="bulkExportBtn" class="ghost small">Export selected</button>
+        <button id="bulkClearBtn" class="ghost small">Clear</button>
+      </div>
       <table class="students-table">
         <thead>
           <tr>
+            <th class="bulk-check-col"><input type="checkbox" id="bulkSelectAll" title="Select all" /></th>
             <th>Student</th>
             <th>Classes</th>
             <th>Activity (30d)</th>
@@ -2862,6 +2904,7 @@ async function loadStudentsRoster() {
         <tbody>
           ${students.map((s) => `
             <tr data-student-id="${escapeHtml(s.studentId)}">
+              <td class="bulk-check-col"><input type="checkbox" class="bulk-check" data-id="${escapeHtml(s.studentId)}" /></td>
               <td>
                 <span class="student-name-cell">${escapeHtml(s.displayName)}</span>
                 <span class="student-email-cell">${escapeHtml(s.email)}</span>
@@ -2880,11 +2923,90 @@ async function loadStudentsRoster() {
     // Cache for the detail view
     window.__studentsRoster = students;
 
+    // Row click → detail view. Skipped if the click hit a checkbox.
     container.querySelectorAll('tr[data-student-id]').forEach((row) => {
-      row.addEventListener('click', () => {
+      row.addEventListener('click', (e) => {
+        if (e.target && e.target.classList && e.target.classList.contains('bulk-check')) return;
         openStudentDetail(row.dataset.studentId);
       });
     });
+
+    // ── Bulk controls ──
+    const bulkBar = container.querySelector('#bulkBar');
+    const bulkCount = container.querySelector('#bulkCount');
+    const selectAll = container.querySelector('#bulkSelectAll');
+    const checks = Array.from(container.querySelectorAll('.bulk-check'));
+
+    function updateBulkBar() {
+      const selected = checks.filter((c) => c.checked);
+      if (bulkBar) bulkBar.hidden = selected.length === 0;
+      if (bulkCount) bulkCount.textContent = selected.length + ' selected';
+      if (selectAll) selectAll.checked = selected.length > 0 && selected.length === checks.length;
+    }
+
+    checks.forEach((c) => c.addEventListener('change', updateBulkBar));
+
+    if (selectAll) {
+      selectAll.addEventListener('change', () => {
+        checks.forEach((c) => { c.checked = selectAll.checked; });
+        updateBulkBar();
+      });
+    }
+
+    const clearBtn = container.querySelector('#bulkClearBtn');
+    if (clearBtn) {
+      clearBtn.addEventListener('click', () => {
+        checks.forEach((c) => { c.checked = false; });
+        if (selectAll) selectAll.checked = false;
+        updateBulkBar();
+      });
+    }
+
+    const removeBtn = container.querySelector('#bulkRemoveBtn');
+    if (removeBtn) {
+      removeBtn.addEventListener('click', async () => {
+        const ids = checks.filter((c) => c.checked).map((c) => c.dataset.id);
+        if (ids.length === 0) return;
+        const cohortId = $('studentsCohort')?.value || '';
+        if (!cohortId) { alert('Pick a class first.'); return; }
+        const cohortName = $('studentsCohort')?.selectedOptions?.[0]?.textContent || 'this class';
+        openGenericConfirm(
+          'Remove students',
+          'Remove ' + ids.length + ' student' + (ids.length === 1 ? '' : 's') + ' from "' + cohortName + '"? Their work is kept.',
+          'Remove',
+          async () => {
+            try {
+              const r = await fetch('/api/admin/cohorts/' + encodeURIComponent(cohortId) + '/members/bulk-remove', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ userIds: ids }),
+              });
+              const data = await r.json().catch(() => ({}));
+              if (!r.ok) { alert(data.error || 'Could not remove.'); return; }
+              await loadStudentsRoster();
+            } catch (err) {
+              alert('Failed: ' + err.message);
+            }
+          }
+        );
+      });
+    }
+
+    const exportBtn = container.querySelector('#bulkExportBtn');
+    if (exportBtn) {
+      exportBtn.addEventListener('click', () => {
+        const ids = checks.filter((c) => c.checked).map((c) => c.dataset.id);
+        if (ids.length === 0) return;
+        const cohortId = $('studentsCohort')?.value || '';
+        const params = new URLSearchParams();
+        if (cohortId) params.set('cohortId', cohortId);
+        params.set('ids', ids.join(','));
+        window.location.href = '/api/admin/students/export.csv?' + params.toString();
+      });
+    }
+
+    updateBulkBar();
   } catch (err) {
     container.innerHTML = '<p class="empty-state">Failed: ' + escapeHtml(err.message) + '</p>';
   }
