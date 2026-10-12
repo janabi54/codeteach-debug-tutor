@@ -169,10 +169,12 @@ router.post('/groups/:groupId/reject', requireInstructor, async (req, res) => {
 });
 
 // GET /api/admin/audit?limit=100
-// Read-only. Returns recent admin/instructor actions, newest first.
-router.get('/audit', requireAdmin, async (req, res) => {
+// Read-only. Each instructor sees their OWN actions (the trail
+// is scoped to the caller). System-wide view would be a separate
+// admin-only route if ever needed.
+router.get('/audit', requireInstructor, async (req, res) => {
   const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 500);
-  res.json({ entries: db.audit.listRecent(limit) });
+  res.json({ entries: db.audit.listForActor(req.user!.id, limit) });
 });
 
 export default router;
