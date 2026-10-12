@@ -801,7 +801,7 @@ export const db = {
         .all(groupId) as any[];
     },
 
-    /** Groups this user is a member of. */
+    /** Groups this user is a member of, with unread chat counts. */
     listForUser(userId: string): Array<{
       id: string;
       cohortId: string;
@@ -811,20 +811,26 @@ export const db = {
       status: string;
       memberCount: number;
       joinedAt: string;
+      unreadCount: number;
     }> {
-      return sqlite
+      const rows = sqlite
         .prepare(
           `SELECT g.id, g.cohort_id AS cohortId, c.name AS cohortName,
                   g.name, g.invite_code AS inviteCode, g.status,
                   (SELECT COUNT(*) FROM study_group_members m2 WHERE m2.group_id = g.id) AS memberCount,
-                  m.joined_at AS joinedAt
+                  m.joined_at AS joinedAt,
+                  (SELECT COUNT(*) FROM study_group_messages msg
+                   WHERE msg.group_id = g.id
+                     AND msg.author_id != ?
+                     AND (m.last_read_at IS NULL OR msg.created_at > m.last_read_at)) AS unreadCount
            FROM study_group_members m
            JOIN study_groups g ON g.id = m.group_id
            JOIN cohorts c ON c.id = g.cohort_id
            WHERE m.user_id = ?
            ORDER BY m.joined_at DESC`
         )
-        .all(userId) as any[];
+        .all(userId, userId) as any[];
+      return rows;
     },
 
     /** Add a member to an approved, not-full group. Returns an error string on failure. */

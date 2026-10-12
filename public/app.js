@@ -800,9 +800,13 @@ async function loadSettingsGroups() {
         const attrs = clickable
           ? ' role="button" tabindex="0" style="cursor:pointer;" data-group-open="' + escapeHtml(g.id) + '"'
           : '';
+        const unread = Number(g.unreadCount) || 0;
+        const unreadBadge = unread > 0
+          ? '<span class="group-unread-badge">' + unread + '</span>'
+          : '';
         return '<div class="settings-class-row' + (clickable ? ' settings-class-row-clickable' : '') + '"' + attrs + '>' +
           '<div class="settings-class-info">' +
-            '<div class="settings-class-name">' + escapeHtml(g.name) + ' ' + badge + '</div>' +
+            '<div class="settings-class-name">' + escapeHtml(g.name) + ' ' + badge + unreadBadge + '</div>' +
             '<div class="settings-class-meta">' + escapeHtml(g.cohortName) + ' · ' + g.memberCount + ' member' + (g.memberCount === 1 ? '' : 's') + (code ? ' · ' + code : '') + '</div>' +
           '</div>' +
           (clickable ? '<div class="settings-class-arrow">→</div>' : '') +
@@ -999,9 +1003,10 @@ async function openGroupDetailModal(groupId) {
   if (body) body.innerHTML = '<p class="empty-state">Loading…</p>';
 
   try {
-    const [detailRes, feedRes] = await Promise.all([
+    const [detailRes, feedRes, msgRes] = await Promise.all([
       fetch('/api/me/groups/' + encodeURIComponent(groupId), { credentials: 'same-origin' }),
       fetch('/api/me/groups/' + encodeURIComponent(groupId) + '/feed', { credentials: 'same-origin' }),
+      fetch('/api/me/groups/' + encodeURIComponent(groupId) + '/messages?limit=50', { credentials: 'same-origin' }),
     ]);
     if (!detailRes.ok) {
       body.innerHTML = '<p class="empty-state">Could not load this group.</p>';
@@ -1009,9 +1014,17 @@ async function openGroupDetailModal(groupId) {
     }
     const detail = await detailRes.json();
     const feed = feedRes.ok ? (await feedRes.json()).feed || [] : [];
+    const msgData = msgRes.ok ? (await msgRes.json()) : { messages: [], hasMore: false };
 
     if (title) title.textContent = detail.group.name;
-    renderGroupDetail(body, detail, feed);
+    renderGroupDetail(body, detail, feed, msgData.messages || [], msgData.hasMore);
+    wireGroupMsgDelete();
+
+    // Mark read (best-effort; UI already shows the messages).
+    fetch('/api/me/groups/' + encodeURIComponent(groupId) + '/mark-read', {
+      method: 'POST',
+      credentials: 'same-origin',
+    }).catch(() => {});
   } catch (err) {
     body.innerHTML = '<p class="empty-state">Failed: ' + escapeHtml(err.message) + '</p>';
   }
@@ -1021,9 +1034,21 @@ function closeGroupDetailModal() {
   const modal = $('groupDetailModal');
   if (modal) modal.hidden = true;
   document.body.classList.remove('modal-open');
+  __openGroupId = null;
+  __groupMessages = [];
+  __groupHasMore = false;
 }
 
-function renderGroupDetail(container, detail, feed) {
+// Tracks the currently-open group modal (for WS dispatch and send).
+let __openGroupId = null;
+let __groupMessages = [];
+let __groupHasMore = false;
+
+function renderGroupDetail(container, detail, feed, messages, hasMore) {
+  __openGroupId = detail.group.id;
+  __groupMessages = messages || [];
+  __groupHasMore = !!hasMore;
+
   const membersHtml = (detail.members || []).map((m) =>
     '<span class="group-member-chip">' + escapeHtml(m.displayName) + '</span>'
   ).join(' ');
@@ -1041,15 +1066,163 @@ function renderGroupDetail(container, detail, feed) {
         '</li>';
       }).join('') + '</ul>';
 
+  const messagesHtml = __groupMessages.length === 0
+    ? '<p class="empty-state group-chat-empty">No messages yet. Say hi to your group.</p>'
+    : __groupMessages.map(renderGroupMessage).join('');
+
   container.innerHTML =
     '<div class="group-detail-section">' +
       '<div class="group-detail-label">Members (' + (detail.members || []).length + ')</div>' +
       '<div class="group-members-row">' + membersHtml + '</div>' +
     '</div>' +
     '<div class="group-detail-section">' +
+      '<div class="group-detail-label">Chat</div>' +
+      '<div class="group-chat-messages" id="groupChatMessages">' +
+        (__groupHasMore ? '<button type="button" class="ghost small group-chat-load-older" id="groupChatLoadOlder">Load older</button>' : '') +
+        messagesHtml +
+      '</div>' +
+      '<div class="group-chat-compose">' +
+        '<textarea id="groupChatInput" class="nudge-compose-textarea" rows="2" placeholder="Write a message…" maxlength="2000"></textarea>' +
+        '<div class="group-chat-actions">' +
+          '<span id="groupChatStatus" class="nudge-compose-status"></span>' +
+          '<button type="button" id="groupChatSend" class="primary small">Send</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="group-detail-section">' +
       '<div class="group-detail-label">Recent activity</div>' +
       feedHtml +
     '</div>';
+
+  // Scroll chat to bottom
+  const chatEl = $('groupChatMessages');
+  if (chatEl) chatEl.scrollTop = chatEl.scrollHeight;
+
+  // Wire controls
+  const sendBtn = $('groupChatSend');
+  const inputEl = $('groupChatInput');
+  if (sendBtn) sendBtn.addEventListener('click', sendGroupMessage);
+  if (inputEl) {
+    inputEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendGroupMessage(); }
+    });
+  }
+  const olderBtn = $('groupChatLoadOlder');
+  if (olderBtn) olderBtn.addEventListener('click', loadOlderGroupMessages);
+}
+
+function renderGroupMessage(m) {
+  const mine = currentUser && m.authorId === currentUser.id;
+  const when = timeAgo(m.createdAt);
+  const canDelete = mine;
+  return '<div class="nudge-bubble-row ' + (mine ? 'mine' : 'theirs') + '">' +
+    '<div class="nudge-bubble">' +
+      '<div class="nudge-bubble-body">' + escapeHtml(m.body).replace(/\n/g, '<br>') + '</div>' +
+      '<div class="nudge-bubble-time">' + escapeHtml(m.authorName || '') + ' · ' + escapeHtml(when) +
+        (canDelete ? ' <button type="button" class="group-msg-delete" data-msg-delete="' + escapeHtml(m.id) + '" title="Delete">×</button>' : '') +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+async function loadOlderGroupMessages() {
+  if (!__openGroupId || __groupMessages.length === 0) return;
+  const oldest = __groupMessages[0].id;
+  const btn = $('groupChatLoadOlder');
+  if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+  try {
+    const res = await fetch('/api/me/groups/' + encodeURIComponent(__openGroupId) + '/messages?limit=50&before=' + encodeURIComponent(oldest), { credentials: 'same-origin' });
+    if (!res.ok) return;
+    const data = await res.json();
+    const older = data.messages || [];
+    __groupMessages = older.concat(__groupMessages);
+    __groupHasMore = !!data.hasMore;
+
+    // Re-render just the message list (preserve scroll position at top).
+    const el = $('groupChatMessages');
+    if (el) {
+      const prevHeight = el.scrollHeight;
+      el.innerHTML =
+        (__groupHasMore ? '<button type="button" class="ghost small group-chat-load-older" id="groupChatLoadOlder">Load older</button>' : '') +
+        __groupMessages.map(renderGroupMessage).join('');
+      el.scrollTop = el.scrollHeight - prevHeight;
+      const olderBtn = $('groupChatLoadOlder');
+      if (olderBtn) olderBtn.addEventListener('click', loadOlderGroupMessages);
+      wireGroupMsgDelete();
+    }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function sendGroupMessage() {
+  const input = $('groupChatInput');
+  const btn = $('groupChatSend');
+  const status = $('groupChatStatus');
+  if (!input || !btn || !__openGroupId) return;
+
+  const body = input.value.trim();
+  if (!body) return;
+
+  btn.disabled = true;
+  if (status) { status.textContent = ''; status.className = 'nudge-compose-status'; }
+
+  try {
+    const res = await fetch('/api/me/groups/' + encodeURIComponent(__openGroupId) + '/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ body }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      if (status) { status.textContent = data.error || 'Could not send.'; status.className = 'nudge-compose-status error'; }
+      return;
+    }
+    input.value = '';
+    // WS will append for us (the server broadcasts to all members,
+    // including the author). No optimistic append needed.
+  } catch (err) {
+    if (status) { status.textContent = 'Failed: ' + err.message; status.className = 'nudge-compose-status error'; }
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function appendGroupMessage(m) {
+  if (!m || m.groupId !== __openGroupId) return;
+  __groupMessages.push(m);
+  const el = $('groupChatMessages');
+  if (!el) return;
+  // Remove the empty-state placeholder if present.
+  const empty = el.querySelector('.group-chat-empty');
+  if (empty) empty.remove();
+  el.insertAdjacentHTML('beforeend', renderGroupMessage(m));
+  el.scrollTop = el.scrollHeight;
+  wireGroupMsgDelete();
+}
+
+function wireGroupMsgDelete() {
+  document.querySelectorAll('[data-msg-delete]').forEach((btn) => {
+    if (btn.__wired) return;
+    btn.__wired = true;
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.msgDelete;
+      if (!id) return;
+      try {
+        const res = await fetch('/api/me/groups/messages/' + encodeURIComponent(id), {
+          method: 'DELETE',
+          credentials: 'same-origin',
+        });
+        if (!res.ok) return;
+        // Remove from local state + DOM.
+        __groupMessages = __groupMessages.filter((m) => m.id !== id);
+        const row = btn.closest('.nudge-bubble-row');
+        if (row) row.remove();
+      } catch { /* ignore */ }
+    });
+  });
 }
 
 function initialsOf(name) {
@@ -3276,6 +3449,12 @@ function disconnectWebSocket() {
 
 function handleWsMessage(msg) {
   switch (msg.type) {
+    case 'study-group:message': {
+      const gid = msg.groupId;
+      const m = msg.message;
+      if (gid === __openGroupId && m) appendGroupMessage({ ...m, groupId: gid });
+      break;
+    }
     case 'unread-count':
       updateUnreadBadges(msg.count);
       break;
