@@ -4544,10 +4544,26 @@ body.modal-open { overflow: hidden; }
 /* ── Collapsible tutor toolbar ── */
 .tutor-toolbar {
   position: relative;
-  padding-right: 40px;   /* room for the toggle button */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 8px 40px 12px 0;
+  margin-bottom: 4px;
+  border-bottom: 1px solid #eef1f5;
+  flex-shrink: 0;
   transition: padding 0.15s ease;
 }
-.toolbar-expanded {
+/* Base state: expanded visible, collapsed hidden.
+   The .tutor-toolbar prefix is needed so the .collapsed overrides
+   below (same prefix + .collapsed) win by specificity, without
+   resorting to !important. */
+/* The authoritative show/hide is via the [hidden] attribute; see
+   setTutorToolbarCollapsed() in app.js. These layout rules only
+   describe HOW the elements look when shown. */
+[hidden] { display: none !important; }
+.tutor-toolbar .toolbar-expanded {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -4555,7 +4571,13 @@ body.modal-open { overflow: hidden; }
   flex-wrap: wrap;
   width: 100%;
 }
-.toolbar-collapsed { display: none; }
+.tutor-toolbar .toolbar-collapsed {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 2px 0;
+}
 .tutor-toolbar-toggle {
   position: absolute;
   top: 50%;

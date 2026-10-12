@@ -1431,7 +1431,18 @@ function setTutorToolbarCollapsed(collapsed) {
   const toggle = $('tutorToolbarToggle');
   const caret = $('tutorToolbarCaret');
   if (!bar) return;
+
+  // Authoritative show/hide via the native [hidden] attribute.
+  // [hidden] { display: none !important; } is defined in style.css,
+  // so no stylesheet rule can accidentally reveal the element.
+  const expanded = bar.querySelector('.toolbar-expanded');
+  const collapsedEl = bar.querySelector('.toolbar-collapsed');
+  if (expanded) expanded.hidden = collapsed;
+  if (collapsedEl) collapsedEl.hidden = !collapsed;
+
+  // Class is kept only for optional styling hooks (padding, borders).
   bar.classList.toggle('collapsed', collapsed);
+
   if (toggle) {
     toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
     toggle.title = collapsed ? 'Expand controls' : 'Collapse controls';
@@ -1444,24 +1455,41 @@ function refreshToolbarCollapsedLabel() {
   const sel = $('exerciseId');
   if (!el || !sel) return;
   const opt = sel.selectedOptions && sel.selectedOptions[0];
-  el.textContent = opt ? opt.textContent : (sel.value || '—');
+  const text = (opt ? opt.textContent : sel.value || '').trim();
+  // Suppress the placeholder so the collapsed strip never says
+  // "Loading..." while the exercise list is still arriving.
+  if (!text || /^loading/i.test(text)) {
+    el.textContent = '';
+    return;
+  }
+  el.textContent = text;
 }
 
 function initTutorToolbar() {
+  const bar = $('tutorToolbar');
   const toggle = $('tutorToolbarToggle');
+
+  // Always start expanded — do not rely on the absence of a class.
+  setTutorToolbarCollapsed(false);
+
   if (toggle) {
     toggle.addEventListener('click', () => {
-      const bar = $('tutorToolbar');
       if (!bar) return;
       const isCollapsed = bar.classList.contains('collapsed');
       setTutorToolbarCollapsed(!isCollapsed);
     });
   }
 
-  // Keep the collapsed strip's exercise name in sync with the picker.
+  // Keep the collapsed strip's exercise name in sync with the picker,
+  // including when the options arrive asynchronously after load.
   const sel = $('exerciseId');
   if (sel) {
     sel.addEventListener('change', refreshToolbarCollapsedLabel);
+    // Some pages populate options after DOMContentLoaded. Watch for
+    // the options to settle, then resync the collapsed label once.
+    const obs = new MutationObserver(() => refreshToolbarCollapsedLabel());
+    obs.observe(sel, { childList: true });
+    setTimeout(() => obs.disconnect(), 5000);
   }
   refreshToolbarCollapsedLabel();
 }
