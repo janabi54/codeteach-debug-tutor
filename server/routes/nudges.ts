@@ -219,6 +219,16 @@ router.post(
       void pushUnreadCount(d.studentId);
     }
 
+    db.audit.record({
+      actorId: instructorId,
+      actorEmail: instructorEmail,
+      action: 'announcement.send',
+      targetType: 'cohort',
+      targetId: cohortId,
+      targetLabel: cohort.name,
+      metadata: { recipients: sent, preview: trimmedBody.slice(0, 80) },
+    });
+
     res.status(201).json({ sent, cohortId });
   }
 );
