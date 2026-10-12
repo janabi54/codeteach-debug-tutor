@@ -51,8 +51,8 @@ main { height: calc(100vh - 53px); overflow: hidden; }
 
 #code, #errorOutput { width: 100%; border: 1px solid #dfe2e7; border-radius: 8px; padding: 12px; font-family: "SF Mono", Monaco, Consolas, monospace; font-size: 13px; line-height: 1.5; background: #fff; resize: vertical; }
 #code {
-  min-height: 240px;
-  flex: 1 1 auto;   /* grow to fill the editor pane */
+  min-height: 420px;   /* real editing surface even when the console is open */
+  flex: 1 1 auto;      /* grow to fill the editor pane */
 }
 #errorOutput { min-height: 90px; }
 
@@ -4540,3 +4540,62 @@ body.modal-open { overflow: hidden; }
 /* I fixed it — green (was inline style). */
 .fixed-btn { background: #059669 !important; }
 .fixed-btn:hover { background: #047857 !important; }
+
+/* ── Collapsible tutor toolbar ── */
+.tutor-toolbar {
+  position: relative;
+  padding-right: 40px;   /* room for the toggle button */
+  transition: padding 0.15s ease;
+}
+.toolbar-expanded {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+.toolbar-collapsed { display: none; }
+.tutor-toolbar-toggle {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.tutor-toolbar-toggle:hover {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+  color: #4f46e5;
+}
+.tutor-toolbar-toggle:focus-visible {
+  outline: 2px solid #4f46e5;
+  outline-offset: 1px;
+}
+/* Collapsed state: hide the expanded controls, show the exercise name. */
+.tutor-toolbar.collapsed .toolbar-expanded { display: none; }
+.tutor-toolbar.collapsed .toolbar-collapsed {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 2px 0;
+}
+.toolbar-collapsed-exercise {
+  font-size: 13px;
+  font-weight: 600;
+  color: #4b5563;
+}
+.tutor-toolbar.collapsed {
+  padding: 6px 40px 6px 0;
+  border-bottom: 1px solid #eef1f5;
+}

@@ -1424,6 +1424,50 @@ function initConsoleDrawer() {
 
 document.addEventListener('DOMContentLoaded', initConsoleDrawer);
 
+// --- Collapsible tutor toolbar ---
+
+function setTutorToolbarCollapsed(collapsed) {
+  const bar = $('tutorToolbar');
+  const toggle = $('tutorToolbarToggle');
+  const caret = $('tutorToolbarCaret');
+  if (!bar) return;
+  bar.classList.toggle('collapsed', collapsed);
+  if (toggle) {
+    toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    toggle.title = collapsed ? 'Expand controls' : 'Collapse controls';
+  }
+  if (caret) caret.textContent = collapsed ? '▾' : '▴';
+}
+
+function refreshToolbarCollapsedLabel() {
+  const el = $('toolbarCollapsedExercise');
+  const sel = $('exerciseId');
+  if (!el || !sel) return;
+  const opt = sel.selectedOptions && sel.selectedOptions[0];
+  el.textContent = opt ? opt.textContent : (sel.value || '—');
+}
+
+function initTutorToolbar() {
+  const toggle = $('tutorToolbarToggle');
+  if (toggle) {
+    toggle.addEventListener('click', () => {
+      const bar = $('tutorToolbar');
+      if (!bar) return;
+      const isCollapsed = bar.classList.contains('collapsed');
+      setTutorToolbarCollapsed(!isCollapsed);
+    });
+  }
+
+  // Keep the collapsed strip's exercise name in sync with the picker.
+  const sel = $('exerciseId');
+  if (sel) {
+    sel.addEventListener('change', refreshToolbarCollapsedLabel);
+  }
+  refreshToolbarCollapsedLabel();
+}
+
+document.addEventListener('DOMContentLoaded', initTutorToolbar);
+
 // --- Class fingerprint tab (legacy — the tab UI was replaced by
 // Analytics, but the endpoint and renderClassFingerprint are kept so
 // the loader can be revived without a rewrite. Guarded so the missing

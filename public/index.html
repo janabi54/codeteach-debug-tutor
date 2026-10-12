@@ -140,19 +140,27 @@
           <option value="python">Python</option>
         </select>
       </div>
-      <div class="tutor-toolbar">
-        <div class="toolbar-exercise">
-          <label for="exerciseId">Exercise</label>
-          <select id="exerciseId" class="exercise-select">
-            <option value="ex-1">Loading...</option>
-          </select>
-          <p id="exerciseHint" class="field-hint" hidden></p>
+      <div class="tutor-toolbar" id="tutorToolbar">
+        <div class="toolbar-expanded">
+          <div class="toolbar-exercise">
+            <label for="exerciseId">Exercise</label>
+            <select id="exerciseId" class="exercise-select">
+              <option value="ex-1">Loading...</option>
+            </select>
+            <p id="exerciseHint" class="field-hint" hidden></p>
+          </div>
+          <div class="toolbar-actions">
+            <button id="askBtn" class="primary small">Ask the Tutor for a Hint</button>
+            <button id="fixedBtn" class="primary small fixed-btn">I fixed it</button>
+            <button id="resetBtn" class="ghost small">Reset hint ladder</button>
+          </div>
         </div>
-        <div class="toolbar-actions">
-          <button id="askBtn" class="primary small">Ask the Tutor for a Hint</button>
-          <button id="fixedBtn" class="primary small fixed-btn">I fixed it</button>
-          <button id="resetBtn" class="ghost small">Reset hint ladder</button>
+        <div class="toolbar-collapsed">
+          <span class="toolbar-collapsed-exercise" id="toolbarCollapsedExercise">—</span>
         </div>
+        <button type="button" class="tutor-toolbar-toggle" id="tutorToolbarToggle" aria-expanded="true" title="Collapse controls" aria-label="Toggle controls">
+          <span id="tutorToolbarCaret">▴</span>
+        </button>
       </div>
 
       <textarea id="code" spellcheck="false" placeholder="Paste your code here...">const arr = [1, 2, 3];
