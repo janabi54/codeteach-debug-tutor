@@ -211,6 +211,13 @@ if (!hasIsAnnouncement) {
   console.log('[db] migrated: added nudge_messages.is_announcement');
 }
 
+// One-time migration: study_group_members.last_read_at (chat unread tracking)
+const sgmCols = sqlite.prepare('PRAGMA table_info(study_group_members)').all() as Array<{ name: string }>;
+if (!sgmCols.some((c) => c.name === 'last_read_at')) {
+  sqlite.exec('ALTER TABLE study_group_members ADD COLUMN last_read_at TEXT');
+  console.log('[db] migrated: added study_group_members.last_read_at');
+}
+
 
 export interface DeletionAudit {
   id: string;
@@ -879,6 +886,140 @@ export const db = {
         )
         .run(status, reviewerId, groupId);
       return (r.changes ?? 0) > 0;
+    },
+
+    // ── Chat ──
+
+    /**
+     * Post a message to a group. Caller must be a member (checked
+     * at the route layer).
+     */
+    postMessage(data: { groupId: string; authorId: string; body: string }): {
+      id: string;
+      groupId: string;
+      authorId: string;
+      body: string;
+      createdAt: string;
+    } {
+      const id = randomUUID();
+      sqlite
+        .prepare(
+          `INSERT INTO study_group_messages (id, group_id, author_id, body)
+           VALUES (?, ?, ?, ?)`
+        )
+        .run(id, data.groupId, data.authorId, data.body);
+      return sqlite
+        .prepare(
+          `SELECT id, group_id AS groupId, author_id AS authorId,
+                  body, created_at AS createdAt
+           FROM study_group_messages WHERE id = ?`
+        )
+        .get(id) as any;
+    },
+
+    /**
+     * Cursor-paginated message list. When `before` is provided,
+     * returns messages older than that message's created_at.
+     * Returns them in ascending order for easy rendering.
+     */
+    listMessages(opts: {
+      groupId: string;
+      before?: string | null;
+      limit?: number;
+    }): { messages: Array<{
+      id: string;
+      groupId: string;
+      authorId: string;
+      authorName: string;
+      body: string;
+      createdAt: string;
+    }>; hasMore: boolean } {
+      const limit = Math.min(Math.max(opts.limit ?? 50, 1), 100);
+      let beforeTs: string | null = null;
+      if (opts.before) {
+        const row = sqlite
+          .prepare('SELECT created_at AS createdAt FROM study_group_messages WHERE id = ? AND group_id = ?')
+          .get(opts.before, opts.groupId) as { createdAt: string } | undefined;
+        if (row) beforeTs = row.createdAt;
+      }
+      const params: any[] = [opts.groupId];
+      let where = 'm.group_id = ?';
+      if (beforeTs) { where += ' AND m.created_at < ?'; params.push(beforeTs); }
+      params.push(limit + 1);
+
+      const rows = sqlite
+        .prepare(
+          `SELECT m.id, m.group_id AS groupId, m.author_id AS authorId,
+                  u.display_name AS authorName, m.body, m.created_at AS createdAt
+           FROM study_group_messages m
+           JOIN users u ON u.id = m.author_id
+           WHERE ${where}
+           ORDER BY m.created_at DESC
+           LIMIT ?`
+        )
+        .all(...params) as any[];
+
+      const hasMore = rows.length > limit;
+      const trimmed = hasMore ? rows.slice(0, limit) : rows;
+      trimmed.reverse(); // ascending for render
+      return { messages: trimmed, hasMore };
+    },
+
+    /** Author-only delete. Returns true if a row was removed. */
+    deleteMessage(messageId: string, authorId: string): boolean {
+      const r = sqlite
+        .prepare('DELETE FROM study_group_messages WHERE id = ? AND author_id = ?')
+        .run(messageId, authorId);
+      return (r.changes ?? 0) > 0;
+    },
+
+    /** Mark a group read by setting last_read_at for this user. */
+    markRead(groupId: string, userId: string): boolean {
+      const r = sqlite
+        .prepare(`UPDATE study_group_members SET last_read_at = datetime('now')
+                 WHERE group_id = ? AND user_id = ?`)
+        .run(groupId, userId);
+      return (r.changes ?? 0) > 0;
+    },
+
+    /**
+     * Unread message count in one group for one user — messages from
+     * others, created after the user's last_read_at.
+     */
+    unreadCountFor(groupId: string, userId: string): number {
+      const row = sqlite
+        .prepare(
+          `SELECT COUNT(*) AS n
+           FROM study_group_messages m
+           JOIN study_group_members sgm
+             ON sgm.group_id = m.group_id AND sgm.user_id = ?
+           WHERE m.group_id = ?
+             AND m.author_id != ?
+             AND (sgm.last_read_at IS NULL OR m.created_at > sgm.last_read_at)`
+        )
+        .get(userId, groupId, userId) as { n: number };
+      return row?.n ?? 0;
+    },
+
+    /**
+     * Unread counts for every group this user is in — one query.
+     * Returns a map of groupId -> count.
+     */
+    unreadCountsForUser(userId: string): Record<string, number> {
+      const rows = sqlite
+        .prepare(
+          `SELECT m.group_id AS groupId, COUNT(*) AS n
+           FROM study_group_messages m
+           JOIN study_group_members sgm
+             ON sgm.group_id = m.group_id AND sgm.user_id = ?
+           WHERE m.author_id != ?
+             AND (sgm.last_read_at IS NULL OR m.created_at > sgm.last_read_at)
+           GROUP BY m.group_id`
+        )
+        .all(userId, userId) as Array<{ groupId: string; n: number }>;
+      const out: Record<string, number> = {};
+      for (const r of rows) out[r.groupId] = r.n;
+      return out;
     },
 
     /**

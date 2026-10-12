@@ -317,3 +317,20 @@ CREATE TABLE IF NOT EXISTS study_group_members (
 
 CREATE INDEX IF NOT EXISTS idx_study_group_members_user
   ON study_group_members(user_id);
+
+-- ── Study group chat ──
+-- Messages posted by group members. Private to the group; no tutor
+-- visibility. Pagination is cursor-based (created_at < before).
+
+CREATE TABLE IF NOT EXISTS study_group_messages (
+  id TEXT PRIMARY KEY,
+  group_id TEXT NOT NULL,
+  author_id TEXT NOT NULL,
+  body TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (group_id) REFERENCES study_groups(id) ON DELETE CASCADE,
+  FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_study_group_messages_group
+  ON study_group_messages(group_id, created_at DESC);

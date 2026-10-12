@@ -1,6 +1,7 @@
 import express from 'express';
 import { db, sqlite } from '../db.js';
 import { requireAuth } from '../middleware/requireAuth.js';
+import { broadcastToUser } from '../websocket.js';
 import { deriveStudentNextAction } from '../util/nextAction.js';
 import { deriveRosterStatus } from '../util/status.js';
 
@@ -124,6 +125,88 @@ router.get('/me/groups/:groupId', requireAuth, async (req, res) => {
     return res.status(403).json({ error: 'You are not in this group.' });
   }
   res.json({ group, members: db.studyGroups.listMembers(groupId) });
+});
+
+// ── Study group chat ──
+
+const MAX_CHAT_BODY = 2000;
+
+// GET /api/me/groups/:groupId/messages?before=<id>&limit=50
+router.get('/me/groups/:groupId/messages', requireAuth, async (req, res) => {
+  const userId = req.user!.id;
+  const { groupId } = req.params;
+  if (!db.studyGroups.isMember(groupId, userId)) {
+    return res.status(403).json({ error: 'You are not in this group.' });
+  }
+  const before = typeof req.query.before === 'string' && req.query.before.length > 0 ? req.query.before : null;
+  const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 100);
+  const page = db.studyGroups.listMessages({ groupId, before, limit });
+  res.json(page);
+});
+
+// POST /api/me/groups/:groupId/messages  { body }
+router.post('/me/groups/:groupId/messages', requireAuth, async (req, res) => {
+  const userId = req.user!.id;
+  const { groupId } = req.params;
+  if (!db.studyGroups.isMember(groupId, userId)) {
+    return res.status(403).json({ error: 'You are not in this group.' });
+  }
+  const raw = (req.body as { body?: string }).body ?? '';
+  const trimmed = String(raw).trim();
+  if (trimmed.length === 0) return res.status(400).json({ error: 'Message body is required.' });
+  if (trimmed.length > MAX_CHAT_BODY) {
+    return res.status(400).json({ error: 'Message body must be ' + MAX_CHAT_BODY + ' characters or fewer.' });
+  }
+
+  const message = db.studyGroups.postMessage({ groupId, authorId: userId, body: trimmed });
+  const author = await db.users.findById(userId);
+
+  // Broadcast to every member (including the author, for cross-tab sync).
+  const members = db.studyGroups.listMembers(groupId);
+  for (const m of members) {
+    broadcastToUser(m.userId, {
+      type: 'study-group:message',
+      groupId,
+      message: {
+        id: message.id,
+        authorId: message.authorId,
+        authorName: author?.displayName ?? 'Someone',
+        body: message.body,
+        createdAt: message.createdAt,
+      },
+    });
+  }
+
+  res.status(201).json({
+    message: {
+      id: message.id,
+      groupId: message.groupId,
+      authorId: message.authorId,
+      authorName: author?.displayName ?? 'Someone',
+      body: message.body,
+      createdAt: message.createdAt,
+    },
+  });
+});
+
+// DELETE /api/me/groups/messages/:messageId
+router.delete('/me/groups/messages/:messageId', requireAuth, async (req, res) => {
+  const userId = req.user!.id;
+  const { messageId } = req.params;
+  const ok = db.studyGroups.deleteMessage(messageId, userId);
+  if (!ok) return res.status(404).json({ error: 'Message not found, or you are not its author.' });
+  res.json({ ok: true });
+});
+
+// POST /api/me/groups/:groupId/mark-read
+router.post('/me/groups/:groupId/mark-read', requireAuth, async (req, res) => {
+  const userId = req.user!.id;
+  const { groupId } = req.params;
+  if (!db.studyGroups.isMember(groupId, userId)) {
+    return res.status(403).json({ error: 'You are not in this group.' });
+  }
+  db.studyGroups.markRead(groupId, userId);
+  res.json({ ok: true });
 });
 
 // GET /api/me/groups/:groupId/feed
