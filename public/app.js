@@ -350,6 +350,20 @@ function renderHypothesisPrompt(prompt, level) {
  * picker state fetch and from handleHintResponse when a completion
  * response arrives.
  */
+/**
+ * Whether 'I fixed it' may be enabled for this exercise. Fails open
+ * (returns true) when the run state is unknown or the exercise has
+ * no goal — we don't want to lock students out of un-annotated
+ * exercises or transient states.
+ */
+function canMarkFixed(exerciseId) {
+  if (!exerciseId) return true;
+  const rs = __runStateByExercise.get(exerciseId);
+  if (!rs) return true;
+  if (!rs.hasGoal) return true;
+  return rs.lastRunMatched === true;
+}
+
 function setSessionCompleteButtons(exerciseId, isComplete) {
   const askBtn = $('askBtn');
   const fixedBtn = $('fixedBtn');
@@ -361,7 +375,11 @@ function setSessionCompleteButtons(exerciseId, isComplete) {
     askBtn.textContent = isComplete ? 'Session complete' : 'Ask the Tutor for a Hint';
   }
   if (fixedBtn) {
-    fixedBtn.disabled = !!isComplete;
+    const gated = !isComplete && !canMarkFixed(exerciseId);
+    fixedBtn.disabled = !!isComplete || gated;
+    fixedBtn.title = gated
+      ? 'Run your code, compare the output, and match the goal first.'
+      : '';
   }
 }
 
@@ -872,6 +890,8 @@ async function hydrateSession() {
       lastRunMatched: data.lastRunMatched ?? null,
       hasGoal: !!data.hasGoal,
     });
+    // Re-evaluate the 'I fixed it' gate now that the run state is known.
+    setSessionCompleteButtons(exerciseId, data.state === 'complete');
     if (data.state === 'resolved') {
       renderPostMortemPrompt(
         "You fixed this one earlier. Before we move on: in your own words, why did the bug happen?"
@@ -1688,6 +1708,8 @@ async function compareRunOutput() {
         lastRunMatched: data.hasGoal ? !!data.matched : null,
         hasGoal: !!data.hasGoal,
       });
+      // Re-evaluate the 'I fixed it' gate with the fresh match state.
+      setSessionCompleteButtons(exId, false);
     }
 
     result.hidden = false;
@@ -1733,7 +1755,11 @@ function scheduleClearRun() {
       const sel = $('exerciseId');
       if (sel && sel.value) {
         const prev = __runStateByExercise.get(sel.value);
-        if (prev) __runStateByExercise.set(sel.value, { ...prev, lastRunMatched: null });
+        if (prev) {
+          __runStateByExercise.set(sel.value, { ...prev, lastRunMatched: null });
+          // Code changed — 'I fixed it' is gated again.
+          setSessionCompleteButtons(sel.value, false);
+        }
       }
     } catch { /* ignore */ }
   }, 900);
