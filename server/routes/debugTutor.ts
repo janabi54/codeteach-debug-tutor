@@ -366,9 +366,10 @@ router.get('/session/:studentId/:exerciseId', requireAuth, async (req, res) => {
 
   const session = await db.hintSessions.find(studentId, exerciseId);
   if (!session) {
-    return res.json({ state: 'open', currentLevel: 1, hypothesisPending: true });
+    return res.json({ id: null, state: 'open', currentLevel: 1, hypothesisPending: true });
   }
   res.json({
+    id: session.id,
     state: session.state,
     currentLevel: session.currentLevel,
     hypothesisPending: session.hypothesisPending,

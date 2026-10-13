@@ -867,6 +867,7 @@ async function hydrateSession() {
       encodeURIComponent(exerciseId)
     );
     const data = await res.json();
+    if (data.id) __currentSessionId = data.id;
     if (data.state === 'resolved') {
       renderPostMortemPrompt(
         "You fixed this one earlier. Before we move on: in your own words, why did the bug happen?"
