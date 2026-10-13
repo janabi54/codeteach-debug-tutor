@@ -718,6 +718,86 @@ function renderPostMortemResult(data) {
 }
 
 // --- Session state hydration on page load ---
+// ── Exercise banner (Session 1) ──
+// Cache of exercises keyed by slug, populated by loadExercisePicker.
+const __exercisesBySlug = new Map();
+// Tracks the starter code we last loaded per slug, so we can tell
+// when the code textarea still holds "untouched starter" vs. the
+// student's edits.
+const __lastStarterBySlug = new Map();
+
+function renderExerciseBanner(slug) {
+  const banner = $('exerciseBanner');
+  if (!banner) return;
+  const ex = slug ? __exercisesBySlug.get(slug) : null;
+  if (!ex) { banner.hidden = true; return; }
+  banner.hidden = false;
+
+  const titleEl = $('exerciseBannerTitle');
+  const descEl = $('exerciseBannerDesc');
+  const conceptsEl = $('exerciseBannerConcepts');
+
+  if (titleEl) titleEl.textContent = ex.title || ex.slug;
+  if (descEl) {
+    const desc = (ex.description || '').trim();
+    descEl.textContent = desc || 'No description provided.';
+    descEl.hidden = false;
+  }
+  if (conceptsEl) {
+    const concepts = Array.isArray(ex.expectedConcepts) ? ex.expectedConcepts : [];
+    conceptsEl.innerHTML = concepts.length
+      ? concepts.map((c) => '<span class="exercise-concept-chip">' + escapeHtml(c) + '</span>').join('')
+      : '';
+  }
+}
+
+function applyStarterCodeIfClean(ex) {
+  if (!ex) return;
+  const ta = $('code');
+  if (!ta) return;
+  const incoming = ex.starterCode || '';
+  const slug = ex.slug;
+  const previousStarter = __lastStarterBySlug.get(slug) || '';
+  const current = ta.value || '';
+  // Only clobber if the textarea is empty, or still contains the
+  // starter we previously loaded for this exercise. Preserve edits.
+  const isEmpty = current.trim().length === 0;
+  const isUntouchedStarter = previousStarter.length > 0 && current === previousStarter;
+  if (isEmpty || isUntouchedStarter) {
+    ta.value = incoming;
+    __lastStarterBySlug.set(slug, incoming);
+  } else if (!__lastStarterBySlug.has(slug)) {
+    // First view of this exercise with pre-existing text: remember
+    // the starter so future views can detect untouched state.
+    __lastStarterBySlug.set(slug, incoming);
+  }
+}
+
+function setLanguageReadOnly(language) {
+  const sel = $('language');
+  if (!sel || !language) return;
+  // Force the select to the exercise's language; disable to make it
+  // informational until the runner lands.
+  const hasOption = Array.from(sel.options).some((o) => o.value === language);
+  if (hasOption) sel.value = language;
+  sel.disabled = true;
+  sel.title = 'Language set by the exercise';
+}
+
+function wireExerciseBanner() {
+  const toggle = $('exerciseBannerToggle');
+  const banner = $('exerciseBanner');
+  if (!toggle || !banner || toggle.__wired) return;
+  toggle.__wired = true;
+  toggle.addEventListener('click', () => {
+    const isCollapsed = banner.classList.toggle('collapsed');
+    toggle.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
+    toggle.title = isCollapsed ? 'Expand instructions' : 'Collapse instructions';
+  });
+}
+
+document.addEventListener('DOMContentLoaded', wireExerciseBanner);
+
 async function hydrateSession() {
   const studentId = currentUser?.id || 'unknown';
   const exerciseId = $('exerciseId').value.trim() || 'ex-1';
@@ -2248,6 +2328,23 @@ function renderExercisesTable(exercises) {
     </table>
   `;
 }
+
+// Wire the exercise picker change on the Tutor tab to re-render the
+// exercise banner + starter code. Runs once.
+document.addEventListener('DOMContentLoaded', () => {
+  const sel = $('exerciseId');
+  if (!sel || sel.__bannerWired) return;
+  sel.__bannerWired = true;
+  sel.addEventListener('change', () => {
+    const slug = sel.value;
+    renderExerciseBanner(slug);
+    const ex = slug ? __exercisesBySlug.get(slug) : null;
+    if (ex) {
+      setLanguageReadOnly(ex.language);
+      applyStarterCodeIfClean(ex);
+    }
+  });
+});
 
 function wireExercisesTable() {
   const sortSel = $('exercisesSort');
@@ -5403,6 +5500,10 @@ async function loadExercisePicker() {
 
     const exercises = await res.json();
 
+    // Cache every exercise by slug for the exercise banner.
+    __exercisesBySlug.clear();
+    for (const ex of exercises) __exercisesBySlug.set(ex.slug, ex);
+
     if (!exercises.length) {
       select.innerHTML = '<option value="ex-1">ex-1 (not enrolled)</option>';
       if (hint) {
@@ -5437,6 +5538,17 @@ async function loadExercisePicker() {
     const stillValid = exercises.some((e) => e.slug === current);
     if (stillValid) {
       select.value = current;
+    }
+
+    // Render the banner + starter code for whatever is now selected.
+    const selected = select.value;
+    if (selected) {
+      renderExerciseBanner(selected);
+      const ex = __exercisesBySlug.get(selected);
+      if (ex) {
+        setLanguageReadOnly(ex.language);
+        applyStarterCodeIfClean(ex);
+      }
     }
 
     // Save the choice when changed

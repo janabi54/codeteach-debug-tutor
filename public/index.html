@@ -163,6 +163,19 @@
         </button>
       </div>
 
+      <div class="exercise-banner" id="exerciseBanner" hidden>
+        <div class="exercise-banner-header">
+          <div class="exercise-banner-title" id="exerciseBannerTitle">—</div>
+          <button type="button" class="exercise-banner-toggle" id="exerciseBannerToggle" aria-expanded="true" title="Collapse instructions" aria-label="Toggle instructions">
+            <span class="exercise-banner-caret" id="exerciseBannerCaret">▾</span>
+          </button>
+        </div>
+        <div class="exercise-banner-body" id="exerciseBannerBody">
+          <p class="exercise-banner-desc" id="exerciseBannerDesc"></p>
+          <div class="exercise-banner-concepts" id="exerciseBannerConcepts"></div>
+        </div>
+      </div>
+
       <textarea id="code" spellcheck="false" placeholder="Paste your code here...">const arr = [1, 2, 3];
 for (let i = 0; i < arr.length; i++) {
   console.log(arr[i]);

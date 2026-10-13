@@ -2678,13 +2678,18 @@ export const db = {
       id: string;
       slug: string;
       title: string;
+      description: string;
       language: string;
+      starterCode: string;
+      expectedConcepts: string[];
       cohortId: string;
       cohortName: string;
     }>> {
       return (sqlite
         .prepare(
-          `SELECT e.id, e.slug, e.title, e.language, e.cohort_id AS cohortId, c.name AS cohortName
+          `SELECT e.id, e.slug, e.title, e.description, e.language, e.starter_code AS starterCode,
+                  e.expected_concepts AS expectedConcepts,
+                  e.cohort_id AS cohortId, c.name AS cohortName
            FROM exercises e
            JOIN cohorts c ON c.id = e.cohort_id
            JOIN cohort_members cm ON cm.cohort_id = c.id
@@ -2695,7 +2700,18 @@ export const db = {
           id: row.id,
           slug: row.slug,
           title: row.title,
+          description: row.description || '',
           language: row.language,
+          starterCode: row.starterCode || '',
+          expectedConcepts: (() => {
+            if (!row.expectedConcepts) return [];
+            try {
+              const parsed = JSON.parse(row.expectedConcepts);
+              return Array.isArray(parsed) ? parsed.map(String) : [];
+            } catch {
+              return [];
+            }
+          })(),
           cohortId: row.cohortId,
           cohortName: row.cohortName,
         }));
