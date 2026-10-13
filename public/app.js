@@ -110,6 +110,8 @@ function wireCaptureListeners() {
  * replay has the state at the moment the first hint was requested.
  */
 function armCapture(sessionId, exerciseId) {
+  // Track the current session for the Run pane (verify-run + clear-run).
+  __currentSessionId = sessionId;
   const isNew = __captureSessionId !== sessionId;
   __captureSessionId = sessionId;
   __captureExerciseId = exerciseId;
@@ -1632,6 +1634,95 @@ function initTutorToolbar() {
 }
 
 document.addEventListener('DOMContentLoaded', initTutorToolbar);
+
+// --- Run pane: compare pasted output (Session 3b) ---
+
+let __currentSessionId = null;
+let __clearRunTimer = null;
+
+async function compareRunOutput() {
+  const ta = $('runOutput');
+  const btn = $('runCompareBtn');
+  const result = $('runResult');
+  if (!ta || !btn || !result) return;
+
+  if (!__currentSessionId) {
+    result.hidden = false;
+    result.className = 'run-result run-result-error';
+    result.textContent = 'No session yet. Ask the tutor for a hint first to create one.';
+    return;
+  }
+
+  const output = ta.value;
+  btn.disabled = true;
+  btn.textContent = 'Comparing…';
+  try {
+    const res = await fetch('/api/debug-tutor/verify-run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ sessionId: __currentSessionId, output }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      result.hidden = false;
+      result.className = 'run-result run-result-error';
+      result.textContent = data.error || 'Could not compare.';
+      return;
+    }
+    result.hidden = false;
+    if (!data.hasGoal) {
+      result.className = 'run-result run-result-info';
+      result.textContent = 'No goal set for this exercise yet. Ask your tutor to add one.';
+    } else if (data.matched) {
+      result.className = 'run-result run-result-match';
+      result.innerHTML = 'Looks right! You produced: <code>' + escapeHtml(data.submitted) + '</code>.';
+    } else {
+      result.className = 'run-result run-result-mismatch';
+      result.innerHTML =
+        'Expected <code>' + escapeHtml(data.expected) + '</code>, ' +
+        'you pasted <code>' + escapeHtml(data.submitted) + '</code>.';
+    }
+  } catch (err) {
+    result.hidden = false;
+    result.className = 'run-result run-result-error';
+    result.textContent = 'Failed: ' + err.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Compare';
+  }
+}
+
+// Called by the client whenever the code textarea changes: clears any
+// stored run after a short debounce, because a change to the code
+// invalidates the previous comparison as evidence.
+function scheduleClearRun() {
+  if (__clearRunTimer) clearTimeout(__clearRunTimer);
+  __clearRunTimer = setTimeout(async () => {
+    if (!__currentSessionId) return;
+    try {
+      await fetch('/api/debug-tutor/clear-run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ sessionId: __currentSessionId }),
+      });
+      const result = $('runResult');
+      if (result) { result.hidden = true; result.textContent = ''; result.className = 'run-result'; }
+    } catch { /* ignore */ }
+  }, 900);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const btn = $('runCompareBtn');
+  if (btn) btn.addEventListener('click', compareRunOutput);
+
+  const codeTa = $('code');
+  if (codeTa && !codeTa.__runWired) {
+    codeTa.__runWired = true;
+    codeTa.addEventListener('input', scheduleClearRun);
+  }
+});
 
 // --- Class fingerprint tab (legacy — the tab UI was replaced by
 // Analytics, but the endpoint and renderClassFingerprint are kept so

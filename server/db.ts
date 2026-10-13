@@ -226,6 +226,15 @@ if (!exerciseCols2.some((c) => c.name === 'expected_output')) {
   console.log('[db] migrated: added exercises.expected_output');
 }
 
+// One-time migration: hint_sessions.last_run_* (Session 3b of the C plan)
+const sessionCols = sqlite.prepare('PRAGMA table_info(hint_sessions)').all() as Array<{ name: string }>;
+if (!sessionCols.some((c) => c.name === 'last_run_at')) {
+  sqlite.exec('ALTER TABLE hint_sessions ADD COLUMN last_run_at TEXT');
+  sqlite.exec('ALTER TABLE hint_sessions ADD COLUMN last_run_output TEXT');
+  sqlite.exec('ALTER TABLE hint_sessions ADD COLUMN last_run_matched INTEGER');
+  console.log('[db] migrated: added hint_sessions.last_run_*');
+}
+
 
 export interface DeletionAudit {
   id: string;
@@ -315,6 +324,9 @@ interface HintSession {
   struggleMinutes: number;
   codeSubmissions: number;
   createdAt: Date;
+  lastRunAt: Date | null;
+  lastRunOutput: string | null;
+  lastRunMatched: boolean | null;
 }
 
 interface MistakePatternRecord {
@@ -352,6 +364,11 @@ function rowToSession(row: any): HintSession {
     struggleMinutes: row.struggle_minutes ?? 0,
     codeSubmissions: row.code_submissions ?? 0,
     createdAt: parseSqliteTimestamp(row.created_at),
+    lastRunAt: row.last_run_at ? parseSqliteTimestamp(row.last_run_at) : null,
+    lastRunOutput: row.last_run_output ?? null,
+    lastRunMatched: row.last_run_matched === null || row.last_run_matched === undefined
+      ? null
+      : row.last_run_matched === 1,
   };
 }
 
@@ -3234,6 +3251,32 @@ export const db = {
       if (!current) return;
       await db.hintSessions.update(current.id, patch);
     },
+
+    /** Store the outcome of a run+compare for this session. */
+    recordRun(sessionId: string, output: string, matched: boolean): void {
+      sqlite
+        .prepare(
+          `UPDATE hint_sessions
+           SET last_run_at = datetime('now'),
+               last_run_output = ?,
+               last_run_matched = ?
+           WHERE id = ?`
+        )
+        .run(output, matched ? 1 : 0, sessionId);
+    },
+
+    /** Clear the stored run (e.g. when the student edits the code). */
+    clearRun(sessionId: string): void {
+      sqlite
+        .prepare(
+          `UPDATE hint_sessions
+           SET last_run_at = NULL,
+               last_run_output = NULL,
+               last_run_matched = NULL
+           WHERE id = ?`
+        )
+        .run(sessionId);
+    },
     async getOrCreate(
       studentId: string,
       exerciseId: string,
@@ -3248,6 +3291,9 @@ export const db = {
         struggleMinutes: options?.struggleMinutes ?? 0,
         codeSubmissions: 0,
         createdAt: new Date(),
+        lastRunAt: null,
+        lastRunOutput: null,
+        lastRunMatched: null,
       });
     },
   },

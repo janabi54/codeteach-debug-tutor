@@ -142,7 +142,17 @@
           <button type="button" class="run-pane-collapse" id="runPaneCollapseBtn" title="Collapse run panel" aria-label="Collapse run panel">‹</button>
         </div>
         <div class="run-pane-inner">
-          <p class="empty-state">Run your code in your editor, then paste the output here to compare against the goal.</p>
+          <p class="run-hint">
+            Run your code in your own editor, then paste the output below to
+            compare against the goal.
+          </p>
+          <label for="runOutput" class="run-label">Your output</label>
+          <textarea id="runOutput" class="run-output-input" rows="4" spellcheck="false"
+            placeholder="Paste your program's output here…"></textarea>
+          <div class="run-actions">
+            <button type="button" id="runCompareBtn" class="primary small">Compare</button>
+          </div>
+          <div id="runResult" class="run-result" hidden></div>
         </div>
       </div>
     </div>

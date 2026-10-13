@@ -15,7 +15,9 @@ export interface TutorRequest {
   studentId: string; exerciseId: string; code: string; language: string;
   errorOutput: string;
   exerciseContext: { title: string; description: string;
-    learningObjectives: string[]; expectedConcepts: string[]; };
+    learningObjectives: string[]; expectedConcepts: string[];
+    expectedOutput?: string;
+    lastRun?: { submitted: string; expected: string } | null; };
   attemptNumber: number; passed?: boolean;
   hypothesis?: string;
 }
@@ -107,11 +109,20 @@ export async function getTutorHint(req: TutorRequest): Promise<TutorHint> {
 
 function buildUserMessage(req: TutorRequest, classification: PreClassificationResult,
   hintLevel: HintLevel, studentContext: string): string {
+  const run = req.exerciseContext.lastRun;
+  const goal = (req.exerciseContext.expectedOutput || '').trim();
+  const runBlock = run
+    ? `\nLAST RUN COMPARISON:
+The student ran their code and got: ${JSON.stringify(run.submitted)}
+Expected output: ${JSON.stringify(run.expected)}
+Use this mismatch to guide the next hint. The student has concrete evidence of what went wrong — reference it specifically without just restating the numbers.\n`
+    : (goal ? `\nEXPECTED OUTPUT (the goal): ${JSON.stringify(goal)}\n` : '');
+
   return `EXERCISE: ${req.exerciseContext.title}
 DESCRIPTION: ${req.exerciseContext.description}
 LEARNING OBJECTIVES: ${req.exerciseContext.learningObjectives.join('; ')}
 EXPECTED CONCEPTS: ${req.exerciseContext.expectedConcepts.join('; ')}
-
+${runBlock}
 STUDENT'S CODE (${req.language}):
 \`\`\`${req.language}
 ${req.code}

@@ -17,6 +17,67 @@ const hintSessions = new HintSessionManager();
 // ─────────────────────────────────────────────────────────────
 // POST /api/debug-tutor/hint
 // ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// POST /api/debug-tutor/verify-run
+// Body: { sessionId, output }
+// Compares the student's pasted output against the exercise's
+// expected output (both trimmed). Records the outcome on the session
+// so the tutor can reference it, and so 'I fixed it' can be gated
+// (Session 3c). Returns the comparison result.
+// ─────────────────────────────────────────────────────────────
+router.post('/verify-run', requireAuth, async (req, res) => {
+  const { sessionId, output } = req.body as { sessionId?: string; output?: string };
+  if (!sessionId || typeof output !== 'string') {
+    return res.status(400).json({ error: 'sessionId and output are required.' });
+  }
+
+  const session = await db.hintSessions.findById(sessionId);
+  if (!session) return res.status(404).json({ error: 'Session not found.' });
+
+  // Verify the caller owns this session.
+  const acting = resolveActingStudentId(req, session.studentId);
+  if (acting !== session.studentId) {
+    return res.status(403).json({ error: 'Not your session.' });
+  }
+
+  const exercise = await db.exercises.findBySlug(session.exerciseId);
+  const expected = (exercise?.expectedOutput || '').trim();
+  const submitted = String(output).trim();
+
+  // No goal declared → nothing to compare against. Treat as a non-match
+  // but report hasGoal: false so the client can tell the difference.
+  if (!expected) {
+    return res.json({ matched: false, hasGoal: false, expected: '', submitted });
+  }
+
+  const matched = expected === submitted;
+  db.hintSessions.recordRun(sessionId, submitted, matched);
+
+  res.json({ matched, hasGoal: true, expected, submitted });
+});
+
+// ─────────────────────────────────────────────────────────────
+// POST /api/debug-tutor/clear-run
+// Body: { sessionId }
+// Clears a stored run — called by the client when the student edits
+// their code, because the previous run is no longer evidence.
+// ─────────────────────────────────────────────────────────────
+router.post('/clear-run', requireAuth, async (req, res) => {
+  const { sessionId } = req.body as { sessionId?: string };
+  if (!sessionId) return res.status(400).json({ error: 'sessionId is required.' });
+
+  const session = await db.hintSessions.findById(sessionId);
+  if (!session) return res.status(404).json({ error: 'Session not found.' });
+
+  const acting = resolveActingStudentId(req, session.studentId);
+  if (acting !== session.studentId) {
+    return res.status(403).json({ error: 'Not your session.' });
+  }
+
+  db.hintSessions.clearRun(sessionId);
+  res.json({ ok: true });
+});
+
 router.post('/hint', requireAuth, async (req, res) => {
   const {
     exerciseId, code, language, errorOutput,
