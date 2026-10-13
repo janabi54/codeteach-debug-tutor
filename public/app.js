@@ -126,6 +126,50 @@ function armCapture(sessionId, exerciseId) {
 document.addEventListener('DOMContentLoaded', () => {
   setTimeout(wireCaptureListeners, 500);
 });
+// --- Run pane collapse controller (Session 3a) ---
+let __runPaneUserCollapsed = false;
+
+function setRunPaneCollapsed(collapsed) {
+  const pane = $('runPane');
+  const toggle = $('runPaneStrip');
+  const chevron = $('runPaneChevron');
+  const body = $('runPaneBody');
+  if (!pane) return;
+
+  // Authoritative show/hide via the native hidden attribute.
+  if (body) body.hidden = collapsed;
+  pane.classList.toggle('collapsed', collapsed);
+
+  if (toggle) toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  if (chevron) chevron.textContent = collapsed ? '‹' : '›';
+}
+
+function initRunPane() {
+  const pane = $('runPane');
+  const strip = $('runPaneStrip');
+  const collapseBtn = $('runPaneCollapseBtn');
+  if (!pane) return;
+
+  // Start expanded.
+  setRunPaneCollapsed(false);
+
+  if (strip) {
+    strip.addEventListener('click', () => {
+      const isCollapsed = pane.classList.contains('collapsed');
+      __runPaneUserCollapsed = !isCollapsed;
+      setRunPaneCollapsed(!isCollapsed);
+    });
+  }
+  if (collapseBtn) {
+    collapseBtn.addEventListener('click', () => {
+      __runPaneUserCollapsed = true;
+      setRunPaneCollapsed(true);
+    });
+  }
+}
+
+document.addEventListener('DOMContentLoaded', initRunPane);
+
 // --- Tutor pane collapse controller (Phase 2) ---
 // Collapsed by default when there is no conversation yet. Auto-expands
 // on the first real message, unless the user has manually collapsed it.

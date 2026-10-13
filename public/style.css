@@ -32,7 +32,16 @@ main { height: calc(100vh - 53px); overflow: hidden; }
 .tab-panel.active { display: block; }
 
 /* TUTOR */
-.tutor-layout { display: grid; grid-template-columns: 1fr 420px; height: 100%; }
+.tutor-layout {
+  display: grid;
+  grid-template-columns: 420px 1fr 420px;   /* run | code | hints */
+  height: 100%;
+}
+/* Four collapse combinations. Chained :has() is supported in every
+   browser that supports :has() at all. */
+.tutor-layout:has(.run-pane.collapsed)         { grid-template-columns: 46px 1fr 420px; }
+.tutor-layout:has(.tutor-pane.collapsed)       { grid-template-columns: 420px 1fr 46px; }
+.tutor-layout:has(.run-pane.collapsed):has(.tutor-pane.collapsed) { grid-template-columns: 46px 1fr 46px; }
 .editor-pane { padding: 20px; overflow-y: auto; display: flex; flex-direction: column; }
 .tutor-pane {
   border-left: 1px solid #e4e6eb;
@@ -4400,9 +4409,7 @@ body.modal-open { overflow: hidden; }
 }
 /* Shrink the grid track itself when the pane collapses — the pane's
    own width is ignored by the grid unless the template says so. */
-.tutor-layout:has(.tutor-pane.collapsed) {
-  grid-template-columns: 1fr 46px;
-}
+/* (superseded by the three-column rules near the top of the file) */
 .tutor-pane.collapsed {
   width: 46px;
   min-width: 46px;
@@ -4707,3 +4714,90 @@ body.modal-open { overflow: hidden; }
   border-radius: 4px;
   font-size: 12px;
 }
+
+
+/* ── Run pane (Session 3a) ── */
+.run-pane {
+  position: relative;
+  border-right: 1px solid #e4e6eb;
+  background: #fafbfc;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  width: 420px;
+  transition: width 0.15s ease;
+}
+.run-pane.collapsed { width: 46px; min-width: 46px; }
+.run-pane-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.run-pane.collapsed .run-pane-body { display: none; }
+.run-pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e4e6eb;
+  background: #fff;
+}
+.run-pane-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #7a7f88;
+}
+.run-pane-collapse {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.run-pane-collapse:hover {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+  color: #4f46e5;
+}
+.run-pane-inner {
+  padding: 16px;
+  overflow-y: auto;
+}
+.run-pane-strip {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  height: 100%;
+  padding: 12px 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #7a7f88;
+}
+.run-pane.collapsed .run-pane-strip { display: flex; }
+.run-pane-strip-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: #4f46e5;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+}
+.run-pane-chevron {
+  font-size: 18px;
+  color: #64748b;
+  margin-top: auto;
+  margin-bottom: 4px;
+}
+.run-pane-strip:hover .run-pane-chevron { color: #4f46e5; }

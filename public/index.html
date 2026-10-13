@@ -131,6 +131,22 @@
 <!-- TUTOR TAB -->
 <section id="tab-tutor" class="tab-panel active">
   <div class="tutor-layout">
+    <div class="run-pane" id="runPane">
+      <button type="button" class="run-pane-strip" id="runPaneStrip" aria-expanded="true" aria-label="Toggle run panel">
+        <span class="run-pane-strip-label">RUN</span>
+        <span class="run-pane-chevron" id="runPaneChevron">›</span>
+      </button>
+      <div class="run-pane-body" id="runPaneBody">
+        <div class="run-pane-header">
+          <div class="run-pane-title">Run</div>
+          <button type="button" class="run-pane-collapse" id="runPaneCollapseBtn" title="Collapse run panel" aria-label="Collapse run panel">‹</button>
+        </div>
+        <div class="run-pane-inner">
+          <p class="empty-state">Run your code in your editor, then paste the output here to compare against the goal.</p>
+        </div>
+      </div>
+    </div>
+
     <div class="editor-pane">
       <div class="pane-header">
         <label for="code">Your code</label>
