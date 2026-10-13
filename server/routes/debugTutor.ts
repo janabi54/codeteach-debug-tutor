@@ -365,14 +365,26 @@ router.get('/session/:studentId/:exerciseId', requireAuth, async (req, res) => {
   const { exerciseId } = req.params;
 
   const session = await db.hintSessions.find(studentId, exerciseId);
+  const exercise = await db.exercises.findBySlug(exerciseId);
+  const hasGoal = !!(exercise?.expectedOutput || '').trim();
+
   if (!session) {
-    return res.json({ id: null, state: 'open', currentLevel: 1, hypothesisPending: true });
+    return res.json({
+      id: null,
+      state: 'open',
+      currentLevel: 1,
+      hypothesisPending: true,
+      lastRunMatched: null,
+      hasGoal,
+    });
   }
   res.json({
     id: session.id,
     state: session.state,
     currentLevel: session.currentLevel,
     hypothesisPending: session.hypothesisPending,
+    lastRunMatched: session.lastRunMatched,
+    hasGoal,
   });
 });
 

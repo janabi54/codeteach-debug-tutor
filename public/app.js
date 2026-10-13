@@ -868,6 +868,10 @@ async function hydrateSession() {
     );
     const data = await res.json();
     if (data.id) __currentSessionId = data.id;
+    __runStateByExercise.set(exerciseId, {
+      lastRunMatched: data.lastRunMatched ?? null,
+      hasGoal: !!data.hasGoal,
+    });
     if (data.state === 'resolved') {
       renderPostMortemPrompt(
         "You fixed this one earlier. Before we move on: in your own words, why did the bug happen?"
@@ -1641,6 +1645,11 @@ document.addEventListener('DOMContentLoaded', initTutorToolbar);
 let __currentSessionId = null;
 let __clearRunTimer = null;
 
+// Per-exercise run state, sourced from /session and updated by the
+// Run pane. Used by the "I fixed it" gate (Session 3c-ii).
+// Shape: { lastRunMatched: boolean | null, hasGoal: boolean }
+const __runStateByExercise = new Map();
+
 async function compareRunOutput() {
   const ta = $('runOutput');
   const btn = $('runCompareBtn');
@@ -1671,6 +1680,16 @@ async function compareRunOutput() {
       result.textContent = data.error || 'Could not compare.';
       return;
     }
+    // Cache the result for the completion gate.
+    const sel = $('exerciseId');
+    const exId = sel ? sel.value : null;
+    if (exId) {
+      __runStateByExercise.set(exId, {
+        lastRunMatched: data.hasGoal ? !!data.matched : null,
+        hasGoal: !!data.hasGoal,
+      });
+    }
+
     result.hidden = false;
     if (!data.hasGoal) {
       result.className = 'run-result run-result-info';
@@ -1710,6 +1729,12 @@ function scheduleClearRun() {
       });
       const result = $('runResult');
       if (result) { result.hidden = true; result.textContent = ''; result.className = 'run-result'; }
+      // The run is no longer evidence — clear the cache too.
+      const sel = $('exerciseId');
+      if (sel && sel.value) {
+        const prev = __runStateByExercise.get(sel.value);
+        if (prev) __runStateByExercise.set(sel.value, { ...prev, lastRunMatched: null });
+      }
     } catch { /* ignore */ }
   }, 900);
 }
