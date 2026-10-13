@@ -24,6 +24,7 @@ function exerciseShape(e: any) {
     language: e.language,
     starterCode: e.starterCode,
     expectedConcepts: e.expectedConcepts,
+    expectedOutput: e.expectedOutput || '',
     learningObjectives: e.learningObjectives,
     struggleMinutes: e.struggleMinutes,
     cohortId: e.cohortId,
@@ -95,6 +96,7 @@ router.post('/', requireInstructor, async (req, res) => {
     starterCode,
     expectedConcepts,
     learningObjectives,
+    expectedOutput,
     struggleMinutes,
   } = req.body ?? {};
 
@@ -117,6 +119,7 @@ router.post('/', requireInstructor, async (req, res) => {
     starterCode: typeof starterCode === 'string' ? starterCode : '',
     expectedConcepts: Array.isArray(expectedConcepts) ? expectedConcepts : [],
     learningObjectives: Array.isArray(learningObjectives) ? learningObjectives : [],
+    expectedOutput: typeof expectedOutput === 'string' ? expectedOutput : '',
     struggleMinutes:
       typeof struggleMinutes === 'number' && struggleMinutes >= 0
         ? Math.min(60, struggleMinutes)
@@ -157,6 +160,7 @@ router.put('/:slug', requireInstructor, async (req, res) => {
     starterCode,
     expectedConcepts,
     learningObjectives,
+    expectedOutput,
     struggleMinutes,
   } = req.body ?? {};
 
@@ -172,6 +176,7 @@ router.put('/:slug', requireInstructor, async (req, res) => {
   if (typeof starterCode === 'string') patch.starterCode = starterCode;
   if (Array.isArray(expectedConcepts)) patch.expectedConcepts = expectedConcepts;
   if (Array.isArray(learningObjectives)) patch.learningObjectives = learningObjectives;
+  if (typeof expectedOutput === 'string') patch.expectedOutput = expectedOutput;
   if (typeof struggleMinutes === 'number' && struggleMinutes >= 0) {
     patch.struggleMinutes = Math.min(60, struggleMinutes);
   }

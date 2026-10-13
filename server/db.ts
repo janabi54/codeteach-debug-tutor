@@ -87,6 +87,7 @@ function rowToExercise(row: any): Exercise {
     starterCode: row.starter_code,
     expectedConcepts: concepts,
     learningObjectives: objectives,
+    expectedOutput: row.expected_output || '',
     struggleMinutes: row.struggle_minutes,
     cohortId: row.cohort_id,
     createdBy: row.created_by,
@@ -218,6 +219,13 @@ if (!sgmCols.some((c) => c.name === 'last_read_at')) {
   console.log('[db] migrated: added study_group_members.last_read_at');
 }
 
+// One-time migration: exercises.expected_output (Session 2 of the C plan)
+const exerciseCols2 = sqlite.prepare('PRAGMA table_info(exercises)').all() as Array<{ name: string }>;
+if (!exerciseCols2.some((c) => c.name === 'expected_output')) {
+  sqlite.exec("ALTER TABLE exercises ADD COLUMN expected_output TEXT NOT NULL DEFAULT ''");
+  console.log('[db] migrated: added exercises.expected_output');
+}
+
 
 export interface DeletionAudit {
   id: string;
@@ -269,6 +277,7 @@ interface Exercise {
   starterCode: string;
   expectedConcepts: string[];
   learningObjectives: string[];
+  expectedOutput: string;
   struggleMinutes: number;
   cohortId: string | null;
   createdBy: string | null;
@@ -621,9 +630,9 @@ const stmt = {
   insertExercise: sqlite.prepare(
     `INSERT INTO exercises
       (id, slug, title, description, language, starter_code,
-       expected_concepts, learning_objectives, struggle_minutes,
-       cohort_id, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       expected_concepts, learning_objectives, expected_output,
+       struggle_minutes, cohort_id, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ),
   findExerciseById: sqlite.prepare(
     'SELECT * FROM exercises WHERE id = ?'
@@ -637,8 +646,8 @@ const stmt = {
   updateExercise: sqlite.prepare(
     `UPDATE exercises SET
        title = ?, description = ?, language = ?, starter_code = ?,
-       expected_concepts = ?, learning_objectives = ?, struggle_minutes = ?,
-       updated_at = datetime('now')
+       expected_concepts = ?, learning_objectives = ?, expected_output = ?,
+       struggle_minutes = ?, updated_at = datetime('now')
      WHERE id = ?`
   ),
   deleteExercise: sqlite.prepare(
@@ -2622,6 +2631,7 @@ export const db = {
       starterCode: string;
       expectedConcepts: string[];
       learningObjectives: string[];
+      expectedOutput?: string;
       struggleMinutes: number;
       cohortId: string | null;
       createdBy: string | null;
@@ -2636,6 +2646,7 @@ export const db = {
         data.starterCode,
         JSON.stringify(data.expectedConcepts),
         JSON.stringify(data.learningObjectives),
+        data.expectedOutput ?? '',
         data.struggleMinutes,
         data.cohortId,
         data.createdBy
@@ -2650,6 +2661,7 @@ export const db = {
       starterCode: string;
       expectedConcepts: string[];
       learningObjectives: string[];
+      expectedOutput: string;
       struggleMinutes: number;
     }>): Promise<void> {
       const current = await db.exercises.findById(id);
@@ -2662,6 +2674,7 @@ export const db = {
         merged.starterCode,
         JSON.stringify(merged.expectedConcepts),
         JSON.stringify(merged.learningObjectives),
+        merged.expectedOutput ?? '',
         merged.struggleMinutes,
         id
       );
@@ -2682,6 +2695,7 @@ export const db = {
       language: string;
       starterCode: string;
       expectedConcepts: string[];
+      expectedOutput: string;
       cohortId: string;
       cohortName: string;
     }>> {
@@ -2689,6 +2703,7 @@ export const db = {
         .prepare(
           `SELECT e.id, e.slug, e.title, e.description, e.language, e.starter_code AS starterCode,
                   e.expected_concepts AS expectedConcepts,
+                  e.expected_output AS expectedOutput,
                   e.cohort_id AS cohortId, c.name AS cohortName
            FROM exercises e
            JOIN cohorts c ON c.id = e.cohort_id
@@ -2712,6 +2727,7 @@ export const db = {
               return [];
             }
           })(),
+          expectedOutput: row.expectedOutput || '',
           cohortId: row.cohortId,
           cohortName: row.cohortName,
         }));

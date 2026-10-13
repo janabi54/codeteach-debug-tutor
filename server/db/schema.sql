@@ -134,6 +134,7 @@ CREATE TABLE IF NOT EXISTS exercises (
   starter_code TEXT NOT NULL DEFAULT '',
   expected_concepts TEXT NOT NULL DEFAULT '[]',
   learning_objectives TEXT NOT NULL DEFAULT '[]',
+  expected_output TEXT NOT NULL DEFAULT '',
   struggle_minutes INTEGER NOT NULL DEFAULT 0,
   cohort_id TEXT,
   created_by TEXT,

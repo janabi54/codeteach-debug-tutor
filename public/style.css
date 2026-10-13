@@ -4692,3 +4692,18 @@ body.modal-open { overflow: hidden; }
 }
 .exercise-banner.collapsed .exercise-banner-body { display: none; }
 .exercise-banner.collapsed .exercise-banner-caret { transform: rotate(-90deg); }
+
+/* ── Exercise banner goal line (Session 2) ── */
+.exercise-banner-goal {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: #4b5563;
+}
+.exercise-banner-goal code {
+  font-family: "SF Mono", Monaco, Consolas, monospace;
+  background: #eef2ff;
+  color: #3730a3;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+}

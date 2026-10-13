@@ -749,6 +749,19 @@ function renderExerciseBanner(slug) {
       ? concepts.map((c) => '<span class="exercise-concept-chip">' + escapeHtml(c) + '</span>').join('')
       : '';
   }
+
+  // "Your goal: …" line when the exercise declares an expected output.
+  const goalEl = $('exerciseBannerGoal');
+  if (goalEl) {
+    const out = (ex.expectedOutput || '').trim();
+    if (out) {
+      goalEl.hidden = false;
+      goalEl.innerHTML = 'Your goal: <code>' + escapeHtml(out) + '</code>';
+    } else {
+      goalEl.hidden = true;
+      goalEl.innerHTML = '';
+    }
+  }
 }
 
 function applyStarterCodeIfClean(ex) {
@@ -2411,6 +2424,7 @@ async function openExerciseEditor(slug) {
       $('exDescription').value = ex.description;
       $('exLanguage').value = ex.language;
       $('exStarterCode').value = ex.starterCode;
+      if ($('exExpectedOutput')) $('exExpectedOutput').value = ex.expectedOutput || '';
       $('exStruggle').value = String(ex.struggleMinutes);
       $('exSlugHint').textContent = 'Slug: ' + ex.slug;
       $('deleteExerciseBtn').hidden = false;
@@ -2571,6 +2585,7 @@ async function saveExercise() {
     description: $('exDescription').value,
     language: $('exLanguage').value,
     starterCode: $('exStarterCode').value,
+    expectedOutput: ($('exExpectedOutput') && $('exExpectedOutput').value.trim()) || '',
     expectedConcepts: getTagValues(exercisesState.conceptsTagify),
     learningObjectives: getTagValues(exercisesState.objectivesTagify),
     struggleMinutes: Math.max(0, Math.min(60, parseInt($('exStruggle').value, 10) || 0)),

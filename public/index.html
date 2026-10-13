@@ -173,6 +173,7 @@
         <div class="exercise-banner-body" id="exerciseBannerBody">
           <p class="exercise-banner-desc" id="exerciseBannerDesc"></p>
           <div class="exercise-banner-concepts" id="exerciseBannerConcepts"></div>
+          <p class="exercise-banner-goal" id="exerciseBannerGoal" hidden></p>
         </div>
       </div>
 
@@ -410,6 +411,12 @@ for (let i = 0; i < arr.length; i++) {
               <input id="exStruggle" type="number" value="0" min="0" max="60" />
               <p class="field-hint">0 disables the timer. Otherwise, students must work this long before their first hint unlocks.</p>
             </div>
+          </div>
+
+          <div class="field">
+            <label for="exExpectedOutput">Expected output</label>
+            <input id="exExpectedOutput" type="text" spellcheck="false" placeholder="e.g. 6" />
+            <p class="field-hint">The value a correct solution produces. Shown to the student as "Your goal".</p>
           </div>
 
           <div class="field">
