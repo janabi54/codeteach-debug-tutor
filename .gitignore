@@ -59,3 +59,7 @@ verify-activity.ts
 *.backup-*
 *.backup
 codeteach.db.backup-*
+
+# Build output
+dist-installer/
+dist/

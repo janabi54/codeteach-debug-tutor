@@ -1,26 +1,31 @@
 {
   "name": "codeteach-debug-tutor",
   "version": "0.1.0",
+  "description": "A Socratic debugging tutor with a real verification loop.",
+  "author": "Sheban",
   "private": true,
   "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "tsx watch --env-file=.env server/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node --env-file=.env dist/server/index.js",
     "test": "jest",
-    "test:rules": "jest server/debugTutor/preClassifier"
+    "test:rules": "jest server/debugTutor/preClassifier",
+    "electron:dev": "electron electron/main.cjs",
+    "electron:rebuild": "electron-rebuild -f -w better-sqlite3",
+    "electron:build": "electron-builder --win nsis --x64"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.27.0",
-    "@capacitor/android": "^8.5.2",
-    "@capacitor/core": "^8.5.2",
-    "@typescript-eslint/parser": "^8.0.0",
     "@yaireo/tagify": "^4.39.0",
     "bcrypt": "^6.0.0",
     "better-sqlite3": "^13.0.3",
-    "cookie-parser": "^1.4.7",
     "eslint": "^9.0.0",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^18.0.8",
     "express": "^4.19.0",
+    "node-gyp-build": "^4.8.4",
     "nodemailer": "^10.0.16",
     "openai": "^7.25.0",
     "prismjs": "^1.30.0",
@@ -28,7 +33,11 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^8.5.2",
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
+    "@electron/rebuild": "^4.2.1",
     "@types/bcrypt": "^6.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
     "@types/better-sqlite3": "^9.6.0",
     "@types/cookie-parser": "^1.4.10",
     "@types/express": "^4.17.21",
@@ -37,10 +46,68 @@
     "@types/nodemailer": "^8.0.2",
     "@types/prismjs": "^1.26.6",
     "@types/ws": "^8.18.2",
+    "electron": "^44.7.1",
+    "electron-builder": "^26.15.3",
     "jest": "^29.7.0",
     "ts-jest": "^29.1.0",
     "tsx": "^4.7.0",
     "typescript": "^5.4.0"
+  },
+  "build": {
+    "appId": "com.codeteach.debugtutor",
+    "productName": "CodeTeach",
+    "asar": false,
+    "directories": {
+      "output": "dist-installer",
+      "buildResources": "build"
+    },
+    "files": [
+      "electron/**/*",
+      "dist/server/**/*",
+      "dist/**/*.js",
+      "public/**/*",
+      "package.json",
+      "tsconfig.json",
+      "node_modules/**/*"
+    ],
+    "asarUnpack": [
+      "dist/**/*",
+      "public/**/*",
+      "node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "codeteach.db",
+        "to": "app/codeteach.db"
+      },
+      {
+        "from": ".env",
+        "to": "app/.env"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "CodeTeach",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico"
+    }
   },
   "allowScripts": {
     "esbuild@0.28.2": true,
