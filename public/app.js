@@ -4866,7 +4866,14 @@ function renderMyProgress(container, data) {
 
   container.innerHTML =
     '<div id="myProgressNextAction" style="display:none"></div>' +
-    summaryHtml + trendsHtml + weakHtml + sessionsHtml;
+    summaryHtml +
+    '<div id="conceptJourneySlot"></div>' +
+    trendsHtml + weakHtml + sessionsHtml;
+
+  // Load the concept journey asynchronously so a slow query doesn't
+  // block the rest of the panel.
+  const cjSlot = document.getElementById('conceptJourneySlot');
+  if (cjSlot) loadConceptJourney(cjSlot);
 
   // Render the next-action banner if present.
   if (data.nextAction && data.nextAction.kind !== 'none') {
@@ -4875,6 +4882,58 @@ function renderMyProgress(container, data) {
       naEl.style.display = 'block';
       renderNextAction(data.nextAction, naEl, currentUser ? currentUser.id : null);
     }
+  }
+}
+
+async function loadConceptJourney(slot) {
+  if (!slot) return;
+  try {
+    const res = await fetch('/api/me/concepts', { credentials: 'same-origin' });
+    if (!res.ok) return;
+    const j = await res.json();
+    const total = (j.unlocked || []).length + (j.inProgress || []).length + (j.locked || []).length;
+    if (total === 0) return;
+
+    const pill = (c, state) => {
+      const reqs = state === 'locked' && c.requires && c.requires.length
+        ? '<div class="cj-req">needs ' + c.requires.map(escapeHtml).join(', ') + '</div>'
+        : (c.via && c.via.length && state !== 'locked'
+            ? '<div class="cj-via">via ' + c.via.map(escapeHtml).join(', ') + '</div>'
+            : '');
+      return '<div class="cj-pill cj-' + state + '" title="' + escapeHtml(c.description || '') + '">' +
+        '<span class="cj-name">' + escapeHtml(c.name) + '</span>' +
+        reqs +
+      '</div>';
+    };
+
+    slot.innerHTML =
+      '<div class="analytics-section cj-card">' +
+        '<h3 class="analytics-section-title">Concept journey</h3>' +
+        '<p class="cj-subtitle">Concepts you have unlocked, are practicing, or have not yet reached.</p>' +
+        '<div class="cj-lanes">' +
+          '<div class="cj-lane">' +
+            '<div class="cj-lane-header cj-header-unlocked">Unlocked <span class="cj-count">' + (j.unlocked || []).length + '</span></div>' +
+            ((j.unlocked || []).length
+              ? j.unlocked.map((c) => pill(c, 'unlocked')).join('')
+              : '<p class="cj-empty">Complete an exercise to unlock its concepts.</p>') +
+          '</div>' +
+          '<div class="cj-lane">' +
+            '<div class="cj-lane-header cj-header-progress">In progress <span class="cj-count">' + (j.inProgress || []).length + '</span></div>' +
+            ((j.inProgress || []).length
+              ? j.inProgress.map((c) => pill(c, 'progress')).join('')
+              : '<p class="cj-empty">Nothing in progress right now.</p>') +
+          '</div>' +
+          '<div class="cj-lane">' +
+            '<div class="cj-lane-header cj-header-locked">Locked <span class="cj-count">' + (j.locked || []).length + '</span></div>' +
+            ((j.locked || []).length
+              ? j.locked.slice(0, 12).map((c) => pill(c, 'locked')).join('') +
+                (j.locked.length > 12 ? '<p class="cj-empty">+' + (j.locked.length - 12) + ' more</p>' : '')
+              : '<p class="cj-empty">All concepts unlocked!</p>') +
+          '</div>' +
+        '</div>' +
+      '</div>';
+  } catch {
+    /* silent — the card is optional */
   }
 }
 

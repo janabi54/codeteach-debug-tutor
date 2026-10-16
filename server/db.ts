@@ -3669,5 +3669,132 @@ export const db = {
 
       return { ok: true };
     },
+    /**
+     * Concept journey for a student.
+     *
+     * Unlocked: concepts taught by an exercise the student has completed
+     *           (hint_sessions.state = 'complete').
+     * In progress: concepts taught by an exercise with an open/resolved
+     *           session.
+     * Locked: everything else in the catalog. Each locked concept carries
+     *           a `requires` list — the prerequisite slugs that must be
+     *           unlocked first (unlocked prerequisites are omitted).
+     *
+     * All-time, all-cohorts: the student's journey is not cohort-scoped.
+     */
+    forStudent(studentId: string): {
+      unlocked: Array<{ slug: string; name: string; description: string; via: string[] }>;
+      inProgress: Array<{ slug: string; name: string; description: string; via: string[] }>;
+      locked: Array<{ slug: string; name: string; description: string; requires: string[] }>;
+    } {
+      // All sessions for this student, joined to their exercise.
+      const rows = sqlite
+        .prepare(
+          `SELECT hs.state, e.slug AS ex_slug,
+                  e.expected_concepts, e.required_concepts
+             FROM hint_sessions hs
+             JOIN exercises e ON e.id = hs.exercise_id
+            WHERE hs.student_id = ?`
+        )
+        .all(studentId) as Array<{
+          state: string;
+          ex_slug: string;
+          expected_concepts: string;
+          required_concepts: string;
+        }>;
+
+      const parseArr = (s: string): string[] => {
+        try {
+          const a = JSON.parse(s || '[]');
+          return Array.isArray(a) ? a.filter((x) => typeof x === 'string') : [];
+        } catch {
+          return [];
+        }
+      };
+
+      // slug -> Set of exercise slugs that touched it
+      const unlockedVia = new Map<string, Set<string>>();
+      const inProgressVia = new Map<string, Set<string>>();
+
+      for (const row of rows) {
+        const teaches = parseArr(row.expected_concepts);
+        for (const slug of teaches) {
+          if (row.state === 'complete') {
+            if (!unlockedVia.has(slug)) unlockedVia.set(slug, new Set());
+            unlockedVia.get(slug)!.add(row.ex_slug);
+          } else if (row.state === 'open' || row.state === 'resolved') {
+            if (!inProgressVia.has(slug)) inProgressVia.set(slug, new Set());
+            inProgressVia.get(slug)!.add(row.ex_slug);
+          }
+        }
+      }
+
+      // A slug in both maps is unlocked — remove from inProgress.
+      for (const slug of unlockedVia.keys()) inProgressVia.delete(slug);
+
+      // Which exercises teach each concept (needed to compute `requires`
+      // for locked concepts).
+      const allExercises = sqlite
+        .prepare('SELECT slug, expected_concepts, required_concepts FROM exercises')
+        .all() as Array<{
+          slug: string;
+          expected_concepts: string;
+          required_concepts: string;
+        }>;
+
+      const teachersOf = new Map<string, string[]>(); // concept slug -> exercise slugs
+      const reqsOf = new Map<string, Set<string>>();   // concept slug -> set of required slugs
+      for (const ex of allExercises) {
+        const teaches = parseArr(ex.expected_concepts);
+        const reqs = parseArr(ex.required_concepts);
+        for (const c of teaches) {
+          if (!teachersOf.has(c)) teachersOf.set(c, []);
+          teachersOf.get(c)!.push(ex.slug);
+          if (!reqsOf.has(c)) reqsOf.set(c, new Set());
+          for (const r of reqs) reqsOf.get(c)!.add(r);
+        }
+      }
+
+      // Full catalog, so locked = catalog minus (unlocked ∪ inProgress).
+      const catalog = sqlite
+        .prepare('SELECT slug, name, description FROM concepts ORDER BY name')
+        .all() as Array<{ slug: string; name: string; description: string }>;
+
+      const unlocked: Array<{ slug: string; name: string; description: string; via: string[] }> = [];
+      const inProgress: Array<{ slug: string; name: string; description: string; via: string[] }> = [];
+      const locked: Array<{ slug: string; name: string; description: string; requires: string[] }> = [];
+
+      for (const c of catalog) {
+        if (unlockedVia.has(c.slug)) {
+          unlocked.push({
+            slug: c.slug,
+            name: c.name,
+            description: c.description,
+            via: Array.from(unlockedVia.get(c.slug)!).sort(),
+          });
+        } else if (inProgressVia.has(c.slug)) {
+          inProgress.push({
+            slug: c.slug,
+            name: c.name,
+            description: c.description,
+            via: Array.from(inProgressVia.get(c.slug)!).sort(),
+          });
+        } else {
+          // Only surface prerequisites that are still missing.
+          const allReqs = reqsOf.get(c.slug) ?? new Set<string>();
+          const missing = Array.from(allReqs)
+            .filter((r) => !unlockedVia.has(r))
+            .sort();
+          locked.push({
+            slug: c.slug,
+            name: c.name,
+            description: c.description,
+            requires: missing,
+          });
+        }
+      }
+
+      return { unlocked, inProgress, locked };
+    },
   },
 };

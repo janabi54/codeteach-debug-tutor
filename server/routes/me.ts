@@ -75,6 +75,17 @@ router.get('/me/progress', requireAuth, async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 
 // POST /api/me/groups  { name, cohortId }
+// ─────────────────────────────────────────────────────────────
+// GET /api/me/concepts
+// Student-facing concept journey: unlocked / in-progress / locked,
+// derived from completed and pending hint_sessions against the
+// concepts each exercise teaches. All-time, all-cohorts.
+// ─────────────────────────────────────────────────────────────
+router.get('/me/concepts', requireAuth, (req, res) => {
+  const studentId = req.user!.id;
+  res.json(db.concepts.forStudent(studentId));
+});
+
 router.post('/me/groups', requireAuth, async (req, res) => {
   const userId = req.user!.id;
   const { name, cohortId } = req.body as { name?: string; cohortId?: string };
