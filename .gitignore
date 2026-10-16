@@ -4,6 +4,10 @@ node_modules/
 # Build output
 dist/
 build/
+dist-installer/
+
+# Local dev tools (hookcat, inspect helpers)
+scripts/db-tools/
 
 # Environment — NEVER commit this
 .env
@@ -43,11 +47,6 @@ Thumbs.db
 .env.bak*
 *.env~
 
-# Editor backups of .env
-.env.save*
-.env.bak*
-*.env~
-
 # Dev backups
 *.broken
 *.orig
@@ -59,11 +58,6 @@ verify-activity.ts
 *.backup-*
 *.backup
 codeteach.db.backup-*
-<<<<<<< HEAD
 
-# Build output
-dist-installer/
-dist/
-=======
-scripts/db-tools/
->>>>>>> 55af2a9 (feat(webhooks): outbound subscriptions + HMAC-signed delivery queue (Phase 1))
+# ngrok binary download
+ngrok.tgz
