@@ -38,6 +38,9 @@ export interface ViewableExercise {
   slug: string;
   title: string;
   expectedConcepts: string[];
+  /** Prerequisites. Empty array means no prerequisites. Optional for
+   *  backwards compatibility with callers that haven't been updated. */
+  requiredConcepts?: string[];
 }
 
 export interface NextActionInput {
@@ -52,6 +55,10 @@ export interface NextActionInput {
     updatedAt: string;
   }>;
   weakSpots: Array<{ pattern: string; count: number }>;
+  /** Concept slugs the student has already unlocked (completed a teaching
+   *  exercise). Optional. When provided, enables concept-aware
+   *  recommendations in Rule 4. */
+  unlockedConcepts?: string[];
 }
 
 function firstReason(reasons: string[]): string {
@@ -118,13 +125,25 @@ export function deriveNextAction(input: NextActionInput): NextAction {
   const attemptedSlugs = new Set(sessionHistory.map((s) => s.exerciseId));
   const unattempted = viewableExercises.filter((e) => !attemptedSlugs.has(e.slug));
   if (unattempted.length > 0) {
-    // Prefer an exercise that matches a weak-spot pattern in expected_concepts
+    // Concept-aware first: pick the smallest "next learnable step" whose
+    // prerequisites are already unlocked. Falls through to weak-spot
+    // matching if no candidate qualifies.
+    const unlockedSet = new Set(input.unlockedConcepts ?? []);
     const weakSet = new Set(weakSpots.map((w) => w.pattern));
-    let chosen = unattempted[0];
-    for (const ex of unattempted) {
-      if (ex.expectedConcepts.some((c) => weakSet.has(c))) {
-        chosen = ex;
-        break;
+    const conceptPick = input.unlockedConcepts
+      ? pickConceptAwareCandidate(unattempted, unlockedSet)
+      : null;
+
+    let chosen: ViewableExercise;
+    if (conceptPick) {
+      chosen = conceptPick;
+    } else {
+      chosen = unattempted[0];
+      for (const ex of unattempted) {
+        if (ex.expectedConcepts.some((c) => weakSet.has(c))) {
+          chosen = ex;
+          break;
+        }
       }
     }
 
@@ -229,12 +248,25 @@ export function deriveStudentNextAction(input: NextActionInput): NextAction {
   const attemptedSlugs = new Set(sessionHistory.map((s) => s.exerciseId));
   const unattempted = viewableExercises.filter((e) => !attemptedSlugs.has(e.slug));
   if (unattempted.length > 0) {
+    // Concept-aware first: pick the smallest "next learnable step" whose
+    // prerequisites are already unlocked. Falls through to weak-spot
+    // matching if no candidate qualifies.
+    const unlockedSet = new Set(input.unlockedConcepts ?? []);
     const weakSet = new Set(weakSpots.map((w) => w.pattern));
-    let chosen = unattempted[0];
-    for (const ex of unattempted) {
-      if (ex.expectedConcepts.some((c) => weakSet.has(c))) {
-        chosen = ex;
-        break;
+    const conceptPick = input.unlockedConcepts
+      ? pickConceptAwareCandidate(unattempted, unlockedSet)
+      : null;
+
+    let chosen: ViewableExercise;
+    if (conceptPick) {
+      chosen = conceptPick;
+    } else {
+      chosen = unattempted[0];
+      for (const ex of unattempted) {
+        if (ex.expectedConcepts.some((c) => weakSet.has(c))) {
+          chosen = ex;
+          break;
+        }
       }
     }
 
@@ -278,3 +310,56 @@ export function deriveStudentNextAction(input: NextActionInput): NextAction {
   };
 }
 
+
+/**
+ * Concept-aware candidate selection for Rule 4 (assign / try next).
+ *
+ * Given a set of unattempted exercises and the student's unlocked
+ * concepts, pick the best "next learnable step":
+ *
+ *   1. Filter out exercises whose requiredConcepts aren't all unlocked
+ *   2. Among the rest, prefer ones that teach ≥1 concept not yet unlocked
+ *      (i.e. that advance the graph)
+ *   3. Tiebreak by fewest NEW concepts (smallest leap)
+ *   4. Tiebreak by original order (callers can pre-sort by difficulty)
+ *
+ * Returns null if no candidate qualifies — caller falls back to
+ * pre-existing logic.
+ */
+function pickConceptAwareCandidate(
+  unattempted: ViewableExercise[],
+  unlockedConcepts: Set<string>
+): ViewableExercise | null {
+  const eligible = unattempted.filter((ex) => {
+    const reqs = ex.requiredConcepts ?? [];
+    return reqs.every((r) => unlockedConcepts.has(r));
+  });
+  if (eligible.length === 0) return null;
+
+  // Prefer exercises that teach something new.
+  const advancing = eligible.filter((ex) => {
+    const teaches = ex.expectedConcepts ?? [];
+    return teaches.some((c) => !unlockedConcepts.has(c));
+  });
+  const pool = advancing.length > 0 ? advancing : eligible;
+
+  // Score: fewer new concepts is better. Among ties, original order wins.
+  let best = pool[0];
+  let bestNew = countNew(best, unlockedConcepts);
+  for (let i = 1; i < pool.length; i++) {
+    const n = countNew(pool[i], unlockedConcepts);
+    if (n < bestNew) {
+      best = pool[i];
+      bestNew = n;
+    }
+  }
+  return best;
+}
+
+function countNew(ex: ViewableExercise, unlockedConcepts: Set<string>): number {
+  let n = 0;
+  for (const c of ex.expectedConcepts ?? []) {
+    if (!unlockedConcepts.has(c)) n++;
+  }
+  return n;
+}

@@ -573,6 +573,7 @@ router.get('/:studentId', requireInstructor, async (req, res) => {
     viewableExercises,
     sessionHistory: detail.sessionHistory,
     weakSpots: detail.weakSpots,
+    unlockedConcepts: db.concepts.forStudent(studentId).unlocked.map((c) => c.slug),
   });
 
   // Progress: completed / assigned (assigned = count of viewable exercises)

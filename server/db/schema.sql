@@ -453,3 +453,15 @@ CREATE TABLE IF NOT EXISTS concepts (
   description  TEXT NOT NULL DEFAULT '',
   created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- ============================================================
+-- Pattern → concept map (Phase 4C)
+-- Maps a mistake_patterns.pattern string to a concept slug, so the
+-- weak-spot view can name the concept and point to exercises.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS pattern_concept_map (
+  pattern      TEXT PRIMARY KEY,
+  concept_slug TEXT NOT NULL REFERENCES concepts(slug) ON DELETE CASCADE,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);

@@ -108,12 +108,13 @@ export function viewableExerciseIdsFor(
 export function viewableExercisesFor(
   instructorId: string,
   studentId: string
-): Array<{ slug: string; title: string; expectedConcepts: string[] }> {
+): Array<{ slug: string; title: string; expectedConcepts: string[]; requiredConcepts: string[] }> {
   const rows = sqlite
     .prepare(
       `SELECT e.slug AS slug,
               e.title AS title,
-              e.expected_concepts AS expectedConceptsJson
+              e.expected_concepts AS expectedConceptsJson,
+              e.required_concepts AS requiredConceptsJson
        FROM exercises e
        JOIN cohorts c ON c.id = e.cohort_id
        JOIN cohort_members cm ON cm.cohort_id = c.id
@@ -125,6 +126,7 @@ export function viewableExercisesFor(
       slug: string;
       title: string;
       expectedConceptsJson: string;
+      requiredConceptsJson: string;
     }>;
 
   return rows.map((r) => {
@@ -135,7 +137,14 @@ export function viewableExercisesFor(
     } catch {
       concepts = [];
     }
-    return { slug: r.slug, title: r.title, expectedConcepts: concepts };
+    let reqs: string[] = [];
+    try {
+      const parsed = JSON.parse(r.requiredConceptsJson || '[]');
+      if (Array.isArray(parsed)) reqs = parsed.filter((x) => typeof x === 'string');
+    } catch {
+      reqs = [];
+    }
+    return { slug: r.slug, title: r.title, expectedConcepts: concepts, requiredConcepts: reqs };
   });
 }
 

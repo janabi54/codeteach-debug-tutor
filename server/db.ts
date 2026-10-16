@@ -1814,15 +1814,23 @@ export const db = {
       slug: string;
       title: string;
       expectedConcepts: string[];
+      requiredConcepts: string[];
     }> {
       const rows = sqlite
         .prepare(
-          `SELECT DISTINCT e.slug AS slug, e.title AS title, e.expected_concepts AS expectedConcepts
+          `SELECT DISTINCT e.slug AS slug, e.title AS title,
+                  e.expected_concepts AS expectedConcepts,
+                  e.required_concepts AS requiredConcepts
            FROM exercises e
            JOIN cohort_members cm ON cm.cohort_id = e.cohort_id
            WHERE cm.user_id = ?`
         )
-        .all(studentId) as Array<{ slug: string; title: string; expectedConcepts: string | null }>;
+        .all(studentId) as Array<{
+          slug: string;
+          title: string;
+          expectedConcepts: string | null;
+          requiredConcepts: string | null;
+        }>;
       return rows.map((r) => {
         let concepts: string[] = [];
         if (r.expectedConcepts) {
@@ -1834,10 +1842,20 @@ export const db = {
             concepts = r.expectedConcepts.split(',').map((c) => c.trim()).filter(Boolean);
           }
         }
+        let reqs: string[] = [];
+        if (r.requiredConcepts) {
+          try {
+            const parsed = JSON.parse(r.requiredConcepts);
+            if (Array.isArray(parsed)) reqs = parsed.map(String);
+          } catch {
+            reqs = r.requiredConcepts.split(',').map((c) => c.trim()).filter(Boolean);
+          }
+        }
         return {
           slug: r.slug,
           title: r.title || r.slug,
           expectedConcepts: concepts,
+          requiredConcepts: reqs,
         };
       });
     },

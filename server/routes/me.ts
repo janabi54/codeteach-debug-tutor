@@ -44,6 +44,7 @@ router.get('/me/progress', requireAuth, async (req, res) => {
     viewableExercises,
     sessionHistory: detail.sessionHistory,
     weakSpots: detail.weakSpots,
+    unlockedConcepts: db.concepts.forStudent(studentId).unlocked.map((c) => c.slug),
   });
 
   res.json({

@@ -1,4 +1,4 @@
-import { db } from '../db.js';
+import { db, sqlite } from '../db.js';
 
 const LABELS: Record<string, { label: string; tip: string }> = {
   'off-by-one': { label: 'Off-by-one errors', tip: 'Double-check loop bounds and array indices.' },
@@ -28,6 +28,13 @@ export interface WeakSpotPattern {
     partial: number;
     incorrect: number;
     unscored: number;
+  } | null;
+  /** Concept this pattern maps to, if any. Populated from pattern_concept_map. */
+  concept: {
+    slug: string;
+    name: string;
+    /** Exercise slugs that teach this concept. */
+    exercises: string[];
   } | null;
 }
 
@@ -84,6 +91,7 @@ export async function getWeakSpots(studentId: string): Promise<WeakSpotsResponse
               unscored: pm.unscored,
             }
           : null,
+        concept: null, // enriched below
       };
     })
     .sort((a, b) => b.count - a.count);
@@ -163,7 +171,7 @@ export async function getWeakSpots(studentId: string): Promise<WeakSpotsResponse
     trend: dependencyTrend,
   };
 
-  return { patterns: patternList, reasoning, hintDependency };
+  return { patterns: enrichWithConcepts(patternList), reasoning, hintDependency };
 }
 
 function computeDependencyTrend(
@@ -230,4 +238,74 @@ function computeReasoningTrend(
   if (delta > 0.3) return 'improving';
   if (delta < -0.3) return 'worsening';
   return 'stable';
+}
+
+
+/**
+ * Attach concept metadata to weak-spot patterns using pattern_concept_map.
+ *
+ * For each pattern that has a mapping, look up the concept name and find
+ * every exercise whose expected_concepts includes that concept slug.
+ * All lookups are done in one pass — no N+1 queries.
+ */
+function enrichWithConcepts(patterns: WeakSpotPattern[]): WeakSpotPattern[] {
+  if (patterns.length === 0) return patterns;
+
+  const patternNames = patterns.map((p) => p.pattern);
+  const ph = patternNames.map(() => '?').join(',');
+
+  const mapRows = sqlite
+    .prepare(
+      `SELECT m.pattern, m.concept_slug, c.name AS concept_name
+         FROM pattern_concept_map m
+         JOIN concepts c ON c.slug = m.concept_slug
+        WHERE m.pattern IN (${ph})`
+    )
+    .all(...patternNames) as Array<{
+      pattern: string;
+      concept_slug: string;
+      concept_name: string;
+    }>;
+
+  const byPattern = new Map<string, { slug: string; name: string }>();
+  for (const row of mapRows) {
+    byPattern.set(row.pattern, { slug: row.concept_slug, name: row.concept_name });
+  }
+
+  if (byPattern.size === 0) {
+    return patterns.map((p) => ({ ...p, concept: null }));
+  }
+
+  const conceptSlugs = Array.from(new Set(Array.from(byPattern.values()).map((c) => c.slug)));
+
+  const exerciseRows = sqlite
+    .prepare('SELECT slug, expected_concepts FROM exercises')
+    .all() as Array<{ slug: string; expected_concepts: string }>;
+
+  const exercisesByConcept = new Map<string, string[]>();
+  for (const ex of exerciseRows) {
+    let teaches: string[] = [];
+    try {
+      const a = JSON.parse(ex.expected_concepts || '[]');
+      if (Array.isArray(a)) teaches = a.filter((x) => typeof x === 'string');
+    } catch {}
+    for (const c of teaches) {
+      if (!conceptSlugs.includes(c)) continue;
+      if (!exercisesByConcept.has(c)) exercisesByConcept.set(c, []);
+      exercisesByConcept.get(c)!.push(ex.slug);
+    }
+  }
+
+  return patterns.map((p) => {
+    const base = byPattern.get(p.pattern);
+    if (!base) return { ...p, concept: null };
+    return {
+      ...p,
+      concept: {
+        slug: base.slug,
+        name: base.name,
+        exercises: (exercisesByConcept.get(base.slug) ?? []).sort(),
+      },
+    };
+  });
 }
