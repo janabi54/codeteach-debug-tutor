@@ -16,7 +16,11 @@ import { seedExercisesFromConfig } from './db/seedExercises.js';
 import { attachWebSocketServer } from './websocket.js';
 import nudgeRoutes from './routes/nudges.js';
 import meRoutes from './routes/me.js';
+<<<<<<< HEAD
 import { pathToFileURL } from 'node:url';
+=======
+import { startDispatcher } from './webhooks/outbound/dispatcher.js';
+>>>>>>> 55af2a9 (feat(webhooks): outbound subscriptions + HMAC-signed delivery queue (Phase 1))
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -50,6 +54,13 @@ export async function startServer(): Promise<{ port: number }> {
     });
     attachWebSocketServer(httpServer);
   });
+<<<<<<< HEAD
+=======
+
+  attachWebSocketServer(httpServer);
+
+  startDispatcher();
+>>>>>>> 55af2a9 (feat(webhooks): outbound subscriptions + HMAC-signed delivery queue (Phase 1))
 }
 
 // Run directly when executed as a script (npm run dev / npm start).

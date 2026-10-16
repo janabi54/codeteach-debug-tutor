@@ -59,7 +59,11 @@ verify-activity.ts
 *.backup-*
 *.backup
 codeteach.db.backup-*
+<<<<<<< HEAD
 
 # Build output
 dist-installer/
 dist/
+=======
+scripts/db-tools/
+>>>>>>> 55af2a9 (feat(webhooks): outbound subscriptions + HMAC-signed delivery queue (Phase 1))

@@ -359,3 +359,44 @@ CREATE TABLE IF NOT EXISTS admin_audit (
 CREATE INDEX IF NOT EXISTS idx_admin_audit_created ON admin_audit(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_admin_audit_actor ON admin_audit(actor_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_admin_audit_target ON admin_audit(target_type, target_id);
+
+-- ============================================================
+-- Webhooks (outbound subscriptions + delivery queue)
+-- Phase 1: outbound only. Inbound tables land in Phase 2.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS webhook_subscriptions (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  cohort_id    TEXT    NOT NULL REFERENCES cohorts(id) ON DELETE CASCADE,
+  url          TEXT    NOT NULL,
+  secret       TEXT    NOT NULL,
+  event_types  TEXT    NOT NULL,
+  active       INTEGER NOT NULL DEFAULT 1,
+  created_by   TEXT    NOT NULL REFERENCES users(id),
+  created_at   TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_wh_subs_cohort_active
+  ON webhook_subscriptions(cohort_id, active);
+
+CREATE TABLE IF NOT EXISTS webhook_deliveries (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  subscription_id  INTEGER NOT NULL REFERENCES webhook_subscriptions(id) ON DELETE CASCADE,
+  event_type       TEXT    NOT NULL,
+  event_id         TEXT    NOT NULL,
+  payload          TEXT    NOT NULL,
+  status           TEXT    NOT NULL DEFAULT 'pending'
+                     CHECK (status IN ('pending','delivered','failed','dead')),
+  attempts         INTEGER NOT NULL DEFAULT 0,
+  next_attempt_at  TEXT,
+  last_status      INTEGER,
+  last_error       TEXT,
+  created_at       TEXT    NOT NULL DEFAULT (datetime('now')),
+  delivered_at     TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_wh_deliv_pending
+  ON webhook_deliveries(status, next_attempt_at);
+
+CREATE INDEX IF NOT EXISTS idx_wh_deliv_sub
+  ON webhook_deliveries(subscription_id, created_at DESC);

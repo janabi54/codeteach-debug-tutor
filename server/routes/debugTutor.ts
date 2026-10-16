@@ -1,6 +1,7 @@
 import express from 'express';
 import { getTutorHint } from '../debugTutor/tutorService.js';
 import { scorePostMortem } from '../debugTutor/postMortem.js';
+import { emit } from '../webhooks/outbound/emit.js';
 import { scoreHypothesis } from '../debugTutor/hypothesisScore.js';
 import { HintSessionManager } from '../debugTutor/hintSession.js';
 import { getStruggleMinutes } from '../debugTutor/exerciseConfig.js';
@@ -138,6 +139,14 @@ router.post('/hint', requireAuth, async (req, res) => {
     });
 
     await db.hintSessions.update(session.id, { state: 'complete' });
+
+    emit(studentId, 'exercise.completed', {
+      exercise_id: exerciseId,
+      session_id: session.id,
+      pattern,
+      score: result.score,
+      confidence,
+    });
 
     return res.json({
       postMortemComplete: true,
