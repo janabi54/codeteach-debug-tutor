@@ -6,6 +6,8 @@ import { requireInstructor } from '../middleware/requireAuth.js';
 import { requireAdmin } from '../middleware/requireAdmin.js';
 import { generateInviteCode } from '../auth/inviteCodes.js';
 import { db } from '../db.js';
+import { sqlite } from '../db.js';
+import { newSecret } from '../webhooks/outbound/events.js';
 
 const router = express.Router();
 
@@ -178,3 +180,216 @@ router.get('/audit', requireInstructor, async (req, res) => {
 });
 
 export default router;
+
+// ─────────────────────────────────────────────────────────────
+// Webhooks — admin-only CRUD for outbound subscriptions and
+// inbound endpoints, plus delivery/event inspection.
+// ─────────────────────────────────────────────────────────────
+
+
+// ── Outbound subscriptions ──────────────────────────────────
+
+router.get('/webhook-subscriptions', requireAdmin, (_req, res) => {
+  const rows = sqlite
+    .prepare(
+      `SELECT id, cohort_id, url, event_types, active, created_by, created_at
+         FROM webhook_subscriptions
+        ORDER BY created_at DESC`
+    )
+    .all();
+  res.json(rows);
+});
+
+router.post('/webhook-subscriptions', requireAdmin, (req, res) => {
+  const { cohort_id, url, event_types } = req.body ?? {};
+  if (!cohort_id || typeof cohort_id !== 'string') {
+    return res.status(400).json({ error: 'cohort_id is required' });
+  }
+  if (!url || typeof url !== 'string' || !/^https?:\/\//.test(url)) {
+    return res.status(400).json({ error: 'url must be an http(s) URL' });
+  }
+  if (!Array.isArray(event_types) || event_types.length === 0) {
+    return res.status(400).json({ error: 'event_types must be a non-empty array' });
+  }
+
+  const secret = newSecret();
+  const info = sqlite
+    .prepare(
+      `INSERT INTO webhook_subscriptions
+         (cohort_id, url, secret, event_types, active, created_by)
+       VALUES (?, ?, ?, ?, 1, ?)`
+    )
+    .run(cohort_id, url, secret, JSON.stringify(event_types), req.user!.id);
+
+  // The secret is shown exactly once. Client must copy it now.
+  res.json({
+    id: info.lastInsertRowid,
+    secret,
+    note: 'Store this secret now. It will not be shown again.',
+  });
+});
+
+router.delete('/webhook-subscriptions/:id', requireAdmin, (req, res) => {
+  const info = sqlite
+    .prepare('DELETE FROM webhook_subscriptions WHERE id = ?')
+    .run(Number(req.params.id));
+  if (info.changes === 0) return res.status(404).json({ error: 'not found' });
+  res.json({ ok: true });
+});
+
+router.post('/webhook-subscriptions/:id/test', requireAdmin, (req, res) => {
+  const sub = sqlite
+    .prepare('SELECT id, cohort_id FROM webhook_subscriptions WHERE id = ?')
+    .get(Number(req.params.id)) as { id: number; cohort_id: string } | undefined;
+  if (!sub) return res.status(404).json({ error: 'not found' });
+
+  // We bypass emit() because emit resolves cohorts from a student. The
+  // test fire inserts a delivery directly against this subscription.
+  const eventId = 'test-' + Date.now().toString(36);
+  const payload = JSON.stringify({
+    id: eventId,
+    type: 'webhook.test',
+    cohort_id: sub.cohort_id,
+    occurred_at: new Date().toISOString(),
+    data: { message: 'This is a test delivery from CodeTeach.' },
+  });
+  sqlite
+    .prepare(
+      `INSERT INTO webhook_deliveries
+         (subscription_id, event_type, event_id, payload, status, attempts, next_attempt_at)
+       VALUES (?, 'webhook.test', ?, ?, 'pending', 0, datetime('now'))`
+    )
+    .run(sub.id, eventId, payload);
+
+  res.json({ ok: true, event_id: eventId });
+});
+
+// ── Outbound deliveries ─────────────────────────────────────
+
+router.get('/webhook-deliveries', requireAdmin, (req, res) => {
+  const subscriptionId = req.query.subscription_id
+    ? Number(req.query.subscription_id)
+    : null;
+  const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50));
+
+  const rows = subscriptionId
+    ? sqlite
+        .prepare(
+          `SELECT id, subscription_id, event_type, event_id, status, attempts,
+                  last_status, last_error, created_at, delivered_at
+             FROM webhook_deliveries
+            WHERE subscription_id = ?
+            ORDER BY id DESC
+            LIMIT ?`
+        )
+        .all(subscriptionId, limit)
+    : sqlite
+        .prepare(
+          `SELECT id, subscription_id, event_type, event_id, status, attempts,
+                  last_status, last_error, created_at, delivered_at
+             FROM webhook_deliveries
+            ORDER BY id DESC
+            LIMIT ?`
+        )
+        .all(limit);
+  res.json(rows);
+});
+
+router.post('/webhook-deliveries/:id/redeliver', requireAdmin, (req, res) => {
+  const info = sqlite
+    .prepare(
+      `UPDATE webhook_deliveries
+          SET status = 'pending',
+              attempts = 0,
+              next_attempt_at = datetime('now'),
+              last_status = NULL,
+              last_error = NULL,
+              delivered_at = NULL
+        WHERE id = ?`
+    )
+    .run(Number(req.params.id));
+  if (info.changes === 0) return res.status(404).json({ error: 'not found' });
+  res.json({ ok: true });
+});
+
+// ── Inbound endpoints ───────────────────────────────────────
+
+router.get('/webhook-endpoints', requireAdmin, (_req, res) => {
+  const rows = sqlite
+    .prepare(
+      `SELECT id, slug, provider, cohort_id, active, created_by, created_at
+         FROM webhook_endpoints
+        ORDER BY created_at DESC`
+    )
+    .all();
+  res.json(rows);
+});
+
+router.post('/webhook-endpoints', requireAdmin, (req, res) => {
+  const { provider, cohort_id } = req.body ?? {};
+  if (provider !== 'generic' && provider !== 'github') {
+    return res.status(400).json({ error: 'provider must be generic or github' });
+  }
+  if (cohort_id != null && typeof cohort_id !== 'string') {
+    return res.status(400).json({ error: 'cohort_id must be a string or omitted' });
+  }
+
+  const slug = (provider === 'github' ? 'gh-' : 'wh-') +
+    newSecret().slice(0, 12);
+  const secret = newSecret();
+
+  const info = sqlite
+    .prepare(
+      `INSERT INTO webhook_endpoints
+         (slug, provider, secret, cohort_id, active, created_by)
+       VALUES (?, ?, ?, ?, 1, ?)`
+    )
+    .run(slug, provider, secret, cohort_id ?? null, req.user!.id);
+
+  res.json({
+    id: info.lastInsertRowid,
+    slug,
+    secret,
+    url_path: '/webhooks/in/' + slug,
+    note: 'Store this secret now. It will not be shown again.',
+  });
+});
+
+router.delete('/webhook-endpoints/:id', requireAdmin, (req, res) => {
+  const info = sqlite
+    .prepare('DELETE FROM webhook_endpoints WHERE id = ?')
+    .run(Number(req.params.id));
+  if (info.changes === 0) return res.status(404).json({ error: 'not found' });
+  res.json({ ok: true });
+});
+
+// ── Inbound events ──────────────────────────────────────────
+
+router.get('/webhook-inbound-events', requireAdmin, (req, res) => {
+  const endpointId = req.query.endpoint_id
+    ? Number(req.query.endpoint_id)
+    : null;
+  const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50));
+
+  const rows = endpointId
+    ? sqlite
+        .prepare(
+          `SELECT id, endpoint_id, provider, external_id, event_type,
+                  signature_ok, processed, process_error, received_at
+             FROM webhook_inbound_events
+            WHERE endpoint_id = ?
+            ORDER BY id DESC
+            LIMIT ?`
+        )
+        .all(endpointId, limit)
+    : sqlite
+        .prepare(
+          `SELECT id, endpoint_id, provider, external_id, event_type,
+                  signature_ok, processed, process_error, received_at
+             FROM webhook_inbound_events
+            ORDER BY id DESC
+            LIMIT ?`
+        )
+        .all(limit);
+  res.json(rows);
+});

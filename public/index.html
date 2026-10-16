@@ -57,6 +57,7 @@
     <button class="tab" data-tab="class">Analytics</button>
     <button class="tab" data-tab="students">Students</button>
     <button class="tab" data-tab="exercises">Exercises</button>
+    <button class="tab" data-tab="webhooks">Webhooks</button>
   </nav>
     <div class="user-chip" id="userChip">
       <button id="userMenuToggle" class="user-menu-toggle" aria-haspopup="menu" aria-expanded="false">
@@ -505,6 +506,14 @@ for (let i = 0; i < arr.length; i++) {
 </section>
 
 <!-- STUDENTS TAB (instructor only) -->
+
+<section id="tab-webhooks" class="tab-panel">
+  <div class="panel-header">
+    <h2>Webhooks</h2>
+    <p class="muted">Outbound subscriptions and inbound endpoints.</p>
+  </div>
+  <div id="webhooksRoot"></div>
+</section>
 <section id="tab-students" class="tab-panel">
   <div class="panel-wrap panel-wrap-wide">
     <div class="exercises-header" id="studentsPanelHeader">
@@ -863,6 +872,7 @@ for (let i = 0; i < arr.length; i++) {
 <script src="/prism-python.js"></script>
 <script src="/tagify.js"></script>
 <script src="/app.js"></script>
+  <script src="/webhooks-ui.js" defer></script>
 
 <!-- SETTINGS MODAL -->
 <div id="settingsModal" class="modal-backdrop" hidden>

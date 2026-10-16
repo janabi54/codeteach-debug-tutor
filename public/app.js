@@ -2036,7 +2036,7 @@ function showAppView() {
 }
 
 function applyRoleVisibility() {
-  const adminTabs = ['health', 'class', 'students', 'exercises'];
+  const adminTabs = ['health', 'class', 'students', 'exercises', 'webhooks'];
   const studentOnlyTabs = ['weak-spots', 'my-sessions', 'my-progress'];
   const isInstructor = currentUser.role === 'instructor' || currentUser.role === 'admin';
   document.querySelectorAll('.tab').forEach(tab => {
@@ -6961,7 +6961,7 @@ document.addEventListener('click', (e) => {
 // Tab persistence via URL hash
 // ═══════════════════════════════════════════════════════════
 
-const VALID_TABS = ['tutor', 'weak-spots', 'health', 'class', 'students', 'exercises', 'my-sessions', 'my-progress'];
+const VALID_TABS = ['tutor', 'weak-spots', 'health', 'class', 'students', 'exercises', 'webhooks', 'my-sessions', 'my-progress'];
 
 function activateTabFromHash() {
   const raw = (window.location.hash || '').replace(/^#/, '');
