@@ -439,3 +439,17 @@ CREATE INDEX IF NOT EXISTS idx_wh_inbound_unprocessed
 
 CREATE INDEX IF NOT EXISTS idx_wh_inbound_endpoint
   ON webhook_inbound_events(endpoint_id, received_at DESC);
+
+-- ============================================================
+-- Concept tagging (Phase 4A)
+-- A reference catalog of concepts + a `required_concepts` column
+-- on exercises (prerequisites). `expected_concepts` remains the
+-- canonical "what this exercise teaches" field.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS concepts (
+  slug         TEXT PRIMARY KEY,
+  name         TEXT NOT NULL,
+  description  TEXT NOT NULL DEFAULT '',
+  created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);

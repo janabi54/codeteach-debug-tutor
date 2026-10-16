@@ -2410,6 +2410,7 @@ const exercisesState = {
   list: [],
   currentSlug: null,
   conceptsTagify: null,
+  requiredConceptsTagify: null,
   objectivesTagify: null,
   sortMode: 'newest',
 };
@@ -2619,6 +2620,10 @@ async function openExerciseEditor(slug) {
         exercisesState.conceptsTagify.removeAllTags();
         exercisesState.conceptsTagify.addTags(ex.expectedConcepts);
       }
+      if (exercisesState.requiredConceptsTagify) {
+        exercisesState.requiredConceptsTagify.removeAllTags();
+        exercisesState.requiredConceptsTagify.addTags(ex.requiredConcepts || []);
+      }
       if (exercisesState.objectivesTagify) {
         exercisesState.objectivesTagify.removeAllTags();
         exercisesState.objectivesTagify.addTags(ex.learningObjectives);
@@ -2626,6 +2631,7 @@ async function openExerciseEditor(slug) {
     }
   } else {
     if (exercisesState.conceptsTagify) exercisesState.conceptsTagify.removeAllTags();
+    if (exercisesState.requiredConceptsTagify) exercisesState.requiredConceptsTagify.removeAllTags();
     if (exercisesState.objectivesTagify) exercisesState.objectivesTagify.removeAllTags();
   }
 
@@ -2639,8 +2645,20 @@ function initTagifyFields() {
   if (exercisesState.conceptsTagify) return; // already initialized
 
   const conceptsEl = $('exConcepts');
+  const requiredEl = $('exRequiredConcepts');
   const objectivesEl = $('exObjectives');
-  if (!conceptsEl || !objectivesEl) return;
+  if (!conceptsEl || !requiredEl || !objectivesEl) return;
+
+  // Fetch the concept catalog for autocomplete. Fire-and-forget; if it
+  // fails, the fields still accept free-text tags.
+  fetch('/api/admin/concepts', { credentials: 'same-origin' })
+    .then((r) => r.ok ? r.json() : [])
+    .then((catalog) => {
+      const whitelist = catalog.map((c) => ({ value: c.slug, name: c.name }));
+      [exercisesState.conceptsTagify, exercisesState.requiredConceptsTagify]
+        .forEach((t) => t && t.settings.whitelist.splice(0, Infinity, ...whitelist));
+    })
+    .catch(() => {});
 
   exercisesState.conceptsTagify = new Tagify(conceptsEl, {
     delimiters: ',|\\n',
@@ -2648,6 +2666,17 @@ function initTagifyFields() {
     trim: true,
     placeholder: 'Type a concept and press Enter',
     dropdown: { enabled: 0 },
+    whitelist: [],
+    originalInputValueFormat: (valuesArr) => valuesArr.map((i) => i.value),
+  });
+
+  exercisesState.requiredConceptsTagify = new Tagify(requiredEl, {
+    delimiters: ',|\\n',
+    maxTags: 20,
+    trim: true,
+    placeholder: 'Type a prerequisite and press Enter',
+    dropdown: { enabled: 0 },
+    whitelist: [],
     originalInputValueFormat: (valuesArr) => valuesArr.map((i) => i.value),
   });
 
@@ -2774,6 +2803,7 @@ async function saveExercise() {
     starterCode: $('exStarterCode').value,
     expectedOutput: ($('exExpectedOutput') && $('exExpectedOutput').value.trim()) || '',
     expectedConcepts: getTagValues(exercisesState.conceptsTagify),
+    requiredConcepts: getTagValues(exercisesState.requiredConceptsTagify),
     learningObjectives: getTagValues(exercisesState.objectivesTagify),
     struggleMinutes: Math.max(0, Math.min(60, parseInt($('exStruggle').value, 10) || 0)),
     ...(selectedCohortId && !exercisesState.currentSlug ? { cohortId: selectedCohortId } : {}),

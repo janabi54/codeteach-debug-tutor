@@ -179,6 +179,69 @@ router.get('/audit', requireInstructor, async (req, res) => {
   res.json({ entries: db.audit.listForActor(req.user!.id, limit) });
 });
 
+
+// ─────────────────────────────────────────────────────────────
+// Concept tagging (Phase 4A)
+// Catalog CRUD + exercise <-> concept assignment.
+// ─────────────────────────────────────────────────────────────
+
+router.get('/concepts', requireAdmin, (_req, res) => {
+  res.json(db.concepts.list());
+});
+
+router.post('/concepts', requireAdmin, (req, res) => {
+  const { slug, name, description } = req.body ?? {};
+  if (typeof slug !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+    return res.status(400).json({
+      error: 'slug must be lowercase letters, digits, and hyphens',
+    });
+  }
+  if (typeof name !== 'string' || name.trim().length === 0) {
+    return res.status(400).json({ error: 'name is required' });
+  }
+  const result = db.concepts.create({
+    slug,
+    name: name.trim(),
+    description: typeof description === 'string' ? description : '',
+  });
+  if (!result.created) {
+    return res.status(409).json({ error: 'concept already exists' });
+  }
+  res.json({ ok: true, slug });
+});
+
+router.delete('/concepts/:slug', requireAdmin, (req, res) => {
+  const result = db.concepts.delete(String(req.params.slug));
+  if (!result.deleted) {
+    return res.status(404).json({ error: 'concept not found' });
+  }
+  res.json({ ok: true });
+});
+
+router.get('/exercises/:slug/concepts', requireAdmin, async (req, res) => {
+  const ex = await db.exercises.findBySlug(String(req.params.slug));
+  if (!ex) return res.status(404).json({ error: 'exercise not found' });
+  res.json(db.concepts.forExercise(ex.id));
+});
+
+router.put('/exercises/:slug/concepts', requireAdmin, async (req, res) => {
+  const ex = await db.exercises.findBySlug(String(req.params.slug));
+  if (!ex) return res.status(404).json({ error: 'exercise not found' });
+
+  const { teaches, requires } = req.body ?? {};
+  if (teaches !== undefined && !Array.isArray(teaches)) {
+    return res.status(400).json({ error: 'teaches must be an array of slugs' });
+  }
+  if (requires !== undefined && !Array.isArray(requires)) {
+    return res.status(400).json({ error: 'requires must be an array of slugs' });
+  }
+
+  const result = db.concepts.setForExercise(ex.id, { teaches, requires });
+  if (!result.ok) {
+    return res.status(400).json({ error: result.error ?? 'update failed' });
+  }
+  res.json({ ok: true, ...db.concepts.forExercise(ex.id) });
+});
 export default router;
 
 // ─────────────────────────────────────────────────────────────

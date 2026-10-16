@@ -460,6 +460,11 @@ for (let i = 0; i < arr.length; i++) {
             <input id="exConcepts" type="text" placeholder="Type a concept and press Enter" />
             <p class="field-hint">Topics the student should recognize. Shown in the class dashboard.</p>
           </div>
+          <div class="field">
+            <label for="exRequiredConcepts">Required concepts (prerequisites)</label>
+            <input id="exRequiredConcepts" type="text" placeholder="Type a prerequisite and press Enter" />
+            <p class="field-hint">Concepts the student should already know. Used by the concept journey.</p>
+          </div>
 
           <div class="field">
             <label for="exObjectives">Learning objectives</label>
@@ -512,6 +517,7 @@ for (let i = 0; i < arr.length; i++) {
     <h2>Webhooks</h2>
     <p class="muted">Outbound subscriptions and inbound endpoints.</p>
   </div>
+  <div id="conceptsRoot"></div>
   <div id="webhooksRoot"></div>
 </section>
 <section id="tab-students" class="tab-panel">
@@ -873,6 +879,7 @@ for (let i = 0; i < arr.length; i++) {
 <script src="/tagify.js"></script>
 <script src="/app.js"></script>
   <script src="/webhooks-ui.js" defer></script>
+  <script src="/concepts-ui.js" defer></script>
 
 <!-- SETTINGS MODAL -->
 <div id="settingsModal" class="modal-backdrop" hidden>

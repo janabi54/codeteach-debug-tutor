@@ -78,6 +78,8 @@ function rowToExercise(row: any): Exercise {
   let objectives: string[] = [];
   try { concepts = JSON.parse(row.expected_concepts || '[]'); } catch {}
   try { objectives = JSON.parse(row.learning_objectives || '[]'); } catch {}
+  let required: string[] = [];
+  try { required = JSON.parse(row.required_concepts || '[]'); } catch {}
   return {
     id: row.id,
     slug: row.slug,
@@ -86,6 +88,7 @@ function rowToExercise(row: any): Exercise {
     language: row.language,
     starterCode: row.starter_code,
     expectedConcepts: concepts,
+    requiredConcepts: required,
     learningObjectives: objectives,
     expectedOutput: row.expected_output || '',
     struggleMinutes: row.struggle_minutes,
@@ -204,6 +207,14 @@ if (!hasConfidence) {
   console.log('[db] migrated: added post_mortems.confidence');
 }
 
+
+// One-time migration: exercises.required_concepts (prerequisite concepts)
+const exerciseColumns = sqlite.prepare('PRAGMA table_info(exercises)').all() as Array<{ name: string }>;
+const hasRequiredConcepts = exerciseColumns.some((c) => c.name === 'required_concepts');
+if (!hasRequiredConcepts) {
+  sqlite.exec("ALTER TABLE exercises ADD COLUMN required_concepts TEXT NOT NULL DEFAULT '[]'");
+  console.log('[db] migrated: added exercises.required_concepts');
+}
 // One-time migration: nudge_messages.is_announcement (cohort broadcasts)
 const nudgeMessageColumns = sqlite.prepare('PRAGMA table_info(nudge_messages)').all() as Array<{ name: string }>;
 const hasIsAnnouncement = nudgeMessageColumns.some((c) => c.name === 'is_announcement');
@@ -285,6 +296,7 @@ interface Exercise {
   language: string;
   starterCode: string;
   expectedConcepts: string[];
+  requiredConcepts: string[];
   learningObjectives: string[];
   expectedOutput: string;
   struggleMinutes: number;
@@ -647,9 +659,9 @@ const stmt = {
   insertExercise: sqlite.prepare(
     `INSERT INTO exercises
       (id, slug, title, description, language, starter_code,
-       expected_concepts, learning_objectives, expected_output,
+       expected_concepts, required_concepts, learning_objectives, expected_output,
        struggle_minutes, cohort_id, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ),
   findExerciseById: sqlite.prepare(
     'SELECT * FROM exercises WHERE id = ?'
@@ -663,7 +675,7 @@ const stmt = {
   updateExercise: sqlite.prepare(
     `UPDATE exercises SET
        title = ?, description = ?, language = ?, starter_code = ?,
-       expected_concepts = ?, learning_objectives = ?, expected_output = ?,
+       expected_concepts = ?, required_concepts = ?, learning_objectives = ?, expected_output = ?,
        struggle_minutes = ?, updated_at = datetime('now')
      WHERE id = ?`
   ),
@@ -2647,6 +2659,7 @@ export const db = {
       language: string;
       starterCode: string;
       expectedConcepts: string[];
+      requiredConcepts?: string[];
       learningObjectives: string[];
       expectedOutput?: string;
       struggleMinutes: number;
@@ -2662,6 +2675,7 @@ export const db = {
         data.language,
         data.starterCode,
         JSON.stringify(data.expectedConcepts),
+        JSON.stringify(data.requiredConcepts ?? []),
         JSON.stringify(data.learningObjectives),
         data.expectedOutput ?? '',
         data.struggleMinutes,
@@ -2677,6 +2691,7 @@ export const db = {
       language: string;
       starterCode: string;
       expectedConcepts: string[];
+      requiredConcepts: string[];
       learningObjectives: string[];
       expectedOutput: string;
       struggleMinutes: number;
@@ -2690,6 +2705,7 @@ export const db = {
         merged.language,
         merged.starterCode,
         JSON.stringify(merged.expectedConcepts),
+        JSON.stringify(merged.requiredConcepts ?? []),
         JSON.stringify(merged.learningObjectives),
         merged.expectedOutput ?? '',
         merged.struggleMinutes,
@@ -3531,6 +3547,127 @@ export const db = {
     async findLatest({ type }: { type: string }) {
       const row = stmt.latestTelemetryByType.get(type) as any;
       return row ? rowToTelemetry(row) : null;
+    },
+  },
+
+  concepts: {
+    /** List all concepts in the catalog, ordered by name. */
+    list(): Array<{ slug: string; name: string; description: string }> {
+      return sqlite
+        .prepare('SELECT slug, name, description FROM concepts ORDER BY name')
+        .all() as Array<{ slug: string; name: string; description: string }>;
+    },
+
+    /** Look up a concept by slug. */
+    get(slug: string): { slug: string; name: string; description: string } | null {
+      const row = sqlite
+        .prepare('SELECT slug, name, description FROM concepts WHERE slug = ?')
+        .get(slug) as { slug: string; name: string; description: string } | undefined;
+      return row ?? null;
+    },
+
+    /** Create a concept. Caller must ensure admin privileges. */
+    create(input: { slug: string; name: string; description?: string }): { created: boolean } {
+      const info = sqlite
+        .prepare('INSERT OR IGNORE INTO concepts (slug, name, description) VALUES (?, ?, ?)')
+        .run(input.slug, input.name, input.description ?? '');
+      return { created: info.changes > 0 };
+    },
+
+    /** Delete a concept. Does not cascade to exercises. */
+    delete(slug: string): { deleted: boolean } {
+      const info = sqlite.prepare('DELETE FROM concepts WHERE slug = ?').run(slug);
+      return { deleted: info.changes > 0 };
+    },
+
+    /**
+     * Concepts taught by / required by an exercise, enriched with catalog
+     * metadata. Unknown slugs (in the exercise but not in the catalog)
+     * are returned with name === slug so the UI can flag them.
+     */
+    forExercise(exerciseId: string): {
+      teaches: Array<{ slug: string; name: string; description: string }>;
+      requires: Array<{ slug: string; name: string; description: string }>;
+    } {
+      const row = sqlite
+        .prepare('SELECT expected_concepts, required_concepts FROM exercises WHERE id = ?')
+        .get(exerciseId) as { expected_concepts: string; required_concepts: string } | undefined;
+      if (!row) return { teaches: [], requires: [] };
+
+      const parse = (s: string): string[] => {
+        try {
+          const arr = JSON.parse(s || '[]');
+          return Array.isArray(arr) ? arr.filter((x) => typeof x === 'string') : [];
+        } catch {
+          return [];
+        }
+      };
+
+      const teaches = parse(row.expected_concepts);
+      const requires = parse(row.required_concepts);
+
+      const lookup = sqlite.prepare(
+        'SELECT slug, name, description FROM concepts WHERE slug = ?'
+      );
+      const enrich = (slug: string) =>
+        (lookup.get(slug) as { slug: string; name: string; description: string } | undefined)
+          ?? { slug, name: slug, description: '' };
+
+      return {
+        teaches: teaches.map(enrich),
+        requires: requires.map(enrich),
+      };
+    },
+
+    /**
+     * Replace the concepts taught by / required by an exercise. Validates
+     * that every slug exists in the catalog; unknown slugs are rejected.
+     * Pass `undefined` for `teaches` or `requires` to leave that side
+     * unchanged. Pass `[]` to clear it.
+     */
+    setForExercise(
+      exerciseId: string,
+      input: { teaches?: string[]; requires?: string[] }
+    ): { ok: boolean; error?: string } {
+      const check = sqlite.prepare('SELECT 1 AS ok FROM concepts WHERE slug = ?');
+
+      const validate = (slugs: string[] | undefined): string | null => {
+        if (!slugs) return null;
+        for (const s of slugs) {
+          if (typeof s !== 'string' || !s) return 'concept slugs must be non-empty strings';
+          if (!check.get(s)) return `unknown concept: ${s}`;
+        }
+        return null;
+      };
+
+      const errT = validate(input.teaches);
+      if (errT) return { ok: false, error: errT };
+      const errR = validate(input.requires);
+      if (errR) return { ok: false, error: errR };
+
+      const row = sqlite
+        .prepare('SELECT expected_concepts, required_concepts FROM exercises WHERE id = ?')
+        .get(exerciseId) as { expected_concepts: string; required_concepts: string } | undefined;
+      if (!row) return { ok: false, error: 'exercise not found' };
+
+      const teaches = input.teaches !== undefined
+        ? input.teaches
+        : (JSON.parse(row.expected_concepts || '[]') as string[]);
+      const requires = input.requires !== undefined
+        ? input.requires
+        : (JSON.parse(row.required_concepts || '[]') as string[]);
+
+      sqlite
+        .prepare(
+          `UPDATE exercises
+              SET expected_concepts = ?,
+                  required_concepts = ?,
+                  updated_at = datetime('now')
+            WHERE id = ?`
+        )
+        .run(JSON.stringify(teaches), JSON.stringify(requires), exerciseId);
+
+      return { ok: true };
     },
   },
 };
