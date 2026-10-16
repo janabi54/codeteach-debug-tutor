@@ -18,8 +18,19 @@ import nudgeRoutes from './routes/nudges.js';
 import meRoutes from './routes/me.js';
 import { pathToFileURL } from 'node:url';
 import { startDispatcher } from './webhooks/outbound/dispatcher.js';
+import inboundWebhookRouter from './webhooks/inbound/router.js';
+import { startInboundPoller } from './webhooks/inbound/poller.js';
 
 const app = express();
+
+// Inbound webhooks MUST be mounted before the global JSON body parser.
+// Signature verification needs raw bytes, not a parsed object.
+app.use(
+  '/webhooks/in',
+  express.raw({ type: '*/*', limit: '1mb' }),
+  inboundWebhookRouter
+);
+
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 const PUBLIC_DIR = process.env.PUBLIC_DIR || 'public';
@@ -51,6 +62,8 @@ export async function startServer(): Promise<{ port: number }> {
     });
     attachWebSocketServer(httpServer);
     startDispatcher();
+
+    startInboundPoller();
   });
 }
 

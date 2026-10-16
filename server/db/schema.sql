@@ -400,3 +400,42 @@ CREATE INDEX IF NOT EXISTS idx_wh_deliv_pending
 
 CREATE INDEX IF NOT EXISTS idx_wh_deliv_sub
   ON webhook_deliveries(subscription_id, created_at DESC);
+
+-- ============================================================
+-- Webhooks (inbound endpoints + received events)
+-- Phase 2: provider-agnostic inbound router with HMAC verification.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS webhook_endpoints (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  slug         TEXT    NOT NULL UNIQUE,
+  provider     TEXT    NOT NULL CHECK (provider IN ('generic','github')),
+  secret       TEXT    NOT NULL,
+  cohort_id    TEXT    REFERENCES cohorts(id) ON DELETE SET NULL,
+  active       INTEGER NOT NULL DEFAULT 1,
+  created_by   TEXT    REFERENCES users(id) ON DELETE SET NULL,
+  created_at   TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_wh_endpoints_slug_active
+  ON webhook_endpoints(slug, active);
+
+CREATE TABLE IF NOT EXISTS webhook_inbound_events (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  endpoint_id   INTEGER NOT NULL REFERENCES webhook_endpoints(id) ON DELETE CASCADE,
+  provider      TEXT    NOT NULL,
+  external_id   TEXT    NOT NULL,
+  event_type    TEXT,
+  payload       TEXT    NOT NULL,
+  signature_ok  INTEGER NOT NULL,
+  processed     INTEGER NOT NULL DEFAULT 0,
+  process_error TEXT,
+  received_at   TEXT    NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(endpoint_id, external_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_wh_inbound_unprocessed
+  ON webhook_inbound_events(processed, received_at);
+
+CREATE INDEX IF NOT EXISTS idx_wh_inbound_endpoint
+  ON webhook_inbound_events(endpoint_id, received_at DESC);
