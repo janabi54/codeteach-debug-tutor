@@ -4917,3 +4917,38 @@ body.modal-open { overflow: hidden; }
 @media (max-width: 720px) {
   .cj-lanes { grid-template-columns: 1fr; }
 }
+
+/* ─── GitHub login button + divider ─── */
+.login-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0 14px;
+  color: #9ca3af;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.login-divider::before,
+.login-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #e5e7eb;
+}
+.login-github-btn {
+  display: block;
+  width: 100%;
+  padding: 10px 14px;
+  text-align: center;
+  background: #24292f;
+  color: #fff;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background 0.15s ease;
+}
+.login-github-btn:hover {
+  background: #1b1f23;
+}

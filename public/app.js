@@ -2007,6 +2007,8 @@ async function loadCurrentUser() {
 
 function showLoginView() {
   $('loginView').hidden = false;
+  if (typeof showLoginErrorFromQuery === 'function') showLoginErrorFromQuery();
+  if (typeof loadLoginConfig === 'function') loadLoginConfig();
   const topbar = document.querySelector('header.topbar');
   if (topbar) topbar.style.display = 'none';
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
@@ -2090,6 +2092,40 @@ function setLoginMode(mode) {
   $('loginError').hidden = true;
   const inviteEl = $('loginInviteCode');
   if (inviteEl) inviteEl.value = '';
+}
+
+async function loadLoginConfig() {
+  try {
+    const res = await fetch('/api/auth/config', { credentials: 'same-origin' });
+    if (!res.ok) return;
+    const cfg = await res.json();
+    const btn = $('loginGithubBtn');
+    const divider = $('loginGithubDivider');
+    if (cfg && cfg.githubOAuthEnabled) {
+      if (btn) btn.hidden = false;
+      if (divider) divider.hidden = false;
+    }
+  } catch {
+    /* silent */
+  }
+}
+
+function showLoginErrorFromQuery() {
+  try {
+    const params = new URLSearchParams(location.search);
+    const code = params.get('loginError');
+    if (!code) return;
+    const messages = {
+      github_denied: 'GitHub sign-in was cancelled.',
+      github_state_invalid: 'Sign-in expired. Please try again.',
+      github_no_code: 'GitHub did not return an authorization code.',
+      github_no_account: 'No CodeTeach account is linked to that GitHub user. Ask your instructor for an invite.',
+      github_failed: 'GitHub sign-in failed. Please try again.',
+    };
+    showLoginError(messages[code] || 'Sign-in failed. Please try again.');
+  } catch {
+    /* ignore malformed query */
+  }
 }
 
 function showLoginError(msg) {

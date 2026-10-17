@@ -19,11 +19,29 @@ import {
 } from '../middleware/rateLimit.js';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { openAdminSignupEnabled } from '../util/roles.js';
+import {
+  isGithubOAuthEnabled,
+  getAuthorizeUrl,
+  exchangeCodeForToken,
+  fetchGitHubUser,
+} from '../auth/github-oauth.js';
+import { issueState, consumeState } from '../auth/oauth-state.js';
 
 const router = express.Router();
 
 const MIN_PASSWORD_LENGTH = 8;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// ─────────────────────────────────────────────────────────────
+// GET /api/auth/config
+// Public config the login page needs before rendering.
+// Returns which auth methods are enabled.
+// ─────────────────────────────────────────────────────────────
+router.get('/config', (_req, res) => {
+  res.json({
+    githubOAuthEnabled: isGithubOAuthEnabled(),
+  });
+});
 
 // ─────────────────────────────────────────────────────────────
 // POST /api/auth/register
@@ -186,6 +204,91 @@ router.post('/login', async (req, res) => {
       isAdmin: user.isAdmin === true,
     },
   });
+});
+
+// ─────────────────────────────────────────────────────────────
+// GET /api/auth/github
+// Begin the GitHub OAuth flow. Redirects to GitHub's authorize page
+// with a fresh one-time state token. Closed signup (B4): only users
+// already registered with CodeTeach can complete the flow.
+// ─────────────────────────────────────────────────────────────
+router.get('/github', (req, res) => {
+  if (!isGithubOAuthEnabled()) {
+    return res.status(503).json({ error: 'GitHub login is not configured.' });
+  }
+  const state = issueState();
+  res.redirect(getAuthorizeUrl(state));
+});
+
+// ─────────────────────────────────────────────────────────────
+// GET /api/auth/github/callback
+// Complete the GitHub OAuth flow.
+//
+// Cases handled:
+//   A. github_id matches an existing user → log in.
+//   B. GitHub email matches an existing user (no github_id set) →
+//      link the account, log in.
+//   C. Neither matches → closed signup, redirect to /login with error.
+//   D. Error or user-denied → redirect to /login with error.
+//
+// On success: same session cookie as password login. Redirect to /.
+// On failure: redirect to /?loginError=<slug> — never leak internals.
+// ─────────────────────────────────────────────────────────────
+router.get('/github/callback', async (req, res) => {
+  const redirectError = (slug: string) =>
+    res.redirect('/?loginError=' + encodeURIComponent(slug));
+
+  // 1. Provider-reported error (user clicked "Cancel")
+  if (typeof req.query.error === 'string' && req.query.error) {
+    return redirectError('github_denied');
+  }
+
+  // 2. State verification — one-time, must be present and valid
+  if (!consumeState(req.query.state)) {
+    return redirectError('github_state_invalid');
+  }
+
+  // 3. Code required
+  const code = typeof req.query.code === 'string' ? req.query.code : '';
+  if (!code) {
+    return redirectError('github_no_code');
+  }
+
+  try {
+    // 4. Exchange code → access token
+    const accessToken = await exchangeCodeForToken(code);
+
+    // 5. Fetch GitHub identity
+    const gh = await fetchGitHubUser(accessToken);
+
+    // 6. Find matching user
+    let user = await db.users.findByGithubId(gh.id);
+
+    if (!user && gh.email) {
+      // Case B — link by email if we have a verified one
+      const byEmail = await db.users.findByEmail(gh.email);
+      if (byEmail) {
+        await db.users.linkGithub(byEmail.id, gh.id);
+        user = await db.users.findById(byEmail.id);
+      }
+    }
+
+    // 7. Case C — no account for this GitHub identity
+    if (!user) {
+      return redirectError('github_no_account');
+    }
+
+    // 8. Issue session (identical to password login)
+    const token = await createSession(user.id);
+    setSessionCookie(res, token);
+
+    // 9. Redirect into the app
+    return res.redirect('/');
+  } catch (err: any) {
+    // Log for us, but do not leak to the browser
+    console.error('[auth] GitHub OAuth callback failed:', err?.message ?? err);
+    return redirectError('github_failed');
+  }
 });
 
 // ─────────────────────────────────────────────────────────────

@@ -33,6 +33,7 @@ function rowToUser(row: any): User {
     displayName: row.display_name,
     role: row.role === 'instructor' ? 'instructor' : 'student',
     isAdmin: row.is_admin === 1,
+    githubId: row.github_id ?? null,
     createdAt: parseSqliteTimestamp(row.created_at),
   };
 }
@@ -193,6 +194,14 @@ if (!hasIsAdmin) {
   console.log('[db] migrated: added users.is_admin');
 }
 
+// One-time migration: users.github_id (GitHub OAuth link)
+const hasGithubId = userColumns.some((c) => c.name === 'github_id');
+if (!hasGithubId) {
+  sqlite.exec('ALTER TABLE users ADD COLUMN github_id TEXT');
+  sqlite.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_github_id ON users(github_id) WHERE github_id IS NOT NULL');
+  console.log('[db] migrated: added users.github_id');
+}
+
 const hasOutcome = hypothesisColumns.some((c) => c.name === 'outcome');
 if (!hasOutcome) {
   sqlite.exec('ALTER TABLE hypotheses ADD COLUMN outcome TEXT');
@@ -313,6 +322,7 @@ interface User {
   displayName: string;
   role: 'student' | 'instructor';
   isAdmin: boolean;
+  githubId: string | null;
   createdAt: Date;
 }
 
@@ -512,13 +522,19 @@ const stmt = {
 
   // ── Auth: users ──
   insertUser: sqlite.prepare(
-    'INSERT INTO users (id, email, password_hash, display_name, role, is_admin) VALUES (?, ?, ?, ?, ?, ?)'
+    'INSERT INTO users (id, email, password_hash, display_name, role, is_admin, github_id) VALUES (?, ?, ?, ?, ?, ?, ?)'
   ),
   findUserByEmail: sqlite.prepare(
     'SELECT * FROM users WHERE email = ?'
   ),
   findUserById: sqlite.prepare(
     'SELECT * FROM users WHERE id = ?'
+  ),
+  findUserByGithubId: sqlite.prepare(
+    'SELECT * FROM users WHERE github_id = ?'
+  ),
+  updateUserGithubId: sqlite.prepare(
+    'UPDATE users SET github_id = ? WHERE id = ?'
   ),
   countUsersByRole: sqlite.prepare(
     'SELECT COUNT(*) AS n FROM users WHERE role = ?'
@@ -701,6 +717,7 @@ export const db = {
       displayName: string;
       role: 'student' | 'instructor';
       isAdmin?: boolean;
+      githubId?: string | null;
     }): Promise<User> {
       const id = randomUUID();
       const email = data.email.toLowerCase().trim();
@@ -710,7 +727,8 @@ export const db = {
         data.passwordHash,
         data.displayName,
         data.role,
-        data.isAdmin ? 1 : 0
+        data.isAdmin ? 1 : 0,
+        data.githubId ?? null
       );
       const row = stmt.findUserById.get(id) as any;
       return rowToUser(row);
@@ -722,6 +740,13 @@ export const db = {
     async findById(id: string): Promise<User | null> {
       const row = stmt.findUserById.get(id) as any;
       return row ? rowToUser(row) : null;
+    },
+    async findByGithubId(githubId: string): Promise<User | null> {
+      const row = stmt.findUserByGithubId.get(githubId) as any;
+      return row ? rowToUser(row) : null;
+    },
+    async linkGithub(userId: string, githubId: string): Promise<void> {
+      stmt.updateUserGithubId.run(githubId, userId);
     },
     async countByRole(role: 'student' | 'instructor'): Promise<number> {
       const row = stmt.countUsersByRole.get(role) as any;
