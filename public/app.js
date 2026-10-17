@@ -1670,70 +1670,111 @@ let __clearRunTimer = null;
 // Shape: { lastRunMatched: boolean | null, hasGoal: boolean }
 const __runStateByExercise = new Map();
 
-async function compareRunOutput() {
-  const ta = $('runOutput');
-  const btn = $('runCompareBtn');
-  const result = $('runResult');
-  if (!ta || !btn || !result) return;
+async function runCodeInSandbox() {
+  const code = $('code').value;
+  const prediction = $('runPrediction').value.trim();
+  const exerciseEl = $('exerciseId');
+  const exerciseSlug = exerciseEl ? exerciseEl.value : null;
 
-  if (!__currentSessionId) {
-    result.hidden = false;
-    result.className = 'run-result run-result-error';
-    result.textContent = 'No session yet. Ask the tutor for a hint first to create one.';
+  if (!code || !code.trim()) {
+    $('runStatus').textContent = 'Nothing to run.';
     return;
   }
 
-  const output = ta.value;
+  const btn = $('runBtn');
   btn.disabled = true;
-  btn.textContent = 'Comparing…';
+  $('runStatus').textContent = 'Running…';
+  $('runCompare').hidden = true;
+
   try {
-    const res = await fetch('/api/debug-tutor/verify-run', {
+    const res = await fetch('/api/run', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
-      body: JSON.stringify({ sessionId: __currentSessionId, output }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        exerciseSlug,
+        code,
+        prediction: prediction || undefined,
+      }),
     });
-    const data = await res.json().catch(() => ({}));
+    const data = await res.json();
+
     if (!res.ok) {
-      result.hidden = false;
-      result.className = 'run-result run-result-error';
-      result.textContent = data.error || 'Could not compare.';
+      $('runStatus').textContent = data.error || 'Run failed';
       return;
     }
-    // Cache the result for the completion gate.
-    const sel = $('exerciseId');
-    const exId = sel ? sel.value : null;
-    if (exId) {
-      __runStateByExercise.set(exId, {
-        lastRunMatched: data.hasGoal ? !!data.matched : null,
-        hasGoal: !!data.hasGoal,
-      });
-      // Re-evaluate the 'I fixed it' gate with the fresh match state.
-      setSessionCompleteButtons(exId, false);
+
+    window.__lastRun = data;
+
+    $('runOutput').textContent = data.stdout || '(no output)';
+
+    if (data.trace && data.trace.length > 0) {
+      $('runTraceSection').hidden = false;
+      $('runTrace').innerHTML = renderTraceTable(data.trace);
+      $('runTraceCount').textContent = '(' + data.trace.length + ' iterations)';
+    } else {
+      $('runTraceSection').hidden = true;
+      $('runTrace').innerHTML = '';
     }
 
-    result.hidden = false;
-    if (!data.hasGoal) {
-      result.className = 'run-result run-result-info';
-      result.textContent = 'No goal set for this exercise yet. Ask your tutor to add one.';
-    } else if (data.matched) {
-      result.className = 'run-result run-result-match';
-      result.innerHTML = 'Looks right! You produced: <code>' + escapeHtml(data.submitted) + '</code>.';
+    if (prediction) {
+      const cmp = $('runCompare');
+      cmp.hidden = false;
+      cmp.innerHTML = renderPredictionComparison(prediction, data.stdout);
+    }
+
+    if (data.syntaxError) {
+      $('runStatus').textContent = 'Syntax error: ' + data.syntaxError;
+    } else if (data.timedOut) {
+      $('runStatus').textContent = 'Timed out after 5s';
+    } else if (data.matched === 1) {
+      $('runStatus').textContent = '✓ Output matches expected';
+    } else if (data.matched === 0) {
+      $('runStatus').textContent = 'Output does not match expected';
     } else {
-      result.className = 'run-result run-result-mismatch';
-      result.innerHTML =
-        'Expected <code>' + escapeHtml(data.expected) + '</code>, ' +
-        'you pasted <code>' + escapeHtml(data.submitted) + '</code>.';
+      $('runStatus').textContent = 'Ran in ' + data.durationMs + 'ms';
+    }
+
+    if (typeof hydrateSession === 'function') {
+      await hydrateSession();
     }
   } catch (err) {
-    result.hidden = false;
-    result.className = 'run-result run-result-error';
-    result.textContent = 'Failed: ' + err.message;
+    $('runStatus').textContent = 'Error: ' + err.message;
   } finally {
     btn.disabled = false;
-    btn.textContent = 'Compare';
   }
 }
+
+function renderTraceTable(trace) {
+  const rows = trace.map(function (t) {
+    return '<tr>' +
+      '<td>' + escapeHtml(String(t.step)) + '</td>' +
+      '<td><code>' + escapeHtml(t.loopVar) + '</code></td>' +
+      '<td><code>' + escapeHtml(t.value) + '</code></td>' +
+    '</tr>';
+  }).join('');
+  return '<table class="trace-table">' +
+    '<thead><tr><th>#</th><th>Variable</th><th>Value</th></tr></thead>' +
+    '<tbody>' + rows + '</tbody>' +
+  '</table>';
+}
+
+function renderPredictionComparison(prediction, actual) {
+  var pred = (prediction || '').trim();
+  var act = (actual || '').trim();
+  var match = pred === act;
+  return '<div class="compare-banner ' + (match ? 'match' : 'mismatch') + '">' +
+    '<div class="compare-row"><strong>You predicted:</strong><pre>' + escapeHtml(pred || '(nothing)') + '</pre></div>' +
+    '<div class="compare-row"><strong>Actual output:</strong><pre>' + escapeHtml(act || '(nothing)') + '</pre></div>' +
+    '<p class="compare-verdict">' + (match ? '\u2713 Your prediction was right.' : '\u2717 The output differs from your prediction. Check the trace to see why.') + '</p>' +
+  '</div>';
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+  var runBtn = document.getElementById('runBtn');
+  if (runBtn) runBtn.addEventListener('click', runCodeInSandbox);
+});
+
 
 // Called by the client whenever the code textarea changes: clears any
 // stored run after a short debounce, because a change to the code

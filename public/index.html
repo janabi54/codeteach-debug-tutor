@@ -153,17 +153,24 @@
           <button type="button" class="run-pane-collapse" id="runPaneCollapseBtn" title="Collapse run panel" aria-label="Collapse run panel">‹</button>
         </div>
         <div class="run-pane-inner">
-          <p class="run-hint">
-            Run your code in your own editor, then paste the output below to
-            compare against the goal.
-          </p>
-          <label for="runOutput" class="run-label">Your output</label>
-          <textarea id="runOutput" class="run-output-input" rows="4" spellcheck="false"
-            placeholder="Paste your program's output here…"></textarea>
-          <div class="run-actions">
-            <button type="button" id="runCompareBtn" class="primary small">Compare</button>
+          <div class="run-section">
+            <label for="runPrediction" class="run-label">Before you run — predict the output</label>
+            <textarea id="runPrediction" class="run-prediction-input" rows="2" spellcheck="false"
+              placeholder="I expect this code to print…"></textarea>
           </div>
-          <div id="runResult" class="run-result" hidden></div>
+          <div class="run-actions">
+            <button type="button" id="runBtn" class="primary small">Run</button>
+            <span id="runStatus" class="run-status"></span>
+          </div>
+          <div class="run-section">
+            <label class="run-label">Output</label>
+            <pre id="runOutput" class="run-output-display"></pre>
+          </div>
+          <div class="run-section" id="runTraceSection" hidden>
+            <label class="run-label">Trace <span class="run-trace-count" id="runTraceCount"></span></label>
+            <div id="runTrace" class="run-trace-table"></div>
+          </div>
+          <div id="runCompare" class="run-compare" hidden></div>
         </div>
       </div>
     </div>

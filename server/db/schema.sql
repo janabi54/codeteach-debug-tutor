@@ -465,3 +465,23 @@ CREATE TABLE IF NOT EXISTS pattern_concept_map (
   concept_slug TEXT NOT NULL REFERENCES concepts(slug) ON DELETE CASCADE,
   created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- ============================================================
+-- Runs: every code execution attempt with its trace
+-- ============================================================
+CREATE TABLE IF NOT EXISTS runs (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  student_id        TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  exercise_id       TEXT    REFERENCES exercises(id) ON DELETE SET NULL,
+  code              TEXT    NOT NULL,
+  prediction        TEXT,
+  stdout            TEXT    NOT NULL DEFAULT '',
+  stderr            TEXT    NOT NULL DEFAULT '',
+  trace             TEXT    NOT NULL DEFAULT '[]',
+  exit_code         INTEGER,
+  timed_out         INTEGER NOT NULL DEFAULT 0,
+  matched_expected  INTEGER,
+  created_at        TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_runs_student_exercise
+  ON runs(student_id, exercise_id, created_at DESC);

@@ -16,6 +16,7 @@ import { seedExercisesFromConfig } from './db/seedExercises.js';
 import { attachWebSocketServer } from './websocket.js';
 import nudgeRoutes from './routes/nudges.js';
 import meRoutes from './routes/me.js';
+import runRoutes from './routes/run.js';
 import { pathToFileURL } from 'node:url';
 import { startDispatcher } from './webhooks/outbound/dispatcher.js';
 import inboundWebhookRouter from './webhooks/inbound/router.js';
@@ -46,6 +47,7 @@ app.use('/api/admin/students', studentRoutes);
 app.use('/api/admin', notesRoutes);
 app.use('/api', nudgeRoutes);
 app.use('/api', meRoutes);
+app.use('/api', runRoutes);
 
 const PORT = Number(process.env.PORT ?? 3001);
 

@@ -5211,3 +5211,109 @@ h1, h2, h3 {
   border-color: #c7d2fe;
   background: #ffffff;
 }
+
+
+/* ─── Run pane v2: prediction + output + trace (Phase 7) ─── */
+.run-prediction-input {
+  width: 100%;
+  min-height: 56px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 13px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  resize: vertical;
+  margin-bottom: 8px;
+  box-sizing: border-box;
+}
+.run-status {
+  margin-left: 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.run-output-display {
+  min-height: 60px;
+  padding: 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg-subtle);
+  color: var(--text-primary);
+  font-family: "SF Mono", Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-y: auto;
+  max-height: 200px;
+  margin: 0;
+}
+.run-trace-count {
+  color: var(--text-secondary);
+  font-weight: 400;
+  font-size: 11px;
+}
+.run-trace-table {
+  margin-top: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.trace-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.trace-table th,
+.trace-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+.trace-table th {
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+.trace-table code {
+  background: var(--accent-soft);
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: var(--accent);
+}
+.run-compare {
+  margin-top: 8px;
+}
+.compare-banner {
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.compare-banner.match {
+  background: var(--bg-subtle);
+  border: 1px solid var(--accent-border);
+}
+.compare-banner.mismatch {
+  background: var(--bg-subtle);
+  border: 1px solid var(--warning);
+}
+.compare-banner .compare-row {
+  margin-bottom: 6px;
+}
+.compare-banner pre {
+  margin: 4px 0;
+  padding: 6px 8px;
+  background: var(--bg-card);
+  border-radius: 4px;
+  font-family: "SF Mono", Monaco, Consolas, monospace;
+  font-size: 11px;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  max-height: 100px;
+  overflow-y: auto;
+}
+.compare-verdict {
+  margin: 6px 0 0;
+  font-weight: 500;
+}
