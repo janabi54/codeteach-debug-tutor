@@ -61,3 +61,5 @@ codeteach.db.backup-*
 
 # ngrok binary download
 ngrok.tgz
+__pycache__/
+*.pyc
