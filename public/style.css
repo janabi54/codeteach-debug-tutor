@@ -5182,3 +5182,32 @@ h1, h2, h3 {
   color: var(--text-primary);
   border-color: var(--border-strong);
 }
+
+
+/* Enrollment card: force light-mode text */
+[data-theme="dark"] .cohort-card {
+  background: linear-gradient(135deg, #eef2ff 0%, #f5f3ff 100%);
+  border-color: #c7d2fe;
+}
+[data-theme="dark"] .cohort-card,
+[data-theme="dark"] .cohort-card * {
+  color: #1a1d23;
+}
+[data-theme="dark"] .cohort-card .cohort-label {
+  color: #4f46e5;
+}
+[data-theme="dark"] .cohort-card .cohort-code {
+  color: #1a1d23;
+  background: #ffffff;
+  border-color: #c7d2fe;
+}
+[data-theme="dark"] .cohort-card .field-hint,
+[data-theme="dark"] .cohort-card .cohort-hint {
+  color: #4b5563;
+}
+[data-theme="dark"] .cohort-card button,
+[data-theme="dark"] .cohort-card .ghost {
+  color: #1a1d23;
+  border-color: #c7d2fe;
+  background: #ffffff;
+}
