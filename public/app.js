@@ -2964,6 +2964,14 @@ async function openSettings() {
   toggleUserMenu(false);
   $('settingsModal').hidden = false;
 
+  // Default to Appearance section
+  if (typeof window.showSettingsSection === 'function') {
+    window.showSettingsSection('appearance');
+  }
+  if (typeof window.populateSettingsAccount === 'function') {
+    window.populateSettingsAccount();
+  }
+
   const isInstructor = currentUser && currentUser.role === 'instructor';
 
   if (currentUser) {

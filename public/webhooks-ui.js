@@ -114,27 +114,27 @@
     root.innerHTML = `
       <style>
         .wh-grid { display: grid; gap: 24px; }
-        .wh-card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; background: #fff; }
+        .wh-card { border: 1px solid var(--border); border-radius: 8px; padding: 16px; background: var(--bg-card); }
         .wh-card h3 { margin: 0 0 12px; font-size: 16px; }
         .wh-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         .wh-table th, .wh-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #f1f3f5; vertical-align: top; }
-        .wh-table th { font-weight: 600; color: #6b7280; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+        .wh-table th { font-weight: 600; color: var(--text-secondary); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
         .wh-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; padding-top: 12px; border-top: 1px dashed #e5e7eb; }
-        .wh-form input, .wh-form select { padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; }
+        .wh-form input, .wh-form select { padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; }
         .wh-form input[type="text"] { min-width: 280px; flex: 1; }
-        .wh-btn { padding: 6px 12px; border: 1px solid #d1d5db; background: #fff; border-radius: 6px; cursor: pointer; font-size: 13px; }
-        .wh-btn:hover { background: #f9fafb; }
+        .wh-btn { padding: 6px 12px; border: 1px solid var(--border); background: var(--bg-card); border-radius: 6px; cursor: pointer; font-size: 13px; }
+        .wh-btn:hover { background: var(--bg-subtle); }
         .wh-btn:disabled { opacity: 0.6; cursor: default; }
-        .wh-btn.primary { background: #4f46e5; color: #fff; border-color: #4f46e5; }
-        .wh-btn.danger { color: #b91c1c; }
+        .wh-btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+        .wh-btn.danger { color: var(--danger); }
         .wh-status { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; }
         .wh-status.delivered { background: #dcfce7; color: #166534; }
         .wh-status.pending { background: #fef3c7; color: #92400e; }
         .wh-status.failed, .wh-status.dead { background: #fee2e2; color: #991b1b; }
         .wh-status.ok { background: #dbeafe; color: #1e40af; }
-        .wh-muted { color: #6b7280; font-size: 12px; }
-        .wh-secret { font-family: monospace; font-size: 11px; word-break: break-all; background: #f3f4f6; padding: 6px; border-radius: 4px; margin-top: 6px; }
-        .wh-err { color: #b91c1c; font-size: 12px; }
+        .wh-muted { color: var(--text-secondary); font-size: 12px; }
+        .wh-secret { font-family: monospace; font-size: 11px; word-break: break-all; background: var(--bg-subtle); padding: 6px; border-radius: 4px; margin-top: 6px; }
+        .wh-err { color: var(--danger); font-size: 12px; }
         .wh-msg { margin-top: 10px; }
       </style>
 

@@ -890,69 +890,136 @@ for (let i = 0; i < arr.length; i++) {
 <script src="/app.js"></script>
   <script src="/webhooks-ui.js" defer></script>
   <script src="/concepts-ui.js" defer></script>
+<script src="/settings.js" defer></script>
 
 <!-- SETTINGS MODAL -->
 <div id="settingsModal" class="modal-backdrop" hidden>
-  <div class="modal settings-modal">
-    <div class="modal-badge">Join Class</div>
-    <h2 class="modal-title">Classes</h2>
-    <p id="settingsAccountLine" class="settings-account-line">—</p>
-
-    <div class="settings-section">
-      <h3 class="settings-heading">Your classes</h3>
-      <div id="settingsClassList" class="settings-class-list">
-        <p class="empty-state">Loading...</p>
-      </div>
-    </div>
-
-    <div class="settings-section" id="studyGroupsSection">
-      <h3 class="settings-heading">Study groups</h3>
-      <p class="settings-hint">Small groups (up to 6) working together. Your tutor approves each new group.</p>
-
-      <div id="settingsGroupList" class="settings-class-list">
-        <p class="empty-state">Loading...</p>
-      </div>
-
-      <div style="margin-top: 12px;">
-        <div class="settings-join-row">
-          <input id="newGroupName" type="text" spellcheck="false" placeholder="Group name" maxlength="40" autocomplete="off" />
-          <select id="newGroupCohort"></select>
+  <div class="modal settings-modal settings-shell">
+    <div class="settings-layout">
+      <aside class="settings-sidebar">
+        <div class="settings-sidebar-header">
+          <h2 class="settings-title">Settings</h2>
         </div>
-        <button id="createGroupBtn" class="primary small" style="margin-top: 8px;">Create a group</button>
-        <p id="createGroupMessage" class="settings-join-message" hidden></p>
-      </div>
-
-      <div style="margin-top: 12px;">
-        <div class="settings-join-row">
-          <input id="groupJoinCode" type="text" spellcheck="false" placeholder="Group code (XXXX-XXXX)" autocomplete="off" />
-          <button id="groupJoinBtn" class="primary small">Join</button>
+        <nav class="settings-nav" role="tablist">
+          <button class="settings-nav-btn active" data-settings-section="appearance" role="tab" aria-selected="true">Appearance</button>
+          <button class="settings-nav-btn" data-settings-section="account" role="tab" aria-selected="false">Account</button>
+          <button class="settings-nav-btn" data-settings-section="classes" role="tab" aria-selected="false">Classes &amp; Groups</button>
+          <button class="settings-nav-btn" data-settings-section="danger" role="tab" aria-selected="false">Danger zone</button>
+        </nav>
+        <div class="settings-sidebar-footer">
+          <p id="settingsAccountLine" class="settings-account-line">—</p>
+          <button id="closeSettingsBtn" class="ghost">Close</button>
         </div>
-        <p id="groupJoinMessage" class="settings-join-message" hidden></p>
-      </div>
-    </div>
+      </aside>
+      <main class="settings-content">
 
-    <div class="settings-section">
-      <h3 class="settings-heading">Join a class</h3>
-      <p class="settings-hint">Ask your instructor for the class enrollment code.</p>
-      <div class="settings-join-row">
-        <input id="settingsJoinCode" type="text" spellcheck="false" placeholder="XXXX-XXXX" autocomplete="off" />
-        <button id="settingsJoinBtn" class="primary small">Join</button>
-      </div>
-      <p id="settingsJoinMessage" class="settings-join-message" hidden></p>
-    </div>
+        <section class="settings-panel active" data-settings-panel="appearance">
+          <h2 class="settings-panel-title">Appearance</h2>
+          <p class="settings-panel-hint">Choose how CodeTeach looks. "System" follows your OS setting.</p>
+          <div class="theme-picker" role="radiogroup" aria-label="Theme">
+            <label class="theme-option">
+              <input type="radio" name="themeChoice" value="light" />
+              <span class="theme-option-label">Light</span>
+              <span class="theme-option-hint">Always light</span>
+            </label>
+            <label class="theme-option">
+              <input type="radio" name="themeChoice" value="dark" />
+              <span class="theme-option-label">Dark</span>
+              <span class="theme-option-hint">Always dark</span>
+            </label>
+            <label class="theme-option">
+              <input type="radio" name="themeChoice" value="system" checked />
+              <span class="theme-option-label">System</span>
+              <span class="theme-option-hint">Follow your OS setting</span>
+            </label>
+          </div>
+        </section>
 
-    <div class="settings-section settings-danger-section">
-      <h3 class="settings-heading settings-heading-danger">Danger zone</h3>
-      <p class="settings-hint">
-        Deleting your account permanently removes your profile and all of your
-        work — sessions, hypotheses, post-mortems, mistake patterns, and
-        telemetry. Instructors must delete or transfer their cohorts first.
-      </p>
-      <button id="deleteAccountBtn" class="danger small">Delete my account</button>
-    </div>
+        <section class="settings-panel" data-settings-panel="account">
+          <h2 class="settings-panel-title">Account</h2>
+          <p class="settings-panel-hint">Your current CodeTeach identity.</p>
+          <div class="settings-account-grid">
+            <div class="settings-account-row">
+              <span class="settings-account-label">Name</span>
+              <span id="settingsAccountName" class="settings-account-value">—</span>
+            </div>
+            <div class="settings-account-row">
+              <span class="settings-account-label">Email</span>
+              <span id="settingsAccountEmail" class="settings-account-value">—</span>
+            </div>
+            <div class="settings-account-row">
+              <span class="settings-account-label">Role</span>
+              <span id="settingsAccountRole" class="settings-account-value">—</span>
+            </div>
+          </div>
+          <div class="settings-account-actions">
+            <button id="settingsLogoutBtn" class="ghost">Log out</button>
+          </div>
+        </section>
 
-    <div class="modal-footer">
-      <button id="closeSettingsBtn" class="ghost">Close</button>
+        <section class="settings-panel" data-settings-panel="classes">
+          <h2 class="settings-panel-title">Classes &amp; Groups</h2>
+
+          <div class="settings-section">
+            <h3 class="settings-heading">Your classes</h3>
+            <div id="settingsClassList" class="settings-class-list">
+              <p class="empty-state">Loading...</p>
+            </div>
+          </div>
+
+          <div class="settings-section" id="studyGroupsSection">
+            <h3 class="settings-heading">Study groups</h3>
+            <p class="settings-hint">Small groups (up to 6) working together. Your tutor approves each new group.</p>
+
+            <div id="settingsGroupList" class="settings-class-list">
+              <p class="empty-state">Loading...</p>
+            </div>
+
+            <div style="margin-top: 12px;">
+              <div class="settings-join-row">
+                <input id="newGroupName" type="text" spellcheck="false" placeholder="Group name" maxlength="40" autocomplete="off" />
+                <select id="newGroupCohort"></select>
+              </div>
+              <button id="createGroupBtn" class="primary small" style="margin-top: 8px;">Create a group</button>
+              <p id="createGroupMessage" class="settings-join-message" hidden></p>
+            </div>
+
+            <div style="margin-top: 12px;">
+              <div class="settings-join-row">
+                <input id="groupJoinCode" type="text" spellcheck="false" placeholder="Group code (XXXX-XXXX)" autocomplete="off" />
+                <button id="groupJoinBtn" class="primary small">Join</button>
+              </div>
+              <p id="groupJoinMessage" class="settings-join-message" hidden></p>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h3 class="settings-heading">Join a class</h3>
+            <p class="settings-hint">Ask your instructor for the class enrollment code.</p>
+            <div class="settings-join-row">
+              <input id="settingsJoinCode" type="text" spellcheck="false" placeholder="XXXX-XXXX" autocomplete="off" />
+              <button id="settingsJoinBtn" class="primary small">Join</button>
+            </div>
+            <p id="settingsJoinMessage" class="settings-join-message" hidden></p>
+          </div>
+        </section>
+
+        <section class="settings-panel" data-settings-panel="danger">
+          <h2 class="settings-panel-title">Danger zone</h2>
+          <p class="settings-panel-hint">These actions cannot be undone.</p>
+
+          <div class="settings-section settings-danger-section">
+            <h3 class="settings-heading settings-heading-danger">Delete account</h3>
+            <p class="settings-hint">
+              Deleting your account permanently removes your profile and all of your
+              work — sessions, hypotheses, post-mortems, mistake patterns, and
+              telemetry. Instructors must delete or transfer their cohorts first.
+            </p>
+            <button id="deleteAccountBtn" class="danger small">Delete my account</button>
+          </div>
+        </section>
+
+      </main>
     </div>
   </div>
 </div>
