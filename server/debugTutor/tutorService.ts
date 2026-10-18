@@ -17,7 +17,12 @@ export interface TutorRequest {
   exerciseContext: { title: string; description: string;
     learningObjectives: string[]; expectedConcepts: string[];
     expectedOutput?: string;
-    lastRun?: { submitted: string; expected: string } | null; };
+    lastRun?: {
+      submitted: string;
+      expected: string;
+      predicted?: string;
+      trace?: Array<{ step: number; loopVar: string; value: string }>;
+    } | null; };
   attemptNumber: number; passed?: boolean;
   hypothesis?: string;
 }
@@ -71,7 +76,13 @@ export async function getTutorHint(req: TutorRequest): Promise<TutorHint> {
   try {
     const message = await callLLM({
       system: SYSTEM_PROMPT,
-      user: buildUserMessage(req, classification, hintLevel, studentContext),
+      user: (function () {
+      var msg = buildUserMessage(req, classification, hintLevel, studentContext);
+      console.log('[prompt-debug] --- PROMPT TO LLM ---');
+      console.log(msg);
+      console.log('[prompt-debug] --- END PROMPT ---');
+      return msg;
+    })(),
     });
     const parsed = safeParse(message);
     if (!parsed.message || typeof parsed.message !== 'string')
@@ -96,7 +107,12 @@ export async function getTutorHint(req: TutorRequest): Promise<TutorHint> {
       type: 'fallback-hint-served', studentId: req.studentId,
       exerciseId: req.exerciseId, reason, timestamp: new Date(),
     });
-    const fallback = generateFallbackHint(classification, reason);
+    const fallback = generateFallbackHint(
+      classification,
+      reason,
+      req.exerciseContext?.lastRun || null,
+      hintLevel
+    );
     if (fallback.detectedPattern) {
       await db.mistakePatterns.record({
         studentId: req.studentId, exerciseId: req.exerciseId,
@@ -111,12 +127,18 @@ function buildUserMessage(req: TutorRequest, classification: PreClassificationRe
   hintLevel: HintLevel, studentContext: string): string {
   const run = req.exerciseContext.lastRun;
   const goal = (req.exerciseContext.expectedOutput || '').trim();
+  const traceBlock = (run && Array.isArray(run.trace) && run.trace.length > 0)
+    ? '\nEXECUTION TRACE (loop iterations):\n' +
+      run.trace.map(function (t) { return '  step ' + t.step + ': ' + t.loopVar + '=' + t.value; }).join('\n') + '\n'
+    : '';
   const runBlock = run
-    ? `\nLAST RUN COMPARISON:
-The student ran their code and got: ${JSON.stringify(run.submitted)}
-Expected output: ${JSON.stringify(run.expected)}
-Use this mismatch to guide the next hint. The student has concrete evidence of what went wrong — reference it specifically without just restating the numbers.\n`
-    : (goal ? `\nEXPECTED OUTPUT (the goal): ${JSON.stringify(goal)}\n` : '');
+    ? '\nLAST RUN EVIDENCE (use it directly in the hint):\n' +
+      'Student predicted: ' + JSON.stringify(run.predicted || '(no prediction)') + '\n' +
+      'Student\'s code printed: ' + JSON.stringify(run.submitted) + '\n' +
+      'Expected output: ' + JSON.stringify(run.expected) + '\n' +
+      traceBlock +
+      '\nAT HINT LEVEL 2 OR HIGHER: you MUST reference the specific mismatch the student sees — their prediction vs their actual output, or the exact iteration where behaviour diverged. Do NOT give a generic strategy hint. Name the concrete evidence. If the trace is present, cite a specific step by number.\n'
+    : (goal ? '\nEXPECTED OUTPUT (the goal): ' + JSON.stringify(goal) + '\n' : '');
 
   return `EXERCISE: ${req.exerciseContext.title}
 DESCRIPTION: ${req.exerciseContext.description}
