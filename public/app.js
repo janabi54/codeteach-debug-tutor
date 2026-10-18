@@ -731,6 +731,8 @@ setLevel(1);
 
 // --- Post-mortem ---
 function renderPostMortemPrompt(prompt) {
+  // Clear any previous post-mortem prompts so they don't stack
+  messagesEl.querySelectorAll('.msg.post-mortem-gate').forEach(function (el) { el.remove(); });
   if (messagesEl.querySelector('.empty-state')) messagesEl.innerHTML = '';
   const div = document.createElement('div');
   div.className = 'msg post-mortem-gate';
@@ -1782,7 +1784,7 @@ async function runCodeInSandbox() {
     }
 
     try {
-      renderInvestigation(data, data.expectedOutput);
+      renderInvestigation(data, data.expectedOutput, prediction);
     } catch (renderErr) {
       console.error('[run] renderInvestigation failed:', renderErr);
       const inv = $('investigation');
@@ -1815,7 +1817,7 @@ async function runCodeInSandbox() {
   }
 }
 
-function renderInvestigation(data, expectedOutput) {
+function renderInvestigation(data, expectedOutput, prediction) {
   const card = $('investigation');
   const body = $('investigationBody');
   if (!card || !body) return;
@@ -1868,7 +1870,7 @@ function renderInvestigation(data, expectedOutput) {
   const matched = data.matched === 1;
 
   const diffHtml = hasExpected
-    ? renderDiff(expectedOutput, data.stdout || '')
+    ? renderDiff(expectedOutput, prediction || '', data.stdout || '')
     : '<div class="investigation-section"><h4>Output</h4><pre class="investigation-stdout">' + escapeHtml(data.stdout || '(no output)') + '</pre></div>';
 
   const traceCount = (data.trace && data.trace.length) || 0;
@@ -1893,27 +1895,62 @@ function renderInvestigation(data, expectedOutput) {
   body.innerHTML = header + diffHtml + traceHtml;
 }
 
-function renderDiff(expected, actual) {
-  const expLines = expected.split('\n').map(function (s) { return s.trim(); }).filter(function (s) { return s.length > 0; });
-  const actLines = actual.split('\n').map(function (s) { return s.trim(); }).filter(function (s) { return s.length > 0; });
+function renderDiff(expected, prediction, actual) {
+  const splitLines = function (s) {
+    var raw = (s || '').split('\n').map(function (l) { return l.trim(); }).filter(function (l) { return l.length > 0; });
+    // If a single line contains multiple whitespace-separated values,
+    // treat them as one-per-line predictions. "3 2 1" → ["3","2","1"].
+    if (raw.length === 1 && raw[0].indexOf(' ') > -1) {
+      return raw[0].split(/\s+/).filter(function (l) { return l.length > 0; });
+    }
+    return raw;
+  };
+  const expLines = splitLines(expected);
+  const predLines = splitLines(prediction);
+  const actLines = splitLines(actual);
 
-  const max = Math.max(expLines.length, actLines.length);
+  const hasPrediction = predLines.length > 0;
+  const max = Math.max(expLines.length, predLines.length, actLines.length);
+
   let rows = '';
   for (let i = 0; i < max; i++) {
     const e = expLines[i];
+    const p = hasPrediction ? predLines[i] : undefined;
     const a = actLines[i];
-    const rowClass = (e === a) ? 'match' : 'differ';
-    rows += '<tr class="diff-row ' + rowClass + '">' +
-      '<td>' + (i + 1) + '</td>' +
-      '<td><code>' + escapeHtml(e === undefined ? '(missing)' : e) + '</code></td>' +
-      '<td><code>' + escapeHtml(a === undefined ? '(missing)' : a) + '</code></td>' +
-    '</tr>';
+
+    const eStr = e === undefined ? '(missing)' : e;
+    const pStr = hasPrediction ? (p === undefined ? '(missing)' : p) : null;
+    const aStr = a === undefined ? '(missing)' : a;
+
+    const eVsA = e === a;
+    const eVsP = !hasPrediction || e === p;
+    const pVsA = !hasPrediction || p === a;
+    const allMatch = eVsA && eVsP && pVsA;
+
+    const eClass = eVsA ? 'match' : 'differs';
+    const pClass = hasPrediction ? (eVsP && pVsA ? 'match' : 'warn') : '';
+    const aClass = eVsA ? 'match' : 'differs';
+
+    rows += '<tr class="diff-row ' + (allMatch ? 'match' : 'differ') + '">' +
+      '<td class="diff-num">' + (i + 1) + '</td>' +
+      '<td class="diff-cell ' + eClass + '"><code>' + escapeHtml(eStr) + '</code></td>';
+
+    if (hasPrediction) {
+      rows += '<td class="diff-cell ' + pClass + '"><code>' + escapeHtml(pStr) + '</code></td>';
+    }
+
+    rows += '<td class="diff-cell ' + aClass + '"><code>' + escapeHtml(aStr) + '</code></td>' +
+      '</tr>';
   }
 
+  const headers = hasPrediction
+    ? '<tr><th>#</th><th>Expected</th><th>Predicted</th><th>Actual</th></tr>'
+    : '<tr><th>#</th><th>Expected</th><th>Actual</th></tr>';
+
   return '<div class="investigation-section">' +
-    '<h4>Expected vs actual</h4>' +
+    '<h4>' + (hasPrediction ? 'Expected vs predicted vs actual' : 'Expected vs actual') + '</h4>' +
     '<table class="diff-table">' +
-      '<thead><tr><th>#</th><th>Expected</th><th>Actual</th></tr></thead>' +
+      '<thead>' + headers + '</thead>' +
       '<tbody>' + rows + '</tbody>' +
     '</table>' +
   '</div>';
