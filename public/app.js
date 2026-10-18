@@ -304,6 +304,18 @@ async function callHintApi(hypothesis) {
   };
   if (hypothesis) payload.hypothesis = hypothesis;
 
+  // Phase 7c — send the full picture: prediction, actual output, expected, trace.
+  // Prefer __lastRunForHint because it survives scheduleClearRun.
+  const runForHint = window.__lastRunForHint || window.__lastRun;
+  if (runForHint) {
+    payload.lastRun = {
+      submitted: runForHint.stdout || '',
+      expected: runForHint.expectedOutput || '',
+      predicted: ($('runPrediction') && $('runPrediction').value.trim()) || '',
+      trace: runForHint.trace || [],
+    };
+  }
+
   const res = await fetch('/api/debug-tutor/hint', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1775,6 +1787,7 @@ async function runCodeInSandbox() {
     }
 
     window.__lastRun = data;
+    window.__lastRunForHint = data;  // persists for hint context
 
     // Clear any stale hint from a previous exercise/run
     const hintSlotEl = $('hintSlot');
@@ -7656,4 +7669,62 @@ document.addEventListener('keydown', function (e) {
   if (confirm && !confirm.hidden && typeof closeConfirmModal === 'function') {
     closeConfirmModal();
   }
+});
+
+// ─── New practice exercise modal ───
+document.addEventListener('DOMContentLoaded', () => {
+  const btn = document.getElementById('newPracticeBtn');
+  const modal = document.getElementById('newPracticeModal');
+  if (!btn || !modal) return;
+  const cancel = document.getElementById('npCancel');
+  const create = document.getElementById('npCreate');
+  const err = document.getElementById('npError');
+
+  function open() { modal.hidden = false; err.hidden = true; }
+  function close() {
+    modal.hidden = true;
+    ['npTitle','npDescription','npStarter','npExpected'].forEach(id => {
+      const el = document.getElementById(id); if (el) el.value = '';
+    });
+  }
+
+  btn.addEventListener('click', open);
+  cancel.addEventListener('click', close);
+  modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+
+  create.addEventListener('click', async () => {
+    const title = document.getElementById('npTitle').value.trim();
+    const description = document.getElementById('npDescription').value.trim();
+    const starterCode = document.getElementById('npStarter').value;
+    const expectedOutput = document.getElementById('npExpected').value;
+
+    if (!title) { err.textContent = 'Title required'; err.hidden = false; return; }
+    if (!starterCode.trim()) { err.textContent = 'Starter code required'; err.hidden = false; return; }
+
+    create.disabled = true;
+    try {
+      const res = await fetch('/api/me/exercises', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, description, starterCode, expectedOutput, language: 'python' }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        err.textContent = data.error || 'Create failed';
+        err.hidden = false;
+        return;
+      }
+      close();
+      if (typeof loadExercisePicker === 'function') await loadExercisePicker();
+      // Auto-select the newly created exercise
+      const sel = document.getElementById('exerciseId');
+      if (sel) { sel.value = data.slug; sel.dispatchEvent(new Event('change')); }
+    } catch (e) {
+      err.textContent = 'Error: ' + e.message;
+      err.hidden = false;
+    } finally {
+      create.disabled = false;
+    }
+  });
 });

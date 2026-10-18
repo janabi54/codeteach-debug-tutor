@@ -2763,6 +2763,44 @@ export const db = {
      * All exercises in every cohort the given user is a member of.
      * Used by students to pick an exercise.
      */
+    /**
+     * Practice-mode exercises: cohort_id IS NULL. Available to any signed-in user,
+     * enrolled or not. Used to populate the "Practice" group in the picker.
+     */
+    async listPracticeExercises(): Promise<Array<{
+      id: string;
+      slug: string;
+      title: string;
+      description: string;
+      language: string;
+      starterCode: string;
+      expectedConcepts: string[];
+      expectedOutput: string;
+      cohortId: string | null;
+      cohortName: string;
+    }>> {
+      const rows = sqlite
+        .prepare(
+          `SELECT e.id, e.slug, e.title, e.description, e.language,
+                  e.starter_code AS starterCode,
+                  e.expected_concepts AS expectedConcepts,
+                  e.expected_output AS expectedOutput,
+                  e.created_by
+             FROM exercises e
+            WHERE e.cohort_id IS NULL
+            ORDER BY e.title`
+        )
+        .all() as Array<any>;
+      return rows.map((r) => ({
+        ...r,
+        expectedConcepts: (() => { try { return JSON.parse(r.expectedConcepts || '[]'); } catch { return []; } })(),
+        expectedOutput: r.expectedOutput || '',
+        cohortId: null,
+        cohortName: 'Practice',
+        createdBy: r.created_by || null,
+      }));
+    },
+
     async listForUserCohorts(userId: string): Promise<Array<{
       id: string;
       slug: string;

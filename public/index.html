@@ -190,6 +190,7 @@
             <select id="exerciseId" class="exercise-select">
               <option value="ex-1">Loading...</option>
             </select>
+            <button type="button" id="newPracticeBtn" class="ghost small" style="margin-left:8px;">+ New practice</button>
             <p id="exerciseHint" class="field-hint" hidden></p>
           </div>
           <div class="toolbar-actions">
@@ -1029,6 +1030,26 @@ for (let i = 0; i < arr.length; i++) {
     </div>
   </div>
 </div>
+
+<!-- NEW PRACTICE EXERCISE MODAL -->
+<div id="newPracticeModal" class="modal-backdrop" hidden>
+  <div class="modal" style="max-width:640px;width:90vw;">
+    <h2 class="modal-title">New practice exercise</h2>
+    <p class="settings-hint">Just for you — not visible to any class.</p>
+    <div style="display:flex;flex-direction:column;gap:12px;margin:16px 0;">
+      <input id="npTitle" type="text" placeholder="Title (e.g. 'Reverse a string')" />
+      <input id="npDescription" type="text" placeholder="What should the code do?" />
+      <textarea id="npStarter" rows="6" placeholder="Starter code (Python)" spellcheck="false"></textarea>
+      <textarea id="npExpected" rows="3" placeholder="Expected output (e.g. 'olleh')" spellcheck="false"></textarea>
+    </div>
+    <p id="npError" class="settings-join-message error" hidden></p>
+    <div class="modal-footer">
+      <button id="npCancel" class="ghost">Cancel</button>
+      <button id="npCreate" class="primary">Create</button>
+    </div>
+  </div>
+</div>
+
 <!-- NUDGE MODAL (instructor-side: compose + thread) -->
 <div id="nudgeModal" class="nudge-modal-backdrop" hidden>
   <div class="nudge-modal">
