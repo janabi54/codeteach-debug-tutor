@@ -87,17 +87,29 @@ router.post('/hint', requireAuth, async (req, res) => {
 
   const studentId = resolveActingStudentId(req, requested);
 
+  // Dev-only: log the hint payload so we can verify lastRun reaches the LLM.
+  if (req.body && req.body.lastRun) {
+    console.log('[hint-debug] lastRun received:');
+    console.log(JSON.stringify(req.body.lastRun, null, 2));
+  }
+
   // Prefer the exercise stored in the DB when it exists. The client-supplied
   // context is a fallback for exercises that haven't been authored yet.
   const dbExercise = await db.exercises.findBySlug(exerciseId);
+  const lastRunFromClient = (req.body && req.body.lastRun) || (exerciseContext && exerciseContext.lastRun) || null;
   const resolvedContext = dbExercise
     ? {
         title: dbExercise.title,
         description: dbExercise.description,
         learningObjectives: dbExercise.learningObjectives,
         expectedConcepts: dbExercise.expectedConcepts,
+        expectedOutput: dbExercise.expectedOutput || undefined,
+        lastRun: lastRunFromClient,
       }
-    : exerciseContext;
+    : {
+        ...(exerciseContext || {}),
+        lastRun: lastRunFromClient,
+      };
 
   const struggleMinutes = dbExercise
     ? dbExercise.struggleMinutes
@@ -387,9 +399,15 @@ router.get('/session/:studentId/:exerciseId', requireAuth, async (req, res) => {
       hasGoal,
     });
   }
+  // If the last run doesn't match, the student hasn't fixed it —
+  // demote stale 'resolved'/'complete' back to 'open' for the UI.
+  const effectiveState = (session.lastRunMatched !== true && (session.state === 'resolved' || session.state === 'complete'))
+    ? 'open'
+    : session.state;
+
   res.json({
     id: session.id,
-    state: session.state,
+    state: effectiveState,
     currentLevel: session.currentLevel,
     hypothesisPending: session.hypothesisPending,
     lastRunMatched: session.lastRunMatched,
