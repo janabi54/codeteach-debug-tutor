@@ -240,6 +240,15 @@ function setLevel(level) {
   hintLevelText.textContent = LEVEL_LABELS[level - 1] || LEVEL_LABELS[0];
 }
 
+/**
+ * Clear the tutor message panel. Used when switching exercises so the
+ * previous session's messages don't leak into the new one.
+ */
+function clearTutorMessages() {
+  const el = $('messages');
+  if (el) el.innerHTML = '';
+}
+
 function appendMessage({ kind, text, pattern, level, reason, label }) {
   if (messagesEl.querySelector('.empty-state')) messagesEl.innerHTML = '';
   // Auto-expand the tutor pane on a real message, unless the user
@@ -848,6 +857,20 @@ function applyStarterCodeIfClean(ex) {
     // the starter so future views can detect untouched state.
     __lastStarterBySlug.set(slug, incoming);
   }
+}
+
+
+/**
+ * Force-apply starter code regardless of edits. Used when switching to a
+ * different exercise — the previous exercise's code must not carry over.
+ */
+function forceApplyStarterCode(ex) {
+  if (!ex) return;
+  const ta = $('code');
+  if (!ta) return;
+  const incoming = ex.starterCode || '';
+  ta.value = incoming;
+  __lastStarterBySlug.set(ex.slug, incoming);
 }
 
 function setLanguageReadOnly(language) {
@@ -5964,8 +5987,12 @@ function handleExerciseChange(slug) {
   const ex = __exercisesBySlug.get(slug);
   if (ex) {
     setLanguageReadOnly(ex.language);
-    applyStarterCodeIfClean(ex);
+    forceApplyStarterCode(ex);
   }
+
+  // Reset tutor panel and session state for the new exercise
+  if (typeof clearTutorMessages === 'function') clearTutorMessages();
+  if (typeof hydrateSession === 'function') hydrateSession().catch(function () {});
 }
 
 // ═══════════════════════════════════════════════════════════
