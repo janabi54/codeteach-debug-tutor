@@ -392,6 +392,46 @@ function setSessionCompleteButtons(exerciseId, isComplete) {
   }
 }
 
+/**
+ * Render a tutor hint into the Investigation panel's hint slot.
+ * Previous hint goes to "Earlier hints" so the student can compare.
+ * Falls back to the tutor panel (appendMessage) if the slot isn't in the DOM.
+ */
+function renderHintInSlot(data) {
+  const hintSlot = $('hintSlot');
+  if (!hintSlot) {
+    // No slot — fall back to old behavior
+    appendMessage({
+      kind: 'tutor',
+      text: data.message,
+      pattern: data.detectedPattern,
+      level: data.hintLevel,
+      reason: data.isFallback ? data.reason : null,
+    });
+    return;
+  }
+
+  // Move current hint (if any) to history before replacing
+  if (hintSlot.textContent && hintSlot.textContent.trim().length > 0) {
+    const hintHistory = $('hintHistory');
+    const hintList = $('hintHistoryList');
+    if (hintList) {
+      const prev = document.createElement('div');
+      prev.className = 'hint-history-item';
+      // Strip the "TUTOR HINT" label from the previous slot content
+      const text = hintSlot.textContent.replace(/^TUTOR HINT\s*/i, '').trim();
+      prev.textContent = text;
+      hintList.appendChild(prev);
+    }
+    if (hintHistory) hintHistory.hidden = false;
+  }
+
+  // Render the new hint
+  hintSlot.hidden = false;
+  hintSlot.innerHTML = '<span class="hint-slot-label">Tutor hint</span>' +
+    '<div class="hint-slot-body">' + escapeHtml(data.message || '') + '</div>';
+}
+
 function handleHintResponse(data) {
   // Any tutor response (hint, hypothesis prompt, post-mortem) should
   // reveal the pane. Manual collapse is still respected.
@@ -458,13 +498,7 @@ function handleHintResponse(data) {
     renderHypothesisScore(data.hypothesisScore);
   }
   setLevel(data.hintLevel);
-  appendMessage({
-    kind: 'tutor',
-    text: data.message,
-    pattern: data.detectedPattern,
-    level: data.hintLevel,
-    reason: data.isFallback ? data.reason : null,
-  });
+  renderHintInSlot(data);
 }
 
 $('askBtn').addEventListener('click', async () => {
@@ -1704,11 +1738,22 @@ async function runCodeInSandbox() {
     return;
   }
 
+  // Prediction is mandatory on the first run of each exercise.
+  // After that, the student can re-run freely while fixing.
+  const hasRunBefore = window.__lastRun !== null && window.__lastRun !== undefined;
+  if (!hasRunBefore && !prediction) {
+    const statusEl = $('runStatus');
+    statusEl.textContent = 'Write your prediction before running.';
+    statusEl.className = 'run-status error';
+    $('runPrediction').focus();
+    return;
+  }
+
   const btn = $('runBtn');
   btn.disabled = true;
-  $('runStatus').textContent = 'Running…';
-  $('runCompare').hidden = true;
-
+  const statusStart = $('runStatus');
+  statusStart.textContent = 'Running…';
+  statusStart.className = 'run-status';
   try {
     const res = await fetch('/api/run', {
       method: 'POST',
@@ -1729,21 +1774,23 @@ async function runCodeInSandbox() {
 
     window.__lastRun = data;
 
-    $('runOutput').textContent = data.stdout || '(no output)';
-
-    if (data.trace && data.trace.length > 0) {
-      $('runTraceSection').hidden = false;
-      $('runTrace').innerHTML = renderTraceTable(data.trace);
-      $('runTraceCount').textContent = '(' + data.trace.length + ' iterations)';
-    } else {
-      $('runTraceSection').hidden = true;
-      $('runTrace').innerHTML = '';
+    // Clear any stale hint from a previous exercise/run
+    const hintSlotEl = $('hintSlot');
+    if (hintSlotEl) {
+      hintSlotEl.hidden = true;
+      hintSlotEl.innerHTML = '';
     }
 
-    if (prediction) {
-      const cmp = $('runCompare');
-      cmp.hidden = false;
-      cmp.innerHTML = renderPredictionComparison(prediction, data.stdout);
+    try {
+      renderInvestigation(data, data.expectedOutput);
+    } catch (renderErr) {
+      console.error('[run] renderInvestigation failed:', renderErr);
+      const inv = $('investigation');
+      const body = $('investigationBody');
+      if (inv && body) {
+        inv.hidden = false;
+        body.innerHTML = '<p class="investigation-hint" style="color:var(--danger)">Render error: ' + escapeHtml(renderErr.message) + '</p>';
+      }
     }
 
     if (data.syntaxError) {
@@ -1766,6 +1813,110 @@ async function runCodeInSandbox() {
   } finally {
     btn.disabled = false;
   }
+}
+
+function renderInvestigation(data, expectedOutput) {
+  const card = $('investigation');
+  const body = $('investigationBody');
+  if (!card || !body) return;
+  card.hidden = false;
+
+  // ── Case: syntax error ──
+  if (data.syntaxError) {
+    body.innerHTML =
+      '<div class="investigation-header bad">' +
+        '<span class="investigation-icon">\u2297</span>' +
+        '<strong>Syntax error</strong>' +
+      '</div>' +
+      '<p class="investigation-detail">' + escapeHtml(data.syntaxError) + '</p>' +
+      '<p class="investigation-hint">The code did not run. Fix the syntax error and try again.</p>';
+    return;
+  }
+
+  // ── Case: timeout ──
+  if (data.timedOut) {
+    const traceHtml = (data.trace && data.trace.length > 0)
+      ? '<div class="investigation-section"><h4>Execution trace (last ' + data.trace.length + ' iterations)</h4>' + renderTraceTable(data.trace) + '</div>'
+      : '';
+    body.innerHTML =
+      '<div class="investigation-header warn">' +
+        '<span class="investigation-icon">\u23F1</span>' +
+        '<strong>Timed out (5s)</strong>' +
+      '</div>' +
+      '<p class="investigation-hint">Your program didn\u2019t finish in 5 seconds. This usually means an infinite loop.</p>' +
+      traceHtml;
+    return;
+  }
+
+  // ── Case: runtime error (nonzero exit, stderr) ──
+  if (data.exitCode !== 0 && data.stderr && data.stderr.trim()) {
+    const traceHtml = (data.trace && data.trace.length > 0)
+      ? '<div class="investigation-section"><h4>Execution trace (up to the error)</h4>' + renderTraceTable(data.trace) + '</div>'
+      : '';
+    body.innerHTML =
+      '<div class="investigation-header bad">' +
+        '<span class="investigation-icon">\u2297</span>' +
+        '<strong>Runtime error</strong>' +
+      '</div>' +
+      '<pre class="investigation-stderr">' + escapeHtml(data.stderr) + '</pre>' +
+      traceHtml;
+    return;
+  }
+
+  // ── Case: mismatch or match (has expectedOutput) ──
+  const hasExpected = typeof expectedOutput === 'string' && expectedOutput.length > 0;
+  const matched = data.matched === 1;
+
+  const diffHtml = hasExpected
+    ? renderDiff(expectedOutput, data.stdout || '')
+    : '<div class="investigation-section"><h4>Output</h4><pre class="investigation-stdout">' + escapeHtml(data.stdout || '(no output)') + '</pre></div>';
+
+  const traceCount = (data.trace && data.trace.length) || 0;
+  const traceHtml = traceCount > 0
+    ? '<div class="investigation-section">' +
+        '<h4>Execution trace <span class="muted">(' + traceCount + ' iterations)</span></h4>' +
+        '<p class="investigation-context">Look at where the loop ends. Does the value of the loop variable make sense for what you expected?</p>' +
+        renderTraceTable(data.trace) +
+      '</div>'
+    : '';
+
+  const header = matched
+    ? '<div class="investigation-header good">' +
+        '<span class="investigation-icon">\u2713</span>' +
+        '<strong>Output matches expected</strong>' +
+      '</div>'
+    : '<div class="investigation-header bad">' +
+        '<span class="investigation-icon">\u2717</span>' +
+        '<strong>Output doesn\u2019t match expected</strong>' +
+      '</div>';
+
+  body.innerHTML = header + diffHtml + traceHtml;
+}
+
+function renderDiff(expected, actual) {
+  const expLines = expected.split('\n').map(function (s) { return s.trim(); }).filter(function (s) { return s.length > 0; });
+  const actLines = actual.split('\n').map(function (s) { return s.trim(); }).filter(function (s) { return s.length > 0; });
+
+  const max = Math.max(expLines.length, actLines.length);
+  let rows = '';
+  for (let i = 0; i < max; i++) {
+    const e = expLines[i];
+    const a = actLines[i];
+    const rowClass = (e === a) ? 'match' : 'differ';
+    rows += '<tr class="diff-row ' + rowClass + '">' +
+      '<td>' + (i + 1) + '</td>' +
+      '<td><code>' + escapeHtml(e === undefined ? '(missing)' : e) + '</code></td>' +
+      '<td><code>' + escapeHtml(a === undefined ? '(missing)' : a) + '</code></td>' +
+    '</tr>';
+  }
+
+  return '<div class="investigation-section">' +
+    '<h4>Expected vs actual</h4>' +
+    '<table class="diff-table">' +
+      '<thead><tr><th>#</th><th>Expected</th><th>Actual</th></tr></thead>' +
+      '<tbody>' + rows + '</tbody>' +
+    '</table>' +
+  '</div>';
 }
 
 function renderTraceTable(trace) {
@@ -1813,8 +1964,37 @@ function scheduleClearRun() {
         credentials: 'same-origin',
         body: JSON.stringify({ sessionId: __currentSessionId }),
       });
-      const result = $('runResult');
-      if (result) { result.hidden = true; result.textContent = ''; result.className = 'run-result'; }
+      const lastRun = window.__lastRun;
+      const wasMatched = lastRun && lastRun.matched === 1;
+
+      if (wasMatched) {
+        // Soft clear — keep the investigation visible, mark it stale
+        const inv = $('investigation');
+        const invBody = $('investigationBody');
+        if (inv && invBody) {
+          inv.hidden = false;
+          invBody.innerHTML =
+            '<div class="investigation-header stale">' +
+              '<span class="investigation-icon">\u21BB</span>' +
+              '<strong>Code changed since last run</strong>' +
+            '</div>' +
+            '<p class="investigation-hint">Your last run matched. Run again to confirm the new code still works.</p>';
+        }
+      } else {
+        // Hard clear — nothing to preserve
+        const inv = $('investigation');
+        if (inv) inv.hidden = true;
+        const invBody = $('investigationBody');
+        if (invBody) invBody.innerHTML = '';
+      }
+      const hintSlot = $('hintSlot');
+      if (hintSlot) { hintSlot.hidden = true; hintSlot.innerHTML = ''; }
+      const hintHistory = $('hintHistory');
+      if (hintHistory) hintHistory.hidden = true;
+      const hintList = $('hintHistoryList');
+      if (hintList) hintList.innerHTML = '';
+      const status = $('runStatus');
+      if (status) status.textContent = '';
       // The run is no longer evidence — clear the cache too.
       const sel = $('exerciseId');
       if (sel && sel.value) {
@@ -1830,9 +2010,6 @@ function scheduleClearRun() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  const btn = $('runCompareBtn');
-  if (btn) btn.addEventListener('click', compareRunOutput);
-
   const codeTa = $('code');
   if (codeTa && !codeTa.__runWired) {
     codeTa.__runWired = true;
@@ -2314,6 +2491,9 @@ onReady(() => {
 
 
 function renderHypothesisScore(score) {
+  // Clear any previous hypothesis card so submissions don't stack
+  document.querySelectorAll('.msg.hypothesis').forEach(function (el) { el.remove(); });
+
   const bubbles = messagesEl.querySelectorAll('.hypothesis-bubble');
   if (bubbles.length === 0) return;
   const bubble = bubbles[bubbles.length - 1];
@@ -5966,20 +6146,21 @@ async function loadExercisePicker() {
 function handleExerciseChange(slug) {
   if (!slug) return;
 
+  // Reset run pane (v2 — investigation + hint)
   const pred = document.getElementById('runPrediction');
-  const out = document.getElementById('runOutput');
-  const trace = document.getElementById('runTrace');
-  const traceSection = document.getElementById('runTraceSection');
-  const traceCount = document.getElementById('runTraceCount');
-  const compare = document.getElementById('runCompare');
+  const inv = document.getElementById('investigation');
+  const invBody = document.getElementById('investigationBody');
+  const hintSlot = document.getElementById('hintSlot');
+  const hintHistory = document.getElementById('hintHistory');
+  const hintList = document.getElementById('hintHistoryList');
   const status = document.getElementById('runStatus');
 
   if (pred) pred.value = '';
-  if (out) out.textContent = '';
-  if (trace) trace.innerHTML = '';
-  if (traceSection) traceSection.hidden = true;
-  if (traceCount) traceCount.textContent = '';
-  if (compare) { compare.hidden = true; compare.innerHTML = ''; }
+  if (inv) inv.hidden = true;
+  if (invBody) invBody.innerHTML = '';
+  if (hintSlot) { hintSlot.hidden = true; hintSlot.innerHTML = ''; }
+  if (hintHistory) hintHistory.hidden = true;
+  if (hintList) hintList.innerHTML = '';
   if (status) status.textContent = '';
   window.__lastRun = null;
 

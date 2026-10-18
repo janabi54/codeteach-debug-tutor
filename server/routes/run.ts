@@ -86,6 +86,7 @@ router.post('/run', requireAuth, async (req, res) => {
     durationMs: result.durationMs,
     syntaxError: result.syntaxError,
     matched,
+    expectedOutput,
   });
 });
 

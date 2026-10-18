@@ -162,15 +162,14 @@
             <button type="button" id="runBtn" class="primary small">Run</button>
             <span id="runStatus" class="run-status"></span>
           </div>
-          <div class="run-section">
-            <label class="run-label">Output</label>
-            <pre id="runOutput" class="run-output-display"></pre>
+          <div id="hintSlot" class="hint-slot" hidden></div>
+          <details id="hintHistory" class="hint-history" hidden>
+            <summary>Earlier hints</summary>
+            <div id="hintHistoryList"></div>
+          </details>
+          <div id="investigation" class="investigation" hidden>
+            <div id="investigationBody"></div>
           </div>
-          <div class="run-section" id="runTraceSection" hidden>
-            <label class="run-label">Trace <span class="run-trace-count" id="runTraceCount"></span></label>
-            <div id="runTrace" class="run-trace-table"></div>
-          </div>
-          <div id="runCompare" class="run-compare" hidden></div>
         </div>
       </div>
     </div>
