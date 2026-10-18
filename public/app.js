@@ -5914,22 +5914,22 @@ async function loadExercisePicker() {
     const stillValid = exercises.some((e) => e.slug === current);
     if (stillValid) {
       select.value = current;
+    } else {
+      // Default to a Python exercise so a first-time tester lands on the
+      // code-and-run flow, not the legacy JS paste flow.
+      const pythonDefault = exercises.find((e) => e.slug === 'py-off-by-one')
+        || exercises.find((e) => e.language === 'python');
+      if (pythonDefault) select.value = pythonDefault.slug;
     }
 
     // Render the banner + starter code for whatever is now selected.
     const selected = select.value;
-    if (selected) {
-      renderExerciseBanner(selected);
-      const ex = __exercisesBySlug.get(selected);
-      if (ex) {
-        setLanguageReadOnly(ex.language);
-        applyStarterCodeIfClean(ex);
-      }
-    }
+    if (selected) handleExerciseChange(selected);
 
-    // Save the choice when changed
     select.addEventListener('change', () => {
-      try { localStorage.setItem('codeteach.exerciseId', select.value); } catch (e) {}
+      const slug = select.value;
+      try { localStorage.setItem('codeteach.exerciseId', slug); } catch (e) {}
+      handleExerciseChange(slug);
     });
   } catch (err) {
     select.innerHTML = '<option value="ex-1">ex-1</option>';
@@ -5937,6 +5937,34 @@ async function loadExercisePicker() {
       hint.textContent = 'Could not load exercises: ' + err.message;
       hint.hidden = false;
     }
+  }
+}
+
+function handleExerciseChange(slug) {
+  if (!slug) return;
+
+  const pred = document.getElementById('runPrediction');
+  const out = document.getElementById('runOutput');
+  const trace = document.getElementById('runTrace');
+  const traceSection = document.getElementById('runTraceSection');
+  const traceCount = document.getElementById('runTraceCount');
+  const compare = document.getElementById('runCompare');
+  const status = document.getElementById('runStatus');
+
+  if (pred) pred.value = '';
+  if (out) out.textContent = '';
+  if (trace) trace.innerHTML = '';
+  if (traceSection) traceSection.hidden = true;
+  if (traceCount) traceCount.textContent = '';
+  if (compare) { compare.hidden = true; compare.innerHTML = ''; }
+  if (status) status.textContent = '';
+  window.__lastRun = null;
+
+  renderExerciseBanner(slug);
+  const ex = __exercisesBySlug.get(slug);
+  if (ex) {
+    setLanguageReadOnly(ex.language);
+    applyStarterCodeIfClean(ex);
   }
 }
 
