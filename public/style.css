@@ -5453,3 +5453,37 @@ h1, h2, h3 {
   color: var(--success);
   font-weight: 500;
 }
+
+
+/* ─── Shortcuts help modal ─── */
+.shortcuts-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin-top: 4px;
+}
+.shortcuts-table td {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  color: var(--text-primary);
+}
+.shortcuts-table td:first-child {
+  color: var(--text-secondary);
+  padding-right: 16px;
+  white-space: nowrap;
+}
+.shortcuts-table td:last-child { text-align: right; }
+.shortcuts-table kbd {
+  display: inline-block;
+  padding: 2px 7px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  font-family: "SF Mono", Monaco, Consolas, monospace;
+  font-size: 11px;
+  color: var(--text-primary);
+  min-width: 18px;
+  text-align: center;
+}

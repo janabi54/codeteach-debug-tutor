@@ -71,6 +71,7 @@
         </button>
         <button id="openSettingsBtn" class="user-menu-item">Classes</button>
         <button id="openPrivacyBtn" class="user-menu-item">Privacy notice</button>
+        <button id="openShortcutsBtn" class="user-menu-item">Keyboard shortcuts</button>
         <button id="logoutBtn" class="user-menu-item">Log out</button>
       </div>
     </div>
@@ -898,6 +899,7 @@ for (let i = 0; i < arr.length; i++) {
   <script src="/webhooks-ui.js" defer></script>
   <script src="/concepts-ui.js" defer></script>
 <script src="/settings.js" defer></script>
+<script src="/shortcuts.js" defer></script>
 
 <!-- SETTINGS MODAL -->
 <div id="settingsModal" class="modal-backdrop" hidden>
@@ -1063,6 +1065,26 @@ for (let i = 0; i < arr.length; i++) {
     <div class="modal-footer">
       <button id="npCancel" class="ghost">Cancel</button>
       <button id="npCreate" class="primary">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- SHORTCUTS MODAL -->
+<div id="shortcutsModal" class="modal-backdrop" hidden>
+  <div class="modal" style="max-width:560px;width:90vw;">
+    <h2 class="modal-title">Keyboard shortcuts</h2>
+    <table class="shortcuts-table">
+      <tbody>
+        <tr><td>Jump to a tab</td><td><kbd>g</kbd> then one of <kbd>t</kbd> <kbd>a</kbd> <kbd>s</kbd> <kbd>e</kbd> <kbd>h</kbd> <kbd>w</kbd> <kbd>p</kbd> <kbd>m</kbd> <kbd>b</kbd></td></tr>
+        <tr><td>Show this help</td><td><kbd>?</kbd></td></tr>
+        <tr><td>Close any modal</td><td><kbd>Esc</kbd></td></tr>
+      </tbody>
+    </table>
+    <p class="settings-hint" style="margin-top:14px;">
+      <strong>t</strong>=Tutor &nbsp; <strong>a</strong>=Analytics &nbsp; <strong>s</strong>=Students &nbsp; <strong>e</strong>=Exercises &nbsp; <strong>h</strong>=Health &nbsp; <strong>w</strong>=Webhooks &nbsp; <strong>p</strong>=Progress &nbsp; <strong>m</strong>=Sessions &nbsp; <strong>b</strong>=Blind spots
+    </p>
+    <div class="modal-footer">
+      <button class="ghost" id="closeShortcutsBtn">Close</button>
     </div>
   </div>
 </div>
