@@ -127,3 +127,43 @@
   // (covered by initTheme's matchMedia listener)
 
 })();
+
+// ─── Notification preferences ───
+(function () {
+  async function loadPrefs() {
+    try {
+      const r = await fetch('/api/me/notification-prefs', { credentials: 'same-origin' });
+      if (!r.ok) return;
+      const p = await r.json();
+      const e1 = document.getElementById('npEmailNudges');
+      const e2 = document.getElementById('npEmailAnnouncements');
+      if (e1) e1.checked = p.emailNudges !== false;
+      if (e2) e2.checked = p.emailAnnouncements !== false;
+    } catch {}
+  }
+
+  async function savePrefs() {
+    const e1 = document.getElementById('npEmailNudges');
+    const e2 = document.getElementById('npEmailAnnouncements');
+    const msg = document.getElementById('npSaveMsg');
+    if (!e1 || !e2) return;
+    try {
+      const r = await fetch('/api/me/notification-prefs', {
+        method: 'PUT',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emailNudges: e1.checked, emailAnnouncements: e2.checked }),
+      });
+      if (r.ok && msg) { msg.textContent = 'Saved.'; msg.hidden = false; setTimeout(() => { msg.hidden = true; }, 1500); }
+    } catch {}
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const e1 = document.getElementById('npEmailNudges');
+    const e2 = document.getElementById('npEmailAnnouncements');
+    if (!e1 || !e2) return;
+    loadPrefs();
+    e1.addEventListener('change', savePrefs);
+    e2.addEventListener('change', savePrefs);
+  });
+})();

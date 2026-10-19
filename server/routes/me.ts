@@ -110,6 +110,23 @@ router.post('/me/groups', requireAuth, async (req, res) => {
 });
 
 // GET /api/me/groups
+// ─────────────────────────────────────────────────────────────
+// GET/PUT /api/me/notification-prefs
+// Per-user email opt-out. In-app notifications are always on.
+// ─────────────────────────────────────────────────────────────
+router.get('/me/notification-prefs', requireAuth, (req, res) => {
+  res.json(db.users.getNotificationPrefs(req.user!.id));
+});
+
+router.put('/me/notification-prefs', requireAuth, (req, res) => {
+  const { emailNudges, emailAnnouncements } = req.body ?? {};
+  if (typeof emailNudges !== 'boolean' || typeof emailAnnouncements !== 'boolean') {
+    return res.status(400).json({ error: 'Both flags must be booleans.' });
+  }
+  db.users.setNotificationPrefs(req.user!.id, { emailNudges, emailAnnouncements });
+  res.json({ ok: true });
+});
+
 router.get('/me/groups', requireAuth, async (req, res) => {
   const userId = req.user!.id;
   res.json({ groups: db.studyGroups.listForUser(userId) });

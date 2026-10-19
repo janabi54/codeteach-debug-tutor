@@ -3,6 +3,20 @@ import { db, sqlite } from '../db.js';
 import { requireAuth, requireInstructor } from '../middleware/requireAuth.js';
 import { canInstructorMessageStudent } from '../auth/authorization.js';
 import { sendMail, appBaseUrl } from '../mailer.js';
+
+// ── Notification preference guards ──
+// Return true if the recipient should receive this email. Defaults to true
+// if the user is unknown or the pref column is unset.
+function wantsEmailNudges(user: any): boolean {
+  const id = user?.id || user?.studentId || user?.userId;
+  if (!id) return true;
+  try { return db.users.getNotificationPrefs(id).emailNudges; } catch { return true; }
+}
+function wantsEmailAnnouncements(user: any): boolean {
+  const id = user?.id || user?.studentId || user?.userId;
+  if (!id) return true;
+  try { return db.users.getNotificationPrefs(id).emailAnnouncements; } catch { return true; }
+}
 import { broadcastToUser, pushUnreadCount } from '../websocket.js';
 
 const router = express.Router();
@@ -66,12 +80,14 @@ router.post(
           escapeHtml(trimmedBody).replace(/\n/g, '<br>') +
           '</blockquote>' +
           '<p><a href="' + base + '/#messages">Open CodeTeach to read and reply</a></p>';
-        await sendMail({
-          to: student.email,
-          subject: subjectLine,
-          body: htmlBody,
-          text: 'Hi ' + student.displayName + ',\n\n' + trimmedBody + '\n\nReply at ' + base + '/#messages',
-        });
+        if (wantsEmailNudges(student)) {
+          await sendMail({
+            to: student.email,
+            subject: subjectLine,
+            body: htmlBody,
+            text: 'Hi ' + student.displayName + ',\n\n' + trimmedBody + '\n\nReply at ' + base + '/#messages',
+          });
+        }
       } catch (err) {
         console.error('[nudges] email failed:', err);
       }
@@ -203,12 +219,14 @@ router.post(
             escapeHtml(trimmedBody).replace(/\n/g, '<br>') +
             '</blockquote>' +
             '<p><a href="' + base + '/#messages">Open CodeTeach</a></p>';
-          await sendMail({
-            to: student.email,
-            subject: subjectLine,
-            body: htmlBody,
-            text: 'Hi ' + student.displayName + ',\n\n' + trimmedBody + '\n\nOpen ' + base + '/#messages',
-          });
+          if (wantsEmailAnnouncements(student)) {
+            await sendMail({
+              to: student.email,
+              subject: subjectLine,
+              body: htmlBody,
+              text: 'Hi ' + student.displayName + ',\n\n' + trimmedBody + '\n\nOpen ' + base + '/#messages',
+            });
+          }
         } catch (err) {
           console.error('[announce] email failed:', err);
         }
@@ -332,12 +350,14 @@ router.post('/me/nudges/:threadId/reply', requireAuth, async (req, res) => {
           escapeHtml(trimmed).replace(/\n/g, '<br>') +
           '</blockquote>' +
           '<p><a href="' + base + '/#messages">Open CodeTeach to read and reply</a></p>';
-        await sendMail({
-          to: recipient.email,
-          subject: senderName + ' replied to your message',
-          body: htmlBody,
-          text: senderName + ' replied:\n\n' + trimmed + '\n\nOpen ' + base + '/#messages',
-        });
+        if (wantsEmailNudges(recipient)) {
+          await sendMail({
+            to: recipient.email,
+            subject: senderName + ' replied to your message',
+            body: htmlBody,
+            text: senderName + ' replied:\n\n' + trimmed + '\n\nOpen ' + base + '/#messages',
+          });
+        }
       } catch (err) {
         console.error('[nudges] reply email failed:', err);
       }

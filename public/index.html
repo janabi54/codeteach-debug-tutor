@@ -910,6 +910,7 @@ for (let i = 0; i < arr.length; i++) {
         <nav class="settings-nav" role="tablist">
           <button class="settings-nav-btn active" data-settings-section="appearance" role="tab" aria-selected="true">Appearance</button>
           <button class="settings-nav-btn" data-settings-section="account" role="tab" aria-selected="false">Account</button>
+          <button class="settings-nav-btn" data-settings-section="notifications" role="tab" aria-selected="false">Notifications</button>
           <button class="settings-nav-btn" data-settings-section="classes" role="tab" aria-selected="false">Classes &amp; Groups</button>
           <button class="settings-nav-btn" data-settings-section="danger" role="tab" aria-selected="false">Danger zone</button>
         </nav>
@@ -962,6 +963,22 @@ for (let i = 0; i < arr.length; i++) {
           <div class="settings-account-actions">
             <button id="settingsLogoutBtn" class="ghost">Log out</button>
           </div>
+        </section>
+
+        <section class="settings-panel" data-settings-panel="notifications">
+          <h2 class="settings-panel-title">Notifications</h2>
+          <p class="settings-panel-hint">In-app messages are always on. You can mute emails below.</p>
+          <div class="settings-account-grid">
+            <label class="settings-account-row" style="cursor:pointer;">
+              <span class="settings-account-label">Email me about new nudges</span>
+              <input type="checkbox" id="npEmailNudges" />
+            </label>
+            <label class="settings-account-row" style="cursor:pointer;">
+              <span class="settings-account-label">Email me about class announcements</span>
+              <input type="checkbox" id="npEmailAnnouncements" />
+            </label>
+          </div>
+          <p id="npSaveMsg" class="settings-hint" style="margin-top:12px;" hidden></p>
         </section>
 
         <section class="settings-panel" data-settings-panel="classes">

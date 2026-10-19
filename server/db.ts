@@ -202,6 +202,13 @@ if (!hasGithubId) {
   console.log('[db] migrated: added users.github_id');
 }
 
+// users.notification_prefs: JSON string or NULL (= all defaults on)
+const hasNotifPrefs = userColumns.some((c) => c.name === 'notification_prefs');
+if (!hasNotifPrefs) {
+  sqlite.exec('ALTER TABLE users ADD COLUMN notification_prefs TEXT');
+  console.log('[db] migrated: added users.notification_prefs');
+}
+
 const hasOutcome = hypothesisColumns.some((c) => c.name === 'outcome');
 if (!hasOutcome) {
   sqlite.exec('ALTER TABLE hypotheses ADD COLUMN outcome TEXT');
@@ -748,7 +755,24 @@ export const db = {
     async linkGithub(userId: string, githubId: string): Promise<void> {
       stmt.updateUserGithubId.run(githubId, userId);
     },
-    async countByRole(role: 'student' | 'instructor'): Promise<number> {
+    getNotificationPrefs(userId: string): { emailNudges: boolean; emailAnnouncements: boolean } {
+      const row = sqlite.prepare('SELECT notification_prefs FROM users WHERE id = ?').get(userId) as { notification_prefs?: string | null } | undefined;
+      const defaults = { emailNudges: true, emailAnnouncements: true };
+      if (!row || !row.notification_prefs) return defaults;
+      try {
+        const parsed = JSON.parse(row.notification_prefs);
+        return {
+          emailNudges: parsed.emailNudges !== false,
+          emailAnnouncements: parsed.emailAnnouncements !== false,
+        };
+      } catch {
+        return defaults;
+      }
+    },
+    setNotificationPrefs(userId: string, prefs: { emailNudges: boolean; emailAnnouncements: boolean }): void {
+      sqlite.prepare('UPDATE users SET notification_prefs = ? WHERE id = ?').run(JSON.stringify(prefs), userId);
+    },
+        async countByRole(role: 'student' | 'instructor'): Promise<number> {
       const row = stmt.countUsersByRole.get(role) as any;
       return row?.n ?? 0;
     },
