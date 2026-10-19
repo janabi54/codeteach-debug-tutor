@@ -34,7 +34,10 @@ async function checkAchievements(studentId: string, exerciseId: string): Promise
     const ex = await db.exercises.findBySlug(exerciseId);
     if (ex && ex.cohortId === null) db.achievements.award(studentId, 'first-practice');
 
-    // TODO: streaks — needs an activity source. Deferred to next patch.
+    // streaks — use the same activity source as /me/progress
+    const act = db.students.activityForMany([studentId], [], 90)[0];
+    if (act && act.currentStreak >= 3) db.achievements.award(studentId, 'streak-3');
+    if (act && act.currentStreak >= 7) db.achievements.award(studentId, 'streak-7');
   } catch (err) {
     console.error('[achievements] check failed:', err);
   }

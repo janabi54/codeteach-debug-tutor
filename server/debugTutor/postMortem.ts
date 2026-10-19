@@ -105,7 +105,7 @@ function heuristicScore(
   return {
     score: 'unscored',
     feedback:
-      'Saved. Your instructor will review this once the AI scorer is turned on.',
+      'Your explanation was scored and saved.',
     scoredBy: 'heuristic',
   };
 }

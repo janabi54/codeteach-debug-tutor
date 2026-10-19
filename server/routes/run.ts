@@ -74,7 +74,7 @@ router.post('/run', requireAuth, async (req, res) => {
             SET last_run_matched = ?, last_run_at = datetime('now')
           WHERE student_id = ? AND exercise_id = ?`
       )
-      .run(matched === 1 ? 1 : 0, req.user!.id, exerciseId);
+      .run(matched === 1 ? 1 : 0, req.user!.id, exerciseSlug);
 
   // If the run doesn't match, the student hasn't fixed it — demote any
   // 'resolved' session back to 'open' so the post-mortem prompt goes away.
@@ -83,7 +83,7 @@ router.post('/run', requireAuth, async (req, res) => {
       `UPDATE hint_sessions
           SET state = 'open'
         WHERE student_id = ? AND exercise_id = ? AND state = 'resolved'`
-    ).run(req.user!.id, exerciseId);
+    ).run(req.user!.id, exerciseSlug);
   }
   }
 
