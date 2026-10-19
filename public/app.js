@@ -382,7 +382,11 @@ function canMarkFixed(exerciseId) {
   const rs = __runStateByExercise.get(exerciseId);
   if (!rs) return true;
   if (!rs.hasGoal) return true;
-  return rs.lastRunMatched === true;
+  if (rs.lastRunMatched === true || rs.lastRunMatched === 1) return true;
+  // Fallback: the current session's last run matched — allow even if
+  // the persisted last_run_matched hasn't synced yet.
+  if (window.__lastRun && window.__lastRun.matched === 1) return true;
+  return false;
 }
 
 function setSessionCompleteButtons(exerciseId, isComplete) {
@@ -5206,6 +5210,7 @@ function renderMyProgress(container, data) {
     '<div id="myProgressNextAction" style="display:none"></div>' +
     summaryHtml +
     '<div id="conceptJourneySlot"></div>' +
+    '<div id="achievementsSlot"></div>' +
     trendsHtml + weakHtml + sessionsHtml;
 
   // Load the concept journey asynchronously so a slow query doesn't
@@ -7728,3 +7733,32 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 });
+
+
+// ─── Achievements card ───
+(function () {
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  async function load() {
+    const slot = document.getElementById('achievementsSlot');
+    if (!slot) return;
+    try {
+      const r = await fetch('/api/me/achievements', { credentials: 'same-origin' });
+      if (!r.ok) return;
+      const d = await r.json();
+      const chip = (a, on) => '<span class="badge-chip ' + (on ? 'earned' : 'locked') + '" title="' + esc(a.description) + '"><span class="badge-icon">' + (on ? '✓' : '○') + '</span>' + esc(a.name) + '</span>';
+      slot.innerHTML = '<div class="analytics-section">' +
+        '<h3 class="analytics-section-title">Achievements <span class="muted">(' + d.earned.length + '/' + (d.earned.length + d.locked.length) + ')</span></h3>' +
+        '<div class="badge-row">' + d.earned.map((a) => chip(a, true)).join('') + d.locked.map((a) => chip(a, false)).join('') + '</div>' +
+      '</div>';
+    } catch {}
+  }
+
+  document.addEventListener('click', (ev) => {
+    const t = ev.target.closest && ev.target.closest('.tab[data-tab="my-progress"]');
+    if (t) setTimeout(load, 300);
+  });
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(load, 500));
+  else setTimeout(load, 500);
+})();

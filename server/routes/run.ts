@@ -40,8 +40,9 @@ router.post('/run', requireAuth, async (req, res) => {
   }
 
   // Persist the run
-  const matched = expectedOutput !== null
-    ? (normalize(result.stdout) === normalize(expectedOutput) ? 1 : 0)
+  const hasRealExpected = typeof expectedOutput === 'string' && expectedOutput.trim().length > 0;
+  const matched = hasRealExpected
+    ? (normalize(result.stdout) === normalize(expectedOutput!) ? 1 : 0)
     : null;
 
   const info = sqlite
@@ -74,6 +75,16 @@ router.post('/run', requireAuth, async (req, res) => {
           WHERE student_id = ? AND exercise_id = ?`
       )
       .run(matched === 1 ? 1 : 0, req.user!.id, exerciseId);
+
+  // If the run doesn't match, the student hasn't fixed it — demote any
+  // 'resolved' session back to 'open' so the post-mortem prompt goes away.
+  if (matched !== 1) {
+    sqlite.prepare(
+      `UPDATE hint_sessions
+          SET state = 'open'
+        WHERE student_id = ? AND exercise_id = ? AND state = 'resolved'`
+    ).run(req.user!.id, exerciseId);
+  }
   }
 
   res.json({

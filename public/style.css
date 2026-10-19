@@ -5487,3 +5487,23 @@ h1, h2, h3 {
   min-width: 18px;
   text-align: center;
 }
+
+/* ─── Achievement badges ─── */
+.badge-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.badge-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: 16px;
+  font-size: 12px; font-weight: 500;
+  border: 1px solid var(--border);
+}
+.badge-chip.earned {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent-border);
+}
+.badge-chip.locked {
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+.badge-icon { font-weight: 700; }

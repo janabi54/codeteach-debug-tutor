@@ -485,3 +485,27 @@ CREATE TABLE IF NOT EXISTS runs (
 );
 CREATE INDEX IF NOT EXISTS idx_runs_student_exercise
   ON runs(student_id, exercise_id, created_at DESC);
+
+
+-- Achievements catalog + earned
+CREATE TABLE IF NOT EXISTS achievements (
+  slug        TEXT PRIMARY KEY,
+  name        TEXT NOT NULL,
+  description TEXT NOT NULL,
+  icon        TEXT NOT NULL DEFAULT '*'
+);
+CREATE TABLE IF NOT EXISTS user_achievements (
+  user_id        TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  achievement_id TEXT NOT NULL REFERENCES achievements(slug) ON DELETE CASCADE,
+  earned_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (user_id, achievement_id)
+);
+
+INSERT OR IGNORE INTO achievements (slug, name, description, icon) VALUES
+  ('first-post-mortem',  'First Reflection',    'Wrote your first post-mortem.',                 'pencil'),
+  ('first-completion',   'First Fix',           'Completed your first exercise.',                'check'),
+  ('first-perfect',      'Perfect Reasoning',   'Scored strong on a post-mortem.',               'star'),
+  ('streak-3',           'On a Roll',           '3-day activity streak.',                        'fire'),
+  ('streak-7',           'Week Warrior',        '7-day activity streak.',                        'fire2'),
+  ('ten-exercises',      'Ten Down',            'Completed 10 exercises.',                       'trophy'),
+  ('first-practice',     'Self-Starter',        'Completed a practice-mode exercise.',           'rocket');

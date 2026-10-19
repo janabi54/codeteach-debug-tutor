@@ -6,12 +6,39 @@ import { scoreHypothesis } from '../debugTutor/hypothesisScore.js';
 import { HintSessionManager } from '../debugTutor/hintSession.js';
 import { getStruggleMinutes } from '../debugTutor/exerciseConfig.js';
 import { getWeakSpots } from '../debugTutor/weakSpots.js';
-import { db } from '../db.js';
+import { db, sqlite } from '../db.js';
 import {
   requireAuth,
   resolveActingStudentId,
 } from '../middleware/requireAuth.js';
 
+
+// ─── Achievement checks ───
+// Fire-and-forget. Never throws.
+async function checkAchievements(studentId: string, exerciseId: string): Promise<void> {
+  try {
+    // first-post-mortem
+    const pm = sqlite.prepare('SELECT COUNT(*) AS n FROM post_mortems WHERE student_id = ?').get(studentId) as { n: number };
+    if (pm.n >= 1) db.achievements.award(studentId, 'first-post-mortem');
+
+    // first-perfect
+    const strong = sqlite.prepare("SELECT 1 FROM post_mortems WHERE student_id = ? AND score = 'strong' LIMIT 1").get(studentId);
+    if (strong) db.achievements.award(studentId, 'first-perfect');
+
+    // first-completion + ten-exercises
+    const completed = sqlite.prepare("SELECT COUNT(DISTINCT exercise_id) AS n FROM hint_sessions WHERE student_id = ? AND state = 'complete'").get(studentId) as { n: number };
+    if (completed.n >= 1) db.achievements.award(studentId, 'first-completion');
+    if (completed.n >= 10) db.achievements.award(studentId, 'ten-exercises');
+
+    // first-practice — the exercise just completed is cohort-less
+    const ex = await db.exercises.findBySlug(exerciseId);
+    if (ex && ex.cohortId === null) db.achievements.award(studentId, 'first-practice');
+
+    // TODO: streaks — needs an activity source. Deferred to next patch.
+  } catch (err) {
+    console.error('[achievements] check failed:', err);
+  }
+}
 const router = express.Router();
 const hintSessions = new HintSessionManager();
 
@@ -151,6 +178,9 @@ router.post('/hint', requireAuth, async (req, res) => {
     });
 
     await db.hintSessions.update(session.id, { state: 'complete' });
+
+    // Fire-and-forget achievement checks
+    void checkAchievements(studentId, exerciseId);
 
     emit(studentId, 'exercise.completed', {
       exercise_id: exerciseId,

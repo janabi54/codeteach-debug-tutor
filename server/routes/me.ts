@@ -114,6 +114,10 @@ router.post('/me/groups', requireAuth, async (req, res) => {
 // GET/PUT /api/me/notification-prefs
 // Per-user email opt-out. In-app notifications are always on.
 // ─────────────────────────────────────────────────────────────
+router.get('/me/achievements', requireAuth, (req, res) => {
+  res.json(db.achievements.listForUser(req.user!.id));
+});
+
 router.get('/me/notification-prefs', requireAuth, (req, res) => {
   res.json(db.users.getNotificationPrefs(req.user!.id));
 });
