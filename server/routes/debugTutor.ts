@@ -35,7 +35,7 @@ async function checkAchievements(studentId: string, exerciseId: string): Promise
     if (ex && ex.cohortId === null) db.achievements.award(studentId, 'first-practice');
 
     // streaks — use the same activity source as /me/progress
-    const act = db.students.activityForMany([studentId], [], 90)[0];
+    const act = db.students.activityForMany([studentId], [], 90).get(studentId);
     if (act && act.currentStreak >= 3) db.achievements.award(studentId, 'streak-3');
     if (act && act.currentStreak >= 7) db.achievements.award(studentId, 'streak-7');
   } catch (err) {
