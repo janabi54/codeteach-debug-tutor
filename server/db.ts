@@ -1845,14 +1845,20 @@ export const db = {
      * takes an instructor). Used by the student progress dashboard.
      */
     exerciseSlugsForStudent(studentId: string): string[] {
-      return (sqlite
+      const rows = sqlite
         .prepare(
           `SELECT DISTINCT e.slug AS slug
            FROM exercises e
            JOIN cohort_members cm ON cm.cohort_id = e.cohort_id
-           WHERE cm.user_id = ?`
+           WHERE cm.user_id = ?
+           UNION ALL
+           SELECT DISTINCT e.slug AS slug
+           FROM exercises e
+           JOIN hint_sessions hs ON hs.exercise_id = e.slug
+           WHERE e.cohort_id IS NULL AND hs.student_id = ?`
         )
-        .all(studentId) as Array<{ slug: string }>).map((r) => r.slug);
+        .all(studentId, studentId) as Array<{ slug: string }>;
+      return rows.map((r) => r.slug);
     },
 
     /**
@@ -1872,9 +1878,16 @@ export const db = {
                   e.required_concepts AS requiredConcepts
            FROM exercises e
            JOIN cohort_members cm ON cm.cohort_id = e.cohort_id
-           WHERE cm.user_id = ?`
+           WHERE cm.user_id = ?
+           UNION ALL
+           SELECT DISTINCT e.slug AS slug, e.title AS title,
+                  e.expected_concepts AS expectedConcepts,
+                  e.required_concepts AS requiredConcepts
+           FROM exercises e
+           JOIN hint_sessions hs ON hs.exercise_id = e.slug
+           WHERE e.cohort_id IS NULL AND hs.student_id = ?`
         )
-        .all(studentId) as Array<{
+        .all(studentId, studentId) as Array<{
           slug: string;
           title: string;
           expectedConcepts: string | null;
@@ -3652,6 +3665,31 @@ export const db = {
     async findLatest({ type }: { type: string }) {
       const row = stmt.latestTelemetryByType.get(type) as any;
       return row ? rowToTelemetry(row) : null;
+    },
+  },
+
+  achievements: {
+    listForUser(userId: string): {
+      earned: Array<{ slug: string; name: string; description: string; icon: string; earnedAt: string }>;
+      locked: Array<{ slug: string; name: string; description: string; icon: string }>;
+    } {
+      const all = sqlite.prepare('SELECT slug, name, description, icon FROM achievements ORDER BY rowid').all() as Array<{ slug: string; name: string; description: string; icon: string }>;
+      const earned = sqlite.prepare(
+        'SELECT achievement_id AS slug, earned_at AS earnedAt FROM user_achievements WHERE user_id = ?'
+      ).all(userId) as Array<{ slug: string; earnedAt: string }>;
+      const earnedMap = new Map(earned.map((e) => [e.slug, e.earnedAt]));
+      return {
+        earned: all.filter((a) => earnedMap.has(a.slug)).map((a) => ({ ...a, earnedAt: earnedMap.get(a.slug)! })),
+        locked: all.filter((a) => !earnedMap.has(a.slug)),
+      };
+    },
+    /** Award an achievement if not already earned. Returns true if newly earned. */
+    award(userId: string, slug: string): boolean {
+      const info = sqlite.prepare('INSERT OR IGNORE INTO user_achievements (user_id, achievement_id) VALUES (?, ?)').run(userId, slug);
+      return (info.changes ?? 0) > 0;
+    },
+    has(userId: string, slug: string): boolean {
+      return !!sqlite.prepare('SELECT 1 FROM user_achievements WHERE user_id = ? AND achievement_id = ?').get(userId, slug);
     },
   },
 
