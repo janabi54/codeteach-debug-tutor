@@ -531,3 +531,17 @@ CREATE TABLE IF NOT EXISTS answers (
 );
 CREATE INDEX IF NOT EXISTS idx_answers_student
   ON answers(student_id, exercise_id, created_at DESC);
+
+-- ============================================================
+-- Phase 3.5a: multi-question quizzes
+-- ============================================================
+CREATE TABLE IF NOT EXISTS quiz_attempts (
+  id            TEXT PRIMARY KEY,
+  student_id    TEXT NOT NULL,
+  exercise_id   TEXT NOT NULL,
+  score         INTEGER NOT NULL DEFAULT 0,
+  total         INTEGER NOT NULL,
+  submitted_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_quiz_attempts_student
+  ON quiz_attempts(student_id, exercise_id, submitted_at DESC);

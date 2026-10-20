@@ -6323,7 +6323,7 @@ function renderMCPanel(ex) {
   const runBtn = document.getElementById('runBtn');
   if (!panel || !ex) return;
 
-  const opts = Array.isArray(ex.options) ? ex.options : [];
+  const opts = unwrapOptions(ex);
 
   // MC: description via banner (rendered by renderExerciseBanner at call site)
   // Panel keeps the radio list; question shows the title.
@@ -7968,6 +7968,19 @@ document.addEventListener('DOMContentLoaded', () => {
 // ============================================================
 // Phase 3.4a: Multiple Choice + Search
 // ============================================================
+// Phase 3.5a: unwrap {questions:[...]} backfilled shape
+function unwrapOptions(ex) {
+  const o = ex && ex.options;
+  if (Array.isArray(o)) return o;
+  if (o && Array.isArray(o.questions) && o.questions.length > 0) {
+    const q0 = o.questions[0];
+    if (Array.isArray(q0.options)) return q0.options;
+    if (typeof q0.answer === 'string') return [{ correct: q0.answer }];
+    return [];
+  }
+  return [];
+}
+
 function applyExerciseTypeUI(ex) {
   if (!ex) return;
   const isMC = ex.exerciseType === 'multiple_choice';
@@ -8019,7 +8032,7 @@ function applyExerciseTypeUI(ex) {
   submitBtn.disabled = true;
   delete submitBtn.dataset.optionId;
 
-  const opts = Array.isArray(ex.options) ? ex.options : [];
+  const opts = unwrapOptions(ex);
   opts.forEach((opt) => {
     const btn = document.createElement('button');
     btn.type = 'button';

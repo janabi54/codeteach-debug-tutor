@@ -110,6 +110,20 @@ router.post('/clear-run', requireAuth, async (req, res) => {
 });
 
 // ─── POST /answer — multiple-choice submission ───
+// Phase 3.5a: legacy endpoints must unwrap {questions:[...]} from backfill
+function unwrapLegacyOptions(ex: any): Array<any> {
+  const o = ex.options;
+  if (Array.isArray(o)) return o;
+  if (o && Array.isArray(o.questions) && o.questions.length > 0) {
+    const q0 = o.questions[0];
+    if (Array.isArray(q0.options)) return q0.options;
+    // predict backfill shape: { answer: '...' } → mimic old [{correct: '...'}]
+    if (typeof q0.answer === 'string') return [{ correct: q0.answer }];
+    return [];
+  }
+  return [];
+}
+
 router.post('/answer', requireAuth, async (req, res) => {
   const { exerciseId, optionId } = req.body ?? {};
   if (typeof exerciseId !== 'string' || typeof optionId !== 'string') {
@@ -122,7 +136,7 @@ router.post('/answer', requireAuth, async (req, res) => {
   if (ex.exerciseType !== 'multiple_choice') {
     return res.status(400).json({ error: 'Not a multiple-choice exercise.' });
   }
-  const opts = ex.options as Array<{ id: string; text: string; correct?: boolean }>;
+  const opts = unwrapLegacyOptions(ex) as Array<{ id: string; text: string; correct?: boolean }>;
   const chosen = opts.find((o) => o.id === optionId);
   if (!chosen) return res.status(400).json({ error: 'Option not found.' });
   const correct = chosen.correct === true;
@@ -164,7 +178,7 @@ router.post('/predict', requireAuth, async (req, res) => {
     return res.status(400).json({ error: 'Not a predict-output exercise.' });
   }
 
-  const opts = (ex.options as Array<{ correct?: string }>) || [];
+  const opts = unwrapLegacyOptions(ex) as Array<{ correct?: string }>;
   const expectedRaw = opts.find((o) => typeof o.correct === 'string')?.correct || '';
   // Normalize: strip ALL whitespace (internal + trim) so "0,1,2" == "0, 1, 2"
   const expected = expectedRaw.replace(/\s+/g, '').toLowerCase();
@@ -191,6 +205,91 @@ router.post('/predict', requireAuth, async (req, res) => {
     feedback: correct
       ? 'Correct. Now — can you explain why it produces that output?'
       : 'Not quite. Trace the code by hand and try again.',
+  });
+});
+
+// ─── POST /quiz — multi-question quiz submission (Phase 3.5a) ───
+router.post('/quiz', requireAuth, async (req, res) => {
+  const { exerciseId, answers } = req.body ?? {};
+  if (typeof exerciseId !== 'string' || !Array.isArray(answers)) {
+    return res.status(400).json({ error: 'exerciseId and answers[] required.' });
+  }
+  const studentId = resolveActingStudentId(req, req.body.studentId);
+
+  const ex = await db.exercises.findBySlug(exerciseId);
+  if (!ex) return res.status(404).json({ error: 'Exercise not found.' });
+
+  // Accept either new shape {questions:[...]} or legacy array (wrapped on read)
+  let questions: any[] = [];
+  if (ex.options && typeof ex.options === 'object' && Array.isArray((ex.options as any).questions)) {
+    questions = (ex.options as any).questions;
+  } else if (Array.isArray(ex.options)) {
+    questions = [{
+      id: 'q1',
+      type: ex.exerciseType,
+      text: ex.description || '',
+      ...(ex.exerciseType === 'multiple_choice'
+        ? { options: ex.options }
+        : { answer: ((ex.options as any[])[0] || {}).correct || '' }),
+    }];
+  }
+
+  if (questions.length === 0) {
+    return res.status(400).json({ error: 'Exercise has no questions.' });
+  }
+
+  const attemptId = crypto.randomUUID();
+  const results: Array<{ questionId: string; correct: boolean }> = [];
+  let score = 0;
+
+  const insertAnswer = sqlite.prepare(
+    `INSERT INTO answers (student_id, exercise_id, selected_option_id, correct, question_id, attempt_id)
+     VALUES (?, ?, ?, ?, ?, ?)`
+  );
+
+  for (const q of questions) {
+    const submitted = answers.find((a: any) => a && a.questionId === q.id);
+    let correct = false;
+    let selectedId = '';
+
+    if (q.type === 'multiple_choice') {
+      selectedId = submitted?.selectedOptionId || '';
+      const opt = (q.options || []).find((o: any) => o.id === selectedId);
+      correct = !!(opt && opt.correct === true);
+    } else if (q.type === 'predict_output') {
+      const submittedText = typeof submitted?.answer === 'string' ? submitted.answer : '';
+      const norm = (s: string) => s.replace(/\s*,\s*/g, ',').trim().toLowerCase();
+      correct = norm(submittedText) === norm(q.answer || '');
+      selectedId = 'predict:' + submittedText.trim().toLowerCase();
+    }
+
+    if (correct) score++;
+    results.push({ questionId: q.id, correct });
+    insertAnswer.run(studentId, ex.slug, selectedId, correct ? 1 : 0, q.id, attemptId);
+  }
+
+  // Record the attempt
+  sqlite.prepare(
+    `INSERT INTO quiz_attempts (id, student_id, exercise_id, score, total)
+     VALUES (?, ?, ?, ?, ?)`
+  ).run(attemptId, studentId, ex.slug, score, questions.length);
+
+  // Update session: mark resolved (regardless of score, per design Q6)
+  sqlite.prepare(
+    `UPDATE hint_sessions
+        SET last_run_matched = ?, last_run_at = datetime('now'),
+            state = CASE WHEN state = 'open' THEN 'resolved' ELSE state END
+      WHERE student_id = ? AND exercise_id = ?`
+  ).run(score === questions.length ? 1 : 0, studentId, ex.slug);
+
+  res.json({
+    attemptId,
+    score,
+    total: questions.length,
+    results,
+    feedback: score === questions.length
+      ? 'Perfect score! Now — can you explain why the answers are what they are?'
+      : `You got ${score} of ${questions.length}. Review the feedback and try again when ready.`,
   });
 });
 

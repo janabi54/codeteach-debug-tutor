@@ -112,7 +112,7 @@ router.post('/', requireInstructor, async (req, res) => {
   const lang = VALID_LANGUAGES.includes(language) ? language : 'javascript';
 
   // Phase 3.4a: exercise type + options (canonical: multiple_choice + object array)
-  const CANONICAL_TYPES = ['code', 'multiple_choice', 'predict_output'] as const;
+  const CANONICAL_TYPES = ['code', 'multiple_choice', 'predict_output', 'quiz'] as const;
   const exType = CANONICAL_TYPES.includes(exerciseType) ? exerciseType : 'code';
   let optionsJson: string | null = null;
   if (exType === 'multiple_choice') {
@@ -138,6 +138,34 @@ router.post('/', requireInstructor, async (req, res) => {
       return res.status(400).json({ error: 'Predict-output requires an answer.' });
     }
     optionsJson = JSON.stringify([{ correct: rawAnswer }]);
+  } else if (exType === 'quiz') {
+    const qs = Array.isArray(req.body.questions) ? req.body.questions : null;
+    if (!qs || qs.length === 0) {
+      return res.status(400).json({ error: 'Quiz requires at least one question.' });
+    }
+    for (const q of qs) {
+      if (!q || typeof q !== 'object') {
+        return res.status(400).json({ error: 'Each quiz question must be an object.' });
+      }
+      if (!q.id || typeof q.id !== 'string') {
+        return res.status(400).json({ error: 'Each question needs an id.' });
+      }
+      if (q.type === 'multiple_choice') {
+        if (!Array.isArray(q.options) || q.options.length < 2) {
+          return res.status(400).json({ error: 'MC questions need at least 2 options.' });
+        }
+        if (!q.options.some((o: any) => o.correct === true)) {
+          return res.status(400).json({ error: 'MC questions need a correct option.' });
+        }
+      } else if (q.type === 'predict_output') {
+        if (typeof q.answer !== 'string' || !q.answer.trim()) {
+          return res.status(400).json({ error: 'Predict questions need an answer.' });
+        }
+      } else {
+        return res.status(400).json({ error: 'Unknown question type: ' + q.type });
+      }
+    }
+    optionsJson = JSON.stringify({ questions: qs });
   }
 
 
@@ -224,9 +252,31 @@ router.put('/:slug', requireInstructor, async (req, res) => {
     patch.struggleMinutes = Math.min(60, struggleMinutes);
   }
   // Phase 3.4a: exercise type + options (canonical: multiple_choice + object array)
-  if (exerciseType === 'code' || exerciseType === 'multiple_choice' || exerciseType === 'predict_output') {
+  if (exerciseType === 'code' || exerciseType === 'multiple_choice' || exerciseType === 'predict_output' || exerciseType === 'quiz') {
     patch.exerciseType = exerciseType;
-    if (exerciseType === 'predict_output') {
+    if (exerciseType === 'quiz') {
+      const qs = Array.isArray(req.body.questions) ? req.body.questions : null;
+      if (!qs || qs.length === 0) {
+        return res.status(400).json({ error: 'Quiz requires at least one question.' });
+      }
+      for (const q of qs) {
+        if (!q || typeof q !== 'object' || !q.id || typeof q.id !== 'string') {
+          return res.status(400).json({ error: 'Each question needs an id.' });
+        }
+        if (q.type === 'multiple_choice') {
+          if (!Array.isArray(q.options) || q.options.length < 2 || !q.options.some((o: any) => o.correct === true)) {
+            return res.status(400).json({ error: 'MC questions need ≥2 options and one correct.' });
+          }
+        } else if (q.type === 'predict_output') {
+          if (typeof q.answer !== 'string' || !q.answer.trim()) {
+            return res.status(400).json({ error: 'Predict questions need an answer.' });
+          }
+        } else {
+          return res.status(400).json({ error: 'Unknown question type: ' + q.type });
+        }
+      }
+      patch.options = JSON.stringify({ questions: qs });
+    } else if (exerciseType === 'predict_output') {
       const rawAnswer = typeof req.body.answer === 'string' ? req.body.answer.trim() : '';
       if (!rawAnswer) {
         return res.status(400).json({ error: 'Predict-output requires an answer.' });

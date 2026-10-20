@@ -229,6 +229,61 @@ if (!exerciseCols34.some((c) => c.name === 'options_json')) {
   console.log('[db] migrated: added exercises.options_json');
 }
 
+// Phase 3.5a: quiz_attempts table + answers columns + backfill
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS quiz_attempts (
+    id            TEXT PRIMARY KEY,
+    student_id    TEXT NOT NULL,
+    exercise_id   TEXT NOT NULL,
+    score         INTEGER NOT NULL DEFAULT 0,
+    total         INTEGER NOT NULL,
+    submitted_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_quiz_attempts_student
+    ON quiz_attempts(student_id, exercise_id, submitted_at DESC);
+`);
+const answerCols35 = sqlite.prepare('PRAGMA table_info(answers)').all() as Array<{ name: string }>;
+if (!answerCols35.some((c) => c.name === 'question_id')) {
+  sqlite.exec('ALTER TABLE answers ADD COLUMN question_id TEXT');
+  console.log('[db] migrated: added answers.question_id');
+}
+if (!answerCols35.some((c) => c.name === 'attempt_id')) {
+  sqlite.exec('ALTER TABLE answers ADD COLUMN attempt_id TEXT');
+  console.log('[db] migrated: added answers.attempt_id');
+}
+
+// Backfill: wrap legacy options_json arrays into {questions: [...]}
+// Legacy shape (3.4a/b): options_json = '[{id,text,correct}]' or '[{correct:"str"}]'
+// New shape (3.5a):      options_json = '{"questions":[{"id":"q1","type":...,"options"/"answer":...}]}'
+{
+  const legacyRows = sqlite.prepare(
+    "SELECT id, exercise_type, description, options_json FROM exercises WHERE exercise_type IN ('multiple_choice','predict_output') AND options_json NOT LIKE '{\"questions\"%' AND options_json != '[]'"
+  ).all() as Array<{ id: string; exercise_type: string; description: string; options_json: string }>;
+  if (legacyRows.length > 0) {
+    const updateStmt = sqlite.prepare("UPDATE exercises SET options_json = ? WHERE id = ?");
+    for (const row of legacyRows) {
+      try {
+        const parsed = JSON.parse(row.options_json || '[]');
+        if (!Array.isArray(parsed)) continue;
+        const wrapped = {
+          questions: [{
+            id: 'q1',
+            type: row.exercise_type,
+            text: row.description || '',
+            ...(row.exercise_type === 'multiple_choice'
+              ? { options: parsed }
+              : { answer: (parsed[0] && parsed[0].correct) || '' }),
+          }],
+        };
+        updateStmt.run(JSON.stringify(wrapped), row.id);
+      } catch {
+        // skip unparseable rows
+      }
+    }
+    console.log('[db] migrated: wrapped ' + legacyRows.length + ' legacy options_json rows into {questions:[...]}');
+  }
+}
+
 const hasOutcome = hypothesisColumns.some((c) => c.name === 'outcome');
 if (!hasOutcome) {
   sqlite.exec('ALTER TABLE hypotheses ADD COLUMN outcome TEXT');
@@ -2774,6 +2829,7 @@ export const db = {
       createdBy: string | null;
       exerciseType?: string;
       options?: string | null;
+      questions?: Array<any>;
     }): Promise<Exercise> {
       const id = crypto.randomUUID();
       stmt.insertExercise.run(
@@ -2791,7 +2847,9 @@ export const db = {
         data.cohortId,
         data.createdBy,
         data.exerciseType ?? 'code',
-        data.options ?? null
+        data.questions
+          ? JSON.stringify({ questions: data.questions })
+          : (data.options ?? '[]')
       );
       const row = stmt.findExerciseById.get(id) as any;
       return rowToExercise(row);
@@ -2808,6 +2866,7 @@ export const db = {
       struggleMinutes: number;
       exerciseType: string;
       options: string | null;
+      questions: Array<any>;
     }>): Promise<void> {
       const current = await db.exercises.findById(id);
       if (!current) return;
@@ -2823,7 +2882,9 @@ export const db = {
         merged.expectedOutput ?? '',
         merged.struggleMinutes,
         (merged as any).exerciseType ?? 'code',
-        (merged as any).options ?? null,
+        (merged as any).questions
+          ? JSON.stringify({ questions: (merged as any).questions })
+          : ((merged as any).options ?? '[]'),
         id
       );
     },
