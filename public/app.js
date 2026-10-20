@@ -2959,10 +2959,12 @@ function readEditorOptions() {
 function updateEditorTypeVisibility() {
   const type = document.getElementById('exType')?.value || 'code';
   const wrap = document.getElementById('exOptionsWrap');
+  const pWrap = document.getElementById('exPredictWrap');
   const starterField = document.getElementById('exStarterCode')?.closest('.field');
   const expectedField = document.getElementById('exExpectedOutput')?.closest('.field');
   const langField = document.getElementById('exLanguage')?.closest('.field');
   if (wrap) wrap.hidden = type !== 'multiple_choice';
+  if (pWrap) pWrap.hidden = type !== 'predict_output';
   // In MC mode, hide starter code + expected output + language (not needed)
   if (starterField) starterField.style.display = type === 'code' ? '' : 'none';
   if (expectedField) expectedField.style.display = type === 'code' ? '' : 'none';
@@ -3204,9 +3206,18 @@ async function saveExercise() {
 
   // --- Patch 4c: include exercise type + options (Phase 3.4a canonical) ---
   const exTypeRaw = ($('exType') && $('exType').value) || 'code';
-  const exerciseType = exTypeRaw === 'multiple_choice' ? 'multiple_choice' : 'code';
+  const exerciseType = (exTypeRaw === 'multiple_choice' || exTypeRaw === 'predict_output') ? exTypeRaw : 'code';
   let optionsPayload = null;
-  if (exerciseType === 'multiple_choice') {
+  let answerPayload = null;
+  if (exerciseType === 'predict_output') {
+    const ansEl = document.getElementById('exPredictAnswer');
+    const ans = ansEl ? ansEl.value.trim() : '';
+    if (!ans) {
+      alert('Enter the expected answer for predict-output.');
+      return;
+    }
+    answerPayload = ans;
+  } else if (exerciseType === 'multiple_choice') {
     const rows = document.querySelectorAll('#mcOptions .mc-editor-option');
     const opts = [];
     rows.forEach((row, i) => {
@@ -3242,6 +3253,7 @@ async function saveExercise() {
     struggleMinutes: Math.max(0, Math.min(60, parseInt($('exStruggle').value, 10) || 0)),
     exerciseType,
     options: optionsPayload,
+    answer: answerPayload,
     ...(selectedCohortId && !exercisesState.currentSlug ? { cohortId: selectedCohortId } : {}),
   };
 
@@ -7959,10 +7971,38 @@ document.addEventListener('DOMContentLoaded', () => {
 function applyExerciseTypeUI(ex) {
   if (!ex) return;
   const isMC = ex.exerciseType === 'multiple_choice';
+  const isPredict = ex.exerciseType === 'predict_output';
   const mcPanel = document.getElementById('mcPanel');
+  const predictPanel = document.getElementById('predictPanel');
 
-  document.body.classList.toggle('mc-mode', isMC);
+  document.body.classList.toggle('mc-mode', isMC || isPredict);
   if (mcPanel) mcPanel.hidden = !isMC;
+  if (predictPanel) predictPanel.hidden = !isPredict;
+
+  if (isPredict && predictPanel) {
+    const pq = document.getElementById('predictQuestion');
+    if (pq) pq.textContent = ex.description || ex.title || 'Predict the output:';
+    const pin = document.getElementById('predictAnswer');
+    if (pin) pin.value = '';
+    const pfb = document.getElementById('predictFeedback');
+    if (pfb) { pfb.hidden = true; pfb.textContent = ''; }
+    const psb = document.getElementById('predictSubmit');
+    if (psb) psb.disabled = false;
+    let pclose = predictPanel.querySelector('#predictClose');
+    if (!pclose) {
+      pclose = document.createElement('button');
+      pclose.id = 'predictClose';
+      pclose.innerHTML = '\u2715';
+      pclose.style.cssText = 'position:absolute; right:10px; top:10px; background:transparent; border:none; color:#fff; font-size:24px; cursor:pointer; padding:0 8px; line-height:1; z-index:100;';
+      pclose.onclick = () => {
+        predictPanel.hidden = true;
+        document.body.classList.remove('mc-mode');
+        document.getElementById('exerciseId').value = '';
+      };
+      predictPanel.style.position = 'relative';
+      predictPanel.appendChild(pclose);
+    }
+  }
 
   if (!isMC) return;
 
@@ -8054,6 +8094,37 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (ex) applyExerciseTypeUI(ex);
   });
+
+  const predictSubmit = document.getElementById('predictSubmit');
+  if (predictSubmit) {
+    predictSubmit.addEventListener('click', async () => {
+      const answer = document.getElementById('predictAnswer').value;
+      const exerciseSlug = sel.value;
+      if (!exerciseSlug || !answer.trim()) return;
+      predictSubmit.disabled = true;
+      predictSubmit.textContent = 'Submitting…';
+      try {
+        const res = await fetch('/api/debug-tutor/predict', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ exerciseId: exerciseSlug, answer })
+        });
+        const data = await res.json();
+        const fb = document.getElementById('predictFeedback');
+        if (fb) {
+          fb.hidden = false;
+          fb.textContent = data.feedback || (data.correct ? 'Correct!' : 'Try again.');
+          fb.style.color = data.correct ? '#4ade80' : '#f87171';
+        }
+      } catch (err) {
+        alert('Failed to submit prediction.');
+      } finally {
+        predictSubmit.textContent = 'Submit';
+        predictSubmit.disabled = false;
+      }
+    });
+  }
 
   if (mcSubmit) {
     mcSubmit.addEventListener('click', async () => {

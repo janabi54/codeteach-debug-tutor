@@ -5825,3 +5825,50 @@ body.mc-mode::before {
   background: #3a3a48 !important;
   border-color: #7b5cff !important;
 }
+
+/* Phase 3.4b: Predict-output modal — reuses MC modal pattern */
+body.mc-mode #predictPanel {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  position: fixed !important;
+  top: 120px !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  width: 90% !important;
+  max-width: 650px !important;
+  padding: 32px !important;
+  background: #1e1e24 !important;
+  border: 2px solid #7b5cff !important;
+  border-radius: 12px !important;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.9) !important;
+  z-index: 99999 !important;
+}
+
+/* Fix: don't force-show MC panel via CSS when it's hidden via JS */
+body.mc-mode #mcPanel:not([hidden]) {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  position: fixed !important;
+  top: 120px !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  width: 90% !important;
+  max-width: 650px !important;
+  padding: 32px !important;
+  background: #1e1e24 !important;
+  border: 2px solid #7b5cff !important;
+  border-radius: 12px !important;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.9) !important;
+  z-index: 99999 !important;
+}
+
+body.mc-mode #mcPanel[hidden] {
+  display: none !important;
+}
+
+/* Same fix for predict panel */
+body.mc-mode #predictPanel[hidden] {
+  display: none !important;
+}

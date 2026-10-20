@@ -234,6 +234,18 @@
         </div>
       </div>
 
+      <div id="predictPanel" class="mc-panel" hidden>
+        <h3 class="mc-question" id="predictQuestion" style="position:relative; padding-right:30px;"></h3>
+        <div style="margin-bottom:16px;">
+          <label for="predictAnswer" style="display:block; margin-bottom:8px; color:#aaa; font-size:14px;">Your prediction:</label>
+          <input id="predictAnswer" type="text" style="width:100%; padding:12px 16px; background:#2b2b36; border:1px solid #444; border-radius:6px; color:#fff; font-size:15px; outline:none;" placeholder="Type what the code prints…" />
+        </div>
+        <div class="mc-actions">
+          <button class="primary small" id="predictSubmit">Submit</button>
+          <p id="predictFeedback" class="mc-feedback" hidden></p>
+        </div>
+      </div>
+
             <textarea id="code" spellcheck="false" placeholder="Paste your code here...">const arr = [1, 2, 3];
 for (let i = 0; i < arr.length; i++) {
   console.log(arr[i]);
@@ -475,6 +487,7 @@ for (let i = 0; i < arr.length; i++) {
             <select id="exType">
               <option value="code">Code (student runs in sandbox)</option>
               <option value="multiple_choice">Multiple choice</option>
+              <option value="predict_output">Predict output</option>
             </select>
             <p class="field-hint">Multiple choice skips the code editor — students pick an option instead.</p>
           </div>
@@ -483,6 +496,12 @@ for (let i = 0; i < arr.length; i++) {
             <label>Options (select the correct one)</label>
             <div id="exOptionsList" class="mc-editor-options"></div>
             <button type="button" id="exOptionsAdd" class="ghost small" style="margin-top:8px;">+ Add option</button>
+          </div>
+
+          <div id="exPredictWrap" class="field" hidden>
+            <label for="exPredictAnswer">Expected answer (hidden from students)</label>
+            <input id="exPredictAnswer" type="text" spellcheck="false" placeholder="e.g. 0, 1, 2" />
+            <p class="field-hint">Case-insensitive. Whitespace is trimmed.</p>
           </div>
 
           <div class="field">

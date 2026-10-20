@@ -150,6 +150,50 @@ router.post('/answer', requireAuth, async (req, res) => {
   });
 });
 
+// ─── POST /predict — predict-output submission ───
+router.post('/predict', requireAuth, async (req, res) => {
+  const { exerciseId, answer } = req.body ?? {};
+  if (typeof exerciseId !== 'string' || typeof answer !== 'string') {
+    return res.status(400).json({ error: 'exerciseId and answer required.' });
+  }
+  const studentId = resolveActingStudentId(req, req.body.studentId);
+
+  const ex = await db.exercises.findBySlug(exerciseId);
+  if (!ex) return res.status(404).json({ error: 'Exercise not found.' });
+  if (ex.exerciseType !== 'predict_output') {
+    return res.status(400).json({ error: 'Not a predict-output exercise.' });
+  }
+
+  const opts = (ex.options as Array<{ correct?: string }>) || [];
+  const expectedRaw = opts.find((o) => typeof o.correct === 'string')?.correct || '';
+  // Normalize: strip ALL whitespace (internal + trim) so "0,1,2" == "0, 1, 2"
+  const expected = expectedRaw.replace(/\s+/g, '').toLowerCase();
+  const submitted = answer.replace(/\s+/g, '').toLowerCase();
+  const correct = expected.length > 0 && expected === submitted;
+
+  // Record in answers table (optionId holds the submitted text, tagged)
+  sqlite.prepare(
+    `INSERT INTO answers (student_id, exercise_id, selected_option_id, correct)
+     VALUES (?, ?, ?, ?)`
+  ).run(studentId, ex.slug, 'predict:' + submitted, correct ? 1 : 0);
+
+  // Session update
+  sqlite.prepare(
+    `UPDATE hint_sessions
+        SET last_run_matched = ?, last_run_at = datetime('now'),
+            state = CASE WHEN ? = 1 AND state = 'open' THEN 'resolved' ELSE state END
+      WHERE student_id = ? AND exercise_id = ?`
+  ).run(correct ? 1 : 0, correct ? 1 : 0, studentId, ex.slug);
+
+  res.json({
+    correct,
+    submitted: answer,
+    feedback: correct
+      ? 'Correct. Now — can you explain why it produces that output?'
+      : 'Not quite. Trace the code by hand and try again.',
+  });
+});
+
 router.post('/hint', requireAuth, async (req, res) => {
   const {
     exerciseId, code, language, errorOutput,

@@ -112,7 +112,7 @@ router.post('/', requireInstructor, async (req, res) => {
   const lang = VALID_LANGUAGES.includes(language) ? language : 'javascript';
 
   // Phase 3.4a: exercise type + options (canonical: multiple_choice + object array)
-  const CANONICAL_TYPES = ['code', 'multiple_choice'] as const;
+  const CANONICAL_TYPES = ['code', 'multiple_choice', 'predict_output'] as const;
   const exType = CANONICAL_TYPES.includes(exerciseType) ? exerciseType : 'code';
   let optionsJson: string | null = null;
   if (exType === 'multiple_choice') {
@@ -132,6 +132,12 @@ router.post('/', requireInstructor, async (req, res) => {
       return res.status(400).json({ error: 'Multiple-choice requires at least one correct option.' });
     }
     optionsJson = JSON.stringify(clean);
+  } else if (exType === 'predict_output') {
+    const rawAnswer = typeof req.body.answer === 'string' ? req.body.answer.trim() : '';
+    if (!rawAnswer) {
+      return res.status(400).json({ error: 'Predict-output requires an answer.' });
+    }
+    optionsJson = JSON.stringify([{ correct: rawAnswer }]);
   }
 
 
@@ -218,9 +224,15 @@ router.put('/:slug', requireInstructor, async (req, res) => {
     patch.struggleMinutes = Math.min(60, struggleMinutes);
   }
   // Phase 3.4a: exercise type + options (canonical: multiple_choice + object array)
-  if (exerciseType === 'code' || exerciseType === 'multiple_choice') {
+  if (exerciseType === 'code' || exerciseType === 'multiple_choice' || exerciseType === 'predict_output') {
     patch.exerciseType = exerciseType;
-    if (exerciseType === 'multiple_choice') {
+    if (exerciseType === 'predict_output') {
+      const rawAnswer = typeof req.body.answer === 'string' ? req.body.answer.trim() : '';
+      if (!rawAnswer) {
+        return res.status(400).json({ error: 'Predict-output requires an answer.' });
+      }
+      patch.options = JSON.stringify([{ correct: rawAnswer }]);
+    } else if (exerciseType === 'multiple_choice') {
       const clean = Array.isArray(options)
         ? options
             .filter((o: any) => o && typeof o.text === 'string' && o.text.trim().length > 0)
