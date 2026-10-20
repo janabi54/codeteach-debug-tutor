@@ -8531,12 +8531,12 @@ function unwrapOptions(ex) {
 }
 
 // ─── Phase 3.5c: student paginated quiz modal ───
-let __quizState = { questions: [], answers: {}, index: 0, exerciseId: '', submitting: false };
+let __quizState = { questions: [], answers: {}, index: 0, exerciseId: '', submitting: false, hintsForQuestion: {}, hintMessage: null, hintLoading: false };
 
 function openQuizModal(ex) {
   const qs = (ex.options && Array.isArray(ex.options.questions)) ? ex.options.questions : [];
   if (qs.length < 2) return false;
-  __quizState = { questions: qs, answers: {}, index: 0, exerciseId: ex.slug, submitting: false };
+  __quizState = { questions: qs, answers: {}, index: 0, exerciseId: ex.slug, submitting: false, hintsForQuestion: {}, hintMessage: null, hintLoading: false };
   const modal = document.getElementById('quizModal');
   if (modal) modal.hidden = false;
   document.body.classList.add('mc-mode');
@@ -8614,7 +8614,72 @@ function renderQuizQuestion() {
     body.appendChild(inputWrap);
   }
 
+  // Phase 3.7: Add hint button + panel below options
+  const existingHint = body.querySelector('.quiz-hint-block');
+  if (existingHint) existingHint.remove();
+
+  const hintBlock = document.createElement('div');
+  hintBlock.className = 'quiz-hint-block';
+
+  const hintsUsed = __quizState.hintsForQuestion[q.id] || 0;
+  const MAX_LEVEL = 4;
+  const exhausted = hintsUsed >= MAX_LEVEL;
+
+  const hintBtn = document.createElement('button');
+  hintBtn.type = 'button';
+  hintBtn.className = 'quiz-hint-btn ghost small';
+  hintBtn.disabled = exhausted || __quizState.hintLoading;
+  hintBtn.textContent = exhausted
+    ? '🚫 All hints used'
+    : __quizState.hintLoading
+      ? '💡 Loading hint...'
+      : (hintsUsed === 0 ? '💡 Ask for a hint' : `💡 Ask for another hint (${hintsUsed}/${MAX_LEVEL})`);
+  hintBtn.onclick = () => requestQuizHint(q.id);
+  hintBlock.appendChild(hintBtn);
+
+  if (__quizState.hintMessage && __quizState.hintMessage.questionId === q.id) {
+    const panel = document.createElement('div');
+    panel.className = 'quiz-hint-panel';
+    panel.innerHTML = '<div class="quiz-hint-header">💡 Hint</div><div class="quiz-hint-text">' + escapeHtml(__quizState.hintMessage.text) + '</div>';
+    hintBlock.appendChild(panel);
+  }
+
+  body.appendChild(hintBlock);
+
   updateQuizNav();
+}
+
+async function requestQuizHint(questionId) {
+  if (__quizState.hintLoading) return;
+  __quizState.hintLoading = true;
+  // Re-render to update button state
+  renderQuizQuestion();
+
+  try {
+    const res = await fetch('/api/debug-tutor/quiz-hint', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        exerciseId: __quizState.exerciseId,
+        questionId,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || 'Could not get hint.');
+      __quizState.hintLoading = false;
+      renderQuizQuestion();
+      return;
+    }
+    __quizState.hintsForQuestion[questionId] = (__quizState.hintsForQuestion[questionId] || 0) + 1;
+    __quizState.hintMessage = { questionId, text: data.message };
+  } catch (err) {
+    alert('Hint failed: ' + err.message);
+  } finally {
+    __quizState.hintLoading = false;
+    renderQuizQuestion();
+  }
 }
 
 function updateQuizNav() {
@@ -8638,12 +8703,14 @@ function updateQuizNav() {
 function quizPrev() {
   if (__quizState.index <= 0) return;
   __quizState.index--;
+  __quizState.hintMessage = null;
   renderQuizQuestion();
 }
 
 function quizNext() {
   if (__quizState.index >= __quizState.questions.length - 1) return;
   __quizState.index++;
+  __quizState.hintMessage = null;
   renderQuizQuestion();
 }
 

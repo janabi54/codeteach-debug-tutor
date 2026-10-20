@@ -229,6 +229,13 @@ if (!exerciseCols34.some((c) => c.name === 'options_json')) {
   console.log('[db] migrated: added exercises.options_json');
 }
 
+// Phase 3.7: question_id column on hint_sessions (nullable; only set for quiz question hints)
+const hintSessionCols37 = sqlite.prepare('PRAGMA table_info(hint_sessions)').all() as Array<{ name: string }>;
+if (!hintSessionCols37.some((c) => c.name === 'question_id')) {
+  sqlite.exec('ALTER TABLE hint_sessions ADD COLUMN question_id TEXT');
+  console.log('[db] migrated: added hint_sessions.question_id');
+}
+
 // Phase 3.5a: quiz_attempts table + answers columns + backfill
 sqlite.exec(`
   CREATE TABLE IF NOT EXISTS quiz_attempts (

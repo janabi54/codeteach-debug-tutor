@@ -6150,3 +6150,39 @@ body.mc-mode .quiz-modal:not([hidden]) {
   font-size: 12px;
   margin: 0;
 }
+
+/* Phase 3.7: quiz hint UI */
+.quiz-hint-block {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.quiz-hint-btn {
+  align-self: flex-start;
+  font-size: 13px;
+}
+.quiz-hint-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.quiz-hint-panel {
+  padding: 14px 16px;
+  background: rgba(123, 92, 255, 0.12);
+  border: 1px solid rgba(123, 92, 255, 0.4);
+  border-radius: 8px;
+  color: #e0e0e0;
+}
+.quiz-hint-header {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #a09bff;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.quiz-hint-text {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-primary, #e0e0e0);
+}

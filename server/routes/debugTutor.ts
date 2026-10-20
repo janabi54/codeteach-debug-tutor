@@ -207,6 +207,100 @@ router.post('/predict', requireAuth, async (req, res) => {
       : 'Not quite. Trace the code by hand and try again.',
   });
 });
+// ─── POST /quiz-hint — per-question hint for multi-question quizzes (Phase 3.7) ───
+router.post('/quiz-hint', requireAuth, async (req, res) => {
+  const { exerciseId, questionId } = req.body ?? {};
+  if (typeof exerciseId !== 'string' || typeof questionId !== 'string') {
+    return res.status(400).json({ error: 'exerciseId and questionId required.' });
+  }
+  const studentId = resolveActingStudentId(req, req.body.studentId);
+
+  const ex = await db.exercises.findBySlug(exerciseId);
+  if (!ex) return res.status(404).json({ error: 'Exercise not found.' });
+
+  let questions: any[] = [];
+  if (ex.options && typeof ex.options === 'object' && Array.isArray((ex.options as any).questions)) {
+    questions = (ex.options as any).questions;
+  }
+  const q = questions.find((x) => x && x.id === questionId);
+  if (!q) return res.status(404).json({ error: 'Question not found.' });
+
+  const compositeExId = ex.slug + ':q:' + questionId;
+  const struggleMinutes = ex.struggleMinutes || 0;
+  const session = await hintSessions.getOrCreate(studentId, compositeExId, { struggleMinutes });
+
+  const hintsUsed = session.totalAttempts || 0;
+  const MAX_LEVEL = 4;
+  if (hintsUsed >= MAX_LEVEL) {
+    return res.json({
+      exhausted: true,
+      level: MAX_LEVEL,
+      message: 'You have used all 4 hints for this question. Try your best answer, or re-read the question carefully.',
+      isFallback: true,
+      source: 'exhausted',
+    });
+  }
+
+  const questionDescription =
+    (q.text ? String(q.text) : 'Answer this quiz question.') +
+    (q.type === 'multiple_choice' && Array.isArray(q.options)
+      ? ' Options: ' + q.options.map((o: any, i: number) => String.fromCharCode(97 + i) + ') ' + String(o.text || '')).join('; ')
+      : '');
+
+  const hintLevel = Math.min((hintsUsed + 1) as 1 | 2 | 3 | 4, MAX_LEVEL);
+
+  try {
+    const hint = await getTutorHint({
+      studentId,
+      exerciseId: compositeExId,
+      code: '',
+      language: ex.language || 'text',
+      errorOutput: '',
+      exerciseContext: {
+        title: ex.title || 'Quiz question',
+        description: questionDescription,
+        learningObjectives: [],
+        expectedConcepts: [],
+        expectedOutput: undefined,
+        lastRun: null,
+      },
+      attemptNumber: hintsUsed,
+      hypothesis: undefined,
+    });
+
+    await db.hintSessions.update(session.id, {
+      totalAttempts: hintsUsed + 1,
+      currentLevel: Math.min(hintLevel + 1, MAX_LEVEL),
+    });
+
+    await db.telemetry.record({
+      type: 'hint-served',
+      studentId,
+      exerciseId: compositeExId,
+      timestamp: new Date(),
+    });
+
+    res.json({
+      exhausted: false,
+      level: hintLevel,
+      nextLevel: Math.min(hintLevel + 1, MAX_LEVEL),
+      message: (hint as any).message || 'Look at the question again carefully.',
+      hintLevel: (hint as any).hintLevel || hintLevel,
+      isFallback: (hint as any).isFallback || false,
+      source: (hint as any).isFallback ? 'fallback' : 'llm',
+    });
+  } catch (err: any) {
+    res.json({
+      exhausted: false,
+      level: hintLevel,
+      nextLevel: Math.min(hintLevel + 1, MAX_LEVEL),
+      message: 'Take another look at the question. What is it really asking you to do?',
+      isFallback: true,
+      source: 'error-fallback',
+    });
+  }
+});
+
 
 // ─── POST /quiz — multi-question quiz submission (Phase 3.5a) ───
 router.post('/quiz', requireAuth, async (req, res) => {
