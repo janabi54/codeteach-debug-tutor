@@ -5966,3 +5966,87 @@ body.mc-mode .quiz-modal:not([hidden]) {
   color: #fff;
   font-size: 14px;
 }
+
+/* ─────────────────────────────────────────────────────────────
+   Phase 3.5d: quiz analytics sub-view
+   ───────────────────────────────────────────────────────────── */
+.qa-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 16px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.analytics-section-sub { font-size: 13px; color: var(--text-secondary); margin: 4px 0 0; }
+.qa-controls { display: flex; gap: 12px; align-items: center; }
+.qa-subtabs { display: flex; border: 1px solid var(--border-strong); border-radius: 6px; overflow: hidden; }
+.qa-subtab {
+  padding: 6px 14px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  border-right: 1px solid var(--border-strong);
+}
+.qa-subtab:last-child { border-right: none; }
+.qa-subtab.active { background: rgba(123, 92, 255, 0.2); color: #fff; }
+.qa-subtab:hover:not(.active) { background: rgba(255,255,255,0.04); }
+#qaRange {
+  padding: 6px 10px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  font-size: 13px;
+}
+.qa-chart-wrap {
+  height: 260px;
+  margin: 16px 0;
+  padding: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+}
+.qa-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 16px;
+  font-size: 13px;
+}
+.qa-table th, .qa-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-strong);
+}
+.qa-table th {
+  color: var(--text-secondary);
+  font-weight: 500;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+}
+.qa-table th.num, .qa-table td.num { text-align: right; }
+.qa-table tr:hover { background: rgba(255,255,255,0.02); }
+.qa-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 12px;
+}
+.qa-badge-good { background: rgba(74,222,128,0.15); color: #4ade80; }
+.qa-badge-mid  { background: rgba(250,204,21,0.15); color: #facc15; }
+.qa-badge-low  { background: rgba(248,113,113,0.15); color: #f87171; }
+.qa-type-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  margin-left: 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: rgba(123,92,255,0.15);
+  color: #a09bff;
+}

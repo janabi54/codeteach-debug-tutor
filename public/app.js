@@ -5241,6 +5241,180 @@ async function refreshNudgeThreadView() {
 
 let analyticsCohortsLoaded = false;
 
+// ─────────────────────────────────────────────────────────────
+// Phase 3.5d: quiz analytics sub-view
+// ─────────────────────────────────────────────────────────────
+let __qaState = { view: 'exercise', data: null };
+let __qaChart = null;
+
+function destroyQaChart() {
+  if (__qaChart) { try { __qaChart.destroy(); } catch {} __qaChart = null; }
+}
+
+async function loadQuizAnalytics(cohortId) {
+  const body = document.getElementById('qaBody');
+  if (!body || !cohortId) return;
+  body.innerHTML = '<p class="empty-state">Loading…</p>';
+  const days = parseInt(document.getElementById('qaRange')?.value || '30', 10);
+  try {
+    const res = await fetch('/api/admin/analytics/quiz/' + encodeURIComponent(cohortId) + '?days=' + days, { credentials: 'same-origin' });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      body.innerHTML = '<p class="empty-state">' + escapeHtml(err.error || 'Could not load.') + '</p>';
+      return;
+    }
+    __qaState.data = await res.json();
+    renderQuizAnalytics();
+  } catch (err) {
+    body.innerHTML = '<p class="empty-state">Failed: ' + escapeHtml(err.message) + '</p>';
+  }
+}
+
+function renderQuizAnalytics() {
+  const body = document.getElementById('qaBody');
+  if (!body || !__qaState.data) return;
+  const { byExercise, byStudent } = __qaState.data;
+  if (__qaState.view === 'exercise') renderQaExercises(body, byExercise);
+  else renderQaStudents(body, byStudent);
+}
+
+function pctBadge(pct) {
+  const cls = pct >= 80 ? 'qa-badge-good' : pct >= 50 ? 'qa-badge-mid' : 'qa-badge-low';
+  return '<span class="qa-badge ' + cls + '">' + pct.toFixed(1) + '%</span>';
+}
+
+function typeBadge(t) {
+  const map = { multiple_choice: 'MC', predict_output: 'Predict', quiz: 'Quiz', code: 'Code' };
+  return '<span class="qa-type-badge">' + (map[t] || t) + '</span>';
+}
+
+function renderQaExercises(container, exercises) {
+  if (!exercises || exercises.length === 0) {
+    container.innerHTML = '<p class="empty-state">No quiz activity in this range.</p>';
+    return;
+  }
+  const chartHtml = '<div class="qa-chart-wrap"><canvas id="qaExerciseChart"></canvas></div>';
+  const rows = exercises.map((e) => `
+    <tr>
+      <td>${escapeHtml(e.title)} ${typeBadge(e.exerciseType)}</td>
+      <td class="num">${e.attempts}</td>
+      <td class="num">${e.uniqueStudents}</td>
+      <td class="num">${e.correctCount}/${e.totalCount}</td>
+      <td>${pctBadge(e.pctCorrect)}</td>
+    </tr>`).join('');
+  container.innerHTML = chartHtml + `
+    <table class="qa-table">
+      <thead><tr>
+        <th>Exercise</th><th class="num">Attempts</th>
+        <th class="num">Students</th><th class="num">Correct</th>
+        <th>Accuracy</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  destroyQaChart();
+  const ctx = document.getElementById('qaExerciseChart');
+  if (!ctx) return;
+  if (typeof Chart === 'undefined') {
+    // Chart.js failed to load — show a placeholder instead of infinite retry
+    const wrap = ctx.parentElement;
+    if (wrap) wrap.innerHTML = '<p class="empty-state" style="text-align:center;padding-top:100px;">Chart unavailable — Chart.js not loaded.</p>';
+    return;
+  }
+  const sorted = [...exercises].sort((a, b) => b.pctCorrect - a.pctCorrect).slice(0, 10);
+  __qaChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: sorted.map((e) => e.title),
+      datasets: [{
+        label: '% correct',
+        data: sorted.map((e) => e.pctCorrect),
+        backgroundColor: sorted.map((e) => e.pctCorrect >= 80 ? 'rgba(74,222,128,0.7)' : e.pctCorrect >= 50 ? 'rgba(250,204,21,0.7)' : 'rgba(248,113,113,0.7)'),
+        borderColor: sorted.map((e) => e.pctCorrect >= 80 ? '#4ade80' : e.pctCorrect >= 50 ? '#facc15' : '#f87171'),
+        borderWidth: 1,
+      }],
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: { x: { min: 0, max: 100, ticks: { callback: (v) => v + '%' } } },
+      plugins: { legend: { display: false } },
+    },
+  });
+}
+
+function renderQaStudents(container, students) {
+  if (!students || students.length === 0) {
+    container.innerHTML = '<p class="empty-state">No student activity in this range.</p>';
+    return;
+  }
+  const rows = students.map((s) => `
+    <tr>
+      <td>${escapeHtml(s.email)}</td>
+      <td class="num">${s.attempts}</td>
+      <td class="num">${s.uniqueExercises}</td>
+      <td class="num">${s.avgScore === null ? '—' : Math.round(s.avgScore * 100) + '%'}</td>
+      <td class="num">${s.correctAnswers}/${s.totalAnswers}</td>
+      <td>${pctBadge(s.pctCorrect)}</td>
+      <td>${s.lastAttempt ? new Date(s.lastAttempt).toLocaleDateString() : '—'}</td>
+    </tr>`).join('');
+  container.innerHTML = '<div class="qa-chart-wrap"><canvas id="qaStudentChart"></canvas></div>' + `
+    <table class="qa-table">
+      <thead><tr>
+        <th>Student</th><th class="num">Attempts</th>
+        <th class="num">Exercises</th><th class="num">Avg quiz</th>
+        <th class="num">Correct</th><th>Accuracy</th><th>Last seen</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  destroyQaChart();
+  const ctx = document.getElementById('qaStudentChart');
+  if (!ctx) return;
+  if (typeof Chart === 'undefined') {
+    const wrap = ctx.parentElement;
+    if (wrap) wrap.innerHTML = '<p class="empty-state" style="text-align:center;padding-top:100px;">Chart unavailable — Chart.js not loaded.</p>';
+    return;
+  }
+  const sorted = [...students].sort((a, b) => b.pctCorrect - a.pctCorrect);
+  __qaChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: sorted.map((s) => s.email),
+      datasets: [{
+        label: '% correct',
+        data: sorted.map((s) => s.pctCorrect),
+        backgroundColor: 'rgba(123,92,255,0.6)',
+        borderColor: '#7b5cff',
+        borderWidth: 1,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: { y: { min: 0, max: 100, ticks: { callback: (v) => v + '%' } }, x: { ticks: { autoSkip: true, maxRotation: 45 } } },
+      plugins: { legend: { display: false } },
+    },
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const panel = document.getElementById('quizAnalyticsPanel');
+  if (!panel) return;
+  panel.querySelectorAll('.qa-subtab').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      panel.querySelectorAll('.qa-subtab').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      __qaState.view = btn.dataset.qaView;
+      renderQuizAnalytics();
+    });
+  });
+  const range = document.getElementById('qaRange');
+  if (range) range.addEventListener('change', () => {
+    const cohortId = document.getElementById('analyticsCohort')?.value;
+    if (cohortId) loadQuizAnalytics(cohortId);
+  });
+});
+
 async function loadAnalytics() {
   const picker = $('analyticsCohort');
   const body = $('analyticsBody');
@@ -5303,6 +5477,7 @@ async function loadAnalyticsFor(cohortId) {
     const data = await res.json();
     renderAnalytics(body, data);
     if (typeof loadTutorGroups === 'function') await loadTutorGroups();
+    if (typeof loadQuizAnalytics === 'function') await loadQuizAnalytics(cohortId);
   } catch (err) {
     body.innerHTML = '<p class="empty-state">Failed: ' + escapeHtml(err.message) + '</p>';
   }

@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="/tagify.css">
 <link rel="stylesheet" href="/style.css">
 <link rel="icon" type="image/png" href="/favicon.png">
+  <script src="/chart.umd.min.js"></script>
 </head>
 <body>
 
@@ -399,6 +400,28 @@ for (let i = 0; i < arr.length; i++) {
       <div id="tutorGroupsBody">
         <p class="empty-state">Loading…</p>
       </div>
+    </div>
+
+    <div id="quizAnalyticsPanel" class="analytics-section" style="margin-top: 32px;">
+      <div class="qa-header">
+        <div>
+          <h3 class="analytics-section-title">Exercise performance</h3>
+          <p class="analytics-section-sub">Accuracy, difficulty, and student engagement across all quiz exercises.</p>
+        </div>
+        <div class="qa-controls">
+          <div class="qa-subtabs">
+            <button type="button" class="qa-subtab active" data-qa-view="exercise">By exercise</button>
+            <button type="button" class="qa-subtab" data-qa-view="student">By student</button>
+          </div>
+          <select id="qaRange">
+            <option value="7">Last 7 days</option>
+            <option value="30" selected>Last 30 days</option>
+            <option value="90">Last 90 days</option>
+            <option value="0">All time</option>
+          </select>
+        </div>
+      </div>
+      <div id="qaBody"><p class="empty-state">Loading…</p></div>
     </div>
   </div>
 </section>
