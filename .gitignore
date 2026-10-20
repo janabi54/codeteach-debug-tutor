@@ -63,3 +63,4 @@ codeteach.db.backup-*
 ngrok.tgz
 __pycache__/
 *.pyc
+*.bak_polish
