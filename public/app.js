@@ -5256,8 +5256,9 @@ async function loadQuizAnalytics(cohortId) {
   if (!body || !cohortId) return;
   body.innerHTML = '<p class="empty-state">Loading…</p>';
   const days = parseInt(document.getElementById('qaRange')?.value || '30', 10);
+  const includeInstructor = document.getElementById('qaIncludeInstructor')?.checked ? '1' : '0';
   try {
-    const res = await fetch('/api/admin/analytics/quiz/' + encodeURIComponent(cohortId) + '?days=' + days, { credentials: 'same-origin' });
+    const res = await fetch('/api/admin/analytics/quiz/' + encodeURIComponent(cohortId) + '?days=' + days + '&includeInstructor=' + includeInstructor, { credentials: 'same-origin' });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       body.innerHTML = '<p class="empty-state">' + escapeHtml(err.error || 'Could not load.') + '</p>';
@@ -5413,6 +5414,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const cohortId = document.getElementById('analyticsCohort')?.value;
     if (cohortId) loadQuizAnalytics(cohortId);
   });
+  const instructorToggle = document.getElementById('qaIncludeInstructor');
+  if (instructorToggle) {
+    // Restore saved preference
+    try {
+      if (localStorage.getItem('qa_include_instructor') === '1') instructorToggle.checked = true;
+    } catch {}
+    instructorToggle.addEventListener('change', () => {
+      try {
+        localStorage.setItem('qa_include_instructor', instructorToggle.checked ? '1' : '0');
+      } catch {}
+      const cohortId = document.getElementById('analyticsCohort')?.value;
+      if (cohortId) loadQuizAnalytics(cohortId);
+    });
+  }
 });
 
 async function loadAnalytics() {

@@ -53,13 +53,14 @@ router.get('/analytics/quiz/:cohortId', requireInstructor, async (req, res) => {
   const { cohortId } = req.params;
   const daysRaw = req.query.days;
   const days = daysRaw === undefined ? 30 : Math.max(0, parseInt(String(daysRaw), 10) || 0);
+  const includeInstructor = String(req.query.includeInstructor || '0') === '1';
   const cohort = await db.cohorts.findById(cohortId);
   if (!cohort) return res.status(404).json({ error: 'Cohort not found.' });
   if (cohort.instructorId !== req.user!.id) {
     return res.status(403).json({ error: 'You do not teach this cohort.' });
   }
   try {
-    const data = getQuizAnalytics(cohortId, days);
+    const data = getQuizAnalytics(cohortId, days, includeInstructor);
     res.json(data);
   } catch (err: any) {
     res.status(500).json({ error: err?.message || 'Could not compute quiz analytics.' });

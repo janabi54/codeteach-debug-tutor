@@ -40,6 +40,7 @@ export interface StudentStat {
 export interface QuizAnalytics {
   cohortId: string;
   range: number;
+  includeInstructor: boolean;
   byExercise: ExerciseStat[];
   byStudent: StudentStat[];
   generatedAt: string;
@@ -49,7 +50,11 @@ export interface QuizAnalytics {
  * Aggregate exercise-level and student-level performance stats
  * for a cohort, optionally limited to the last N days (0 = all time).
  */
-export function getQuizAnalytics(cohortId: string, days: number): QuizAnalytics {
+export function getQuizAnalytics(
+  cohortId: string,
+  days: number,
+  includeInstructor: boolean = false
+): QuizAnalytics {
   const daysClause = days > 0
     ? `AND a.created_at >= datetime('now', '-${days} days')`
     : '';
@@ -63,7 +68,9 @@ export function getQuizAnalytics(cohortId: string, days: number): QuizAnalytics 
            COUNT(a.id) AS totalCount
     FROM answers a
     JOIN exercises e ON e.slug = a.exercise_id
+    LEFT JOIN users u ON u.id = a.student_id
     WHERE e.cohort_id = ?
+      ${!includeInstructor ? "AND u.role = 'student'" : ''}
       ${daysClause}
     GROUP BY e.slug
     ORDER BY totalCount DESC
@@ -84,8 +91,10 @@ export function getQuizAnalytics(cohortId: string, days: number): QuizAnalytics 
              COUNT(*) AS total,
              SUM(a.correct) AS correct
       FROM answers a
+      JOIN users u ON u.id = a.student_id
       WHERE a.exercise_id = ?
         AND a.question_id IS NOT NULL
+        ${!includeInstructor ? "AND u.role = 'student'" : ''}
         ${daysClause}
       GROUP BY a.question_id
       ORDER BY a.question_id
@@ -124,12 +133,11 @@ export function getQuizAnalytics(cohortId: string, days: number): QuizAnalytics 
     JOIN exercises e ON e.slug = a.exercise_id
     LEFT JOIN users u ON u.id = a.student_id
     WHERE e.cohort_id = ?
-      AND u.role = 'student'
-      AND a.student_id IN (SELECT user_id FROM cohort_members WHERE cohort_id = ?)
+      ${!includeInstructor ? "AND u.role = 'student' AND a.student_id IN (SELECT user_id FROM cohort_members WHERE cohort_id = ?)" : ''}
       ${daysClause}
     GROUP BY a.student_id
     ORDER BY totalAnswers DESC
-  `).all(cohortId, cohortId) as Array<{
+  `).all(...(includeInstructor ? [cohortId] : [cohortId, cohortId])) as Array<{
     studentId: string;
     email: string | null;
     attempts: number;
@@ -166,6 +174,7 @@ export function getQuizAnalytics(cohortId: string, days: number): QuizAnalytics 
   return {
     cohortId,
     range: days,
+    includeInstructor,
     byExercise,
     byStudent,
     generatedAt: new Date().toISOString(),

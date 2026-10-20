@@ -6050,3 +6050,21 @@ body.mc-mode .quiz-modal:not([hidden]) {
   background: rgba(123,92,255,0.15);
   color: #a09bff;
 }
+
+/* Polish: include-instructor toggle */
+.qa-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+.qa-toggle input[type="checkbox"] {
+  cursor: pointer;
+  accent-color: #7b5cff;
+}
+.qa-toggle:hover span {
+  color: var(--text-primary);
+}
