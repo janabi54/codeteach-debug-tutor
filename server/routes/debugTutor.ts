@@ -109,6 +109,47 @@ router.post('/clear-run', requireAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
+// ─── POST /answer — multiple-choice submission ───
+router.post('/answer', requireAuth, async (req, res) => {
+  const { exerciseId, optionId } = req.body ?? {};
+  if (typeof exerciseId !== 'string' || typeof optionId !== 'string') {
+    return res.status(400).json({ error: 'exerciseId and optionId required.' });
+  }
+  const studentId = resolveActingStudentId(req, req.body.studentId);
+
+  const ex = await db.exercises.findBySlug(exerciseId);
+  if (!ex) return res.status(404).json({ error: 'Exercise not found.' });
+  if (ex.exerciseType !== 'multiple_choice') {
+    return res.status(400).json({ error: 'Not a multiple-choice exercise.' });
+  }
+  const opts = ex.options as Array<{ id: string; text: string; correct?: boolean }>;
+  const chosen = opts.find((o) => o.id === optionId);
+  if (!chosen) return res.status(400).json({ error: 'Option not found.' });
+  const correct = chosen.correct === true;
+
+  sqlite.prepare(
+    `INSERT INTO answers (student_id, exercise_id, selected_option_id, correct)
+     VALUES (?, ?, ?, ?)`
+  ).run(studentId, ex.slug, optionId, correct ? 1 : 0);
+
+  // Update session: matched=correct, and if correct, mark resolved
+  const session = await hintSessions.getOrCreate(studentId, ex.slug, { struggleMinutes: ex.struggleMinutes });
+  sqlite.prepare(
+    `UPDATE hint_sessions
+        SET last_run_matched = ?, last_run_at = datetime('now'),
+            state = CASE WHEN ? = 1 AND state = 'open' THEN 'resolved' ELSE state END
+      WHERE student_id = ? AND exercise_id = ?`
+  ).run(correct ? 1 : 0, correct ? 1 : 0, studentId, ex.slug);
+
+  res.json({
+    correct,
+    optionId,
+    feedback: correct
+      ? 'Correct. Now — can you explain why the other options are wrong?'
+      : 'Not quite. Look at the other options and consider what changes.',
+  });
+});
+
 router.post('/hint', requireAuth, async (req, res) => {
   const {
     exerciseId, code, language, errorOutput,

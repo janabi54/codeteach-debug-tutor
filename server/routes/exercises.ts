@@ -22,6 +22,8 @@ function exerciseShape(e: any) {
     title: e.title,
     description: e.description,
     language: e.language,
+    exerciseType: e.exerciseType || 'code',
+    options: e.options || [],
     starterCode: e.starterCode,
     expectedConcepts: e.expectedConcepts,
     requiredConcepts: e.requiredConcepts ?? [],

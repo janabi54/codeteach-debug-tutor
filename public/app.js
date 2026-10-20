@@ -6198,6 +6198,88 @@ async function loadExercisePicker() {
   }
 }
 
+function renderMCPanel(ex) {
+  const panel = document.getElementById('mcPanel');
+  const question = document.getElementById('mcQuestion');
+  const optionsEl = document.getElementById('mcOptions');
+  const submit = document.getElementById('mcSubmit');
+  const feedback = document.getElementById('mcFeedback');
+  const codeEl = document.getElementById('code');
+  const predEl = document.getElementById('runPrediction');
+  const runBtn = document.getElementById('runBtn');
+  if (!panel || !ex) return;
+
+  const opts = Array.isArray(ex.options) ? ex.options : [];
+
+  // MC: description via banner (rendered by renderExerciseBanner at call site)
+  // Panel keeps the radio list; question shows the title.
+  panel.hidden = false;
+  question.textContent = ex.title;
+
+  // Auto-expand tutor pane so post-mortem prompt is visible when correct
+  if (typeof expandTutorPane === 'function' && !__tutorPaneUserCollapsed) {
+    const pane = document.getElementById('tutorPane');
+    if (pane && pane.classList.contains('collapsed')) expandTutorPane();
+  }
+  optionsEl.innerHTML = opts.map((o) =>
+    '<label class="mc-option"><input type="radio" name="mcChoice" value="' + escapeHtml(o.id) + '" /> <span>' + escapeHtml(o.text) + '</span></label>'
+  ).join('');
+  feedback.hidden = true;
+  submit.disabled = true;
+
+  if (codeEl) codeEl.style.display = 'none';
+  if (predEl) predEl.closest('.run-section').style.display = 'none';
+  if (runBtn) runBtn.style.display = 'none';
+  const inv = document.getElementById('investigation');
+  if (inv) inv.hidden = true;
+
+  optionsEl.querySelectorAll('input[type="radio"]').forEach((r) => {
+    r.addEventListener('change', () => { submit.disabled = false; });
+  });
+
+  submit.onclick = async () => {
+    const selected = optionsEl.querySelector('input[type="radio"]:checked');
+    if (!selected) return;
+    submit.disabled = true;
+    submit.textContent = 'Checking…';
+    try {
+      const res = await fetch('/api/debug-tutor/answer', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ exerciseId: ex.slug, optionId: selected.value }),
+      });
+      const data = await res.json();
+      feedback.hidden = false;
+      feedback.textContent = data.feedback || (data.correct ? 'Correct.' : 'Not correct.');
+      feedback.className = 'mc-feedback ' + (data.correct ? 'correct' : 'wrong');
+      // Rehydrate session so post-mortem prompt fires if correct
+      if (data.correct && typeof expandTutorPane === 'function') {
+        const pane = document.getElementById('tutorPane');
+        if (pane && pane.classList.contains('collapsed')) expandTutorPane();
+      }
+      if (typeof hydrateSession === 'function') await hydrateSession();
+    } catch (err) {
+      feedback.hidden = false;
+      feedback.textContent = 'Error: ' + err.message;
+    } finally {
+      submit.textContent = 'Submit answer';
+      submit.disabled = false;
+    }
+  };
+}
+
+function resetMCPanel() {
+  const panel = document.getElementById('mcPanel');
+  const codeEl = document.getElementById('code');
+  const predEl = document.getElementById('runPrediction');
+  const runBtn = document.getElementById('runBtn');
+  if (panel) panel.hidden = true;
+  if (codeEl) codeEl.style.display = '';
+  if (predEl) predEl.closest('.run-section').style.display = '';
+  if (runBtn) runBtn.style.display = '';
+}
+
 function handleExerciseChange(slug) {
   if (!slug) return;
 
@@ -6222,8 +6304,14 @@ function handleExerciseChange(slug) {
   renderExerciseBanner(slug);
   const ex = __exercisesBySlug.get(slug);
   if (ex) {
-    setLanguageReadOnly(ex.language);
-    forceApplyStarterCode(ex);
+    if (ex.exerciseType === 'multiple_choice') {
+      resetMCPanel();          // wipe prior state
+      renderMCPanel(ex);
+    } else {
+      resetMCPanel();
+      setLanguageReadOnly(ex.language);
+      forceApplyStarterCode(ex);
+    }
   }
 
   // Reset tutor panel and session state for the new exercise

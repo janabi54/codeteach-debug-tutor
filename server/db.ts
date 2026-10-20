@@ -33,6 +33,7 @@ function rowToUser(row: any): User {
     displayName: row.display_name,
     role: row.role === 'instructor' ? 'instructor' : 'student',
     isAdmin: row.is_admin === 1,
+    hasSeenTour: row.has_seen_tour === 1,
     githubId: row.github_id ?? null,
     createdAt: parseSqliteTimestamp(row.created_at),
   };
@@ -88,6 +89,8 @@ function rowToExercise(row: any): Exercise {
     description: row.description,
     language: row.language,
     starterCode: row.starter_code,
+    exerciseType: (row.exercise_type as any) || 'code',
+    options: (() => { try { return JSON.parse(row.options_json || '[]'); } catch { return []; } })(),
     expectedConcepts: concepts,
     requiredConcepts: required,
     learningObjectives: objectives,
@@ -209,6 +212,23 @@ if (!hasNotifPrefs) {
   console.log('[db] migrated: added users.notification_prefs');
 }
 
+const hasSeenTour = userColumns.some((c) => c.name === 'has_seen_tour');
+if (!hasSeenTour) {
+  sqlite.exec('ALTER TABLE users ADD COLUMN has_seen_tour INTEGER NOT NULL DEFAULT 0');
+  console.log('[db] migrated: added users.has_seen_tour');
+}
+
+// Phase 3.4a: exercise_type + options_json on exercises
+const exerciseCols34 = sqlite.prepare('PRAGMA table_info(exercises)').all() as Array<{ name: string }>;
+if (!exerciseCols34.some((c) => c.name === 'exercise_type')) {
+  sqlite.exec("ALTER TABLE exercises ADD COLUMN exercise_type TEXT NOT NULL DEFAULT 'code'");
+  console.log('[db] migrated: added exercises.exercise_type');
+}
+if (!exerciseCols34.some((c) => c.name === 'options_json')) {
+  sqlite.exec("ALTER TABLE exercises ADD COLUMN options_json TEXT NOT NULL DEFAULT '[]'");
+  console.log('[db] migrated: added exercises.options_json');
+}
+
 const hasOutcome = hypothesisColumns.some((c) => c.name === 'outcome');
 if (!hasOutcome) {
   sqlite.exec('ALTER TABLE hypotheses ADD COLUMN outcome TEXT');
@@ -310,6 +330,8 @@ interface Exercise {
   title: string;
   description: string;
   language: string;
+  exerciseType: 'code' | 'multiple_choice' | 'predict_output';
+  options: Array<{ id: string; text: string; correct?: boolean }>;
   starterCode: string;
   expectedConcepts: string[];
   requiredConcepts: string[];
@@ -329,6 +351,7 @@ interface User {
   displayName: string;
   role: 'student' | 'instructor';
   isAdmin: boolean;
+  hasSeenTour: boolean;
   githubId: string | null;
   createdAt: Date;
 }
@@ -751,6 +774,9 @@ export const db = {
     async findByGithubId(githubId: string): Promise<User | null> {
       const row = stmt.findUserByGithubId.get(githubId) as any;
       return row ? rowToUser(row) : null;
+    },
+    async setHasSeenTour(userId: string, seen: boolean): Promise<void> {
+      sqlite.prepare('UPDATE users SET has_seen_tour = ? WHERE id = ?').run(seen ? 1 : 0, userId);
     },
     async linkGithub(userId: string, githubId: string): Promise<void> {
       stmt.updateUserGithubId.run(githubId, userId);
@@ -2819,6 +2845,8 @@ export const db = {
       const rows = sqlite
         .prepare(
           `SELECT e.id, e.slug, e.title, e.description, e.language,
+                  e.exercise_type AS exerciseType,
+                  e.options_json AS optionsJson,
                   e.starter_code AS starterCode,
                   e.expected_concepts AS expectedConcepts,
                   e.expected_output AS expectedOutput,
@@ -2828,8 +2856,10 @@ export const db = {
             ORDER BY e.title`
         )
         .all() as Array<any>;
-      return rows.map((r) => ({
+      return rows.map((r: any) => ({
         ...r,
+        exerciseType: r.exerciseType || 'code',
+        options: (() => { try { return JSON.parse(r.optionsJson || '[]'); } catch { return []; } })(),
         expectedConcepts: (() => { try { return JSON.parse(r.expectedConcepts || '[]'); } catch { return []; } })(),
         expectedOutput: r.expectedOutput || '',
         cohortId: null,
@@ -2852,7 +2882,10 @@ export const db = {
     }>> {
       return (sqlite
         .prepare(
-          `SELECT e.id, e.slug, e.title, e.description, e.language, e.starter_code AS starterCode,
+          `SELECT e.id, e.slug, e.title, e.description, e.language,
+                  e.exercise_type AS exerciseType,
+                  e.options_json AS optionsJson,
+                  e.starter_code AS starterCode,
                   e.expected_concepts AS expectedConcepts,
                   e.expected_output AS expectedOutput,
                   e.cohort_id AS cohortId, c.name AS cohortName

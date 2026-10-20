@@ -20,6 +20,7 @@ const BYPASS_USER: SessionUser = {
   displayName: 'Dev Bypass',
   role: 'instructor',
   isAdmin: true,
+  hasSeenTour: true,
 };
 
 export async function requireAuth(

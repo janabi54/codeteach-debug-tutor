@@ -72,6 +72,7 @@
         <button id="openSettingsBtn" class="user-menu-item">Classes</button>
         <button id="openPrivacyBtn" class="user-menu-item">Privacy notice</button>
         <button id="openShortcutsBtn" class="user-menu-item">Keyboard shortcuts</button>
+        <button id="openTourBtn" class="user-menu-item">Replay tour</button>
         <button id="logoutBtn" class="user-menu-item">Log out</button>
       </div>
     </div>
@@ -222,7 +223,17 @@
         </div>
       </div>
 
-      <textarea id="code" spellcheck="false" placeholder="Paste your code here...">const arr = [1, 2, 3];
+
+      <div id="mcPanel" class="mc-panel" hidden>
+        <h3 class="mc-question" id="mcQuestion"></h3>
+        <div class="mc-options" id="mcOptions"></div>
+        <div class="mc-actions">
+          <button class="primary small" id="mcSubmit" disabled>Submit answer</button>
+          <p id="mcFeedback" class="mc-feedback" hidden></p>
+        </div>
+      </div>
+
+            <textarea id="code" spellcheck="false" placeholder="Paste your code here...">const arr = [1, 2, 3];
 for (let i = 0; i < arr.length; i++) {
   console.log(arr[i]);
 }</textarea>
@@ -902,6 +913,7 @@ for (let i = 0; i < arr.length; i++) {
   <script src="/concepts-ui.js" defer></script>
 <script src="/settings.js" defer></script>
 <script src="/shortcuts.js" defer></script>
+<script src="/tour.js" defer></script>
 
 <!-- SETTINGS MODAL -->
 <div id="settingsModal" class="modal-backdrop" hidden>

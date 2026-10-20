@@ -509,3 +509,23 @@ INSERT OR IGNORE INTO achievements (slug, name, description, icon) VALUES
   ('streak-7',           'Week Warrior',        '7-day activity streak.',                        'fire2'),
   ('ten-exercises',      'Ten Down',            'Completed 10 exercises.',                       'trophy'),
   ('first-practice',     'Self-Starter',        'Completed a practice-mode exercise.',           'rocket');
+
+-- Onboarding tour flag (Phase 6.2)
+-- ALTER handled in db.ts
+
+
+-- ============================================================
+-- Phase 3.4a: multiple-choice answers
+-- exercise_type='multiple_choice' exercises store their options
+-- in options_json (array of { id, text, correct }).
+-- ============================================================
+CREATE TABLE IF NOT EXISTS answers (
+  id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+  student_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  exercise_id        TEXT NOT NULL,
+  selected_option_id TEXT NOT NULL,
+  correct            INTEGER NOT NULL,
+  created_at         TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_answers_student
+  ON answers(student_id, exercise_id, created_at DESC);
