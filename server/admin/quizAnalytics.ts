@@ -8,6 +8,7 @@ import { sqlite } from '../db.js';
 export interface QuestionStat {
   questionId: string;
   text: string;
+  type: string;
   correct: number;
   total: number;
   pctCorrect: number;
@@ -100,13 +101,38 @@ export function getQuizAnalytics(
       ORDER BY a.question_id
     `).all(r.slug) as Array<{ questionId: string; total: number; correct: number }>;
 
-    const questions: QuestionStat[] = qRows.map((q) => ({
-      questionId: q.questionId,
-      text: '',
-      correct: q.correct || 0,
-      total: q.total,
-      pctCorrect: q.total > 0 ? Math.round((q.correct / q.total) * 1000) / 10 : 0,
-    }));
+    // Look up the exercise's full question list (for text + type)
+    const exMeta = sqlite.prepare(
+      "SELECT options_json FROM exercises WHERE slug = ?"
+    ).get(r.slug) as { options_json: string | null } | undefined;
+    let questionsById: Record<string, { text: string; type: string }> = {};
+    if (exMeta && exMeta.options_json) {
+      try {
+        const parsed = JSON.parse(exMeta.options_json);
+        if (parsed && Array.isArray(parsed.questions)) {
+          for (const q of parsed.questions) {
+            if (q && typeof q.id === 'string') {
+              questionsById[q.id] = {
+                text: typeof q.text === 'string' ? q.text : '',
+                type: typeof q.type === 'string' ? q.type : 'multiple_choice',
+              };
+            }
+          }
+        }
+      } catch { /* ignore bad JSON */ }
+    }
+
+    const questions: QuestionStat[] = qRows.map((q) => {
+      const meta = questionsById[q.questionId] || { text: '', type: '' };
+      return {
+        questionId: q.questionId,
+        text: meta.text,
+        type: meta.type,
+        correct: q.correct || 0,
+        total: q.total,
+        pctCorrect: q.total > 0 ? Math.round((q.correct / q.total) * 1000) / 10 : 0,
+      };
+    });
 
     return {
       slug: r.slug,

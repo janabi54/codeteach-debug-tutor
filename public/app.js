@@ -5244,7 +5244,7 @@ let analyticsCohortsLoaded = false;
 // ─────────────────────────────────────────────────────────────
 // Phase 3.5d: quiz analytics sub-view
 // ─────────────────────────────────────────────────────────────
-let __qaState = { view: 'exercise', data: null };
+let __qaState = { view: 'exercise', data: null, expandedRow: null };
 let __qaChart = null;
 
 function destroyQaChart() {
@@ -5295,14 +5295,35 @@ function renderQaExercises(container, exercises) {
     return;
   }
   const chartHtml = '<div class="qa-chart-wrap"><canvas id="qaExerciseChart"></canvas></div>';
-  const rows = exercises.map((e) => `
-    <tr>
-      <td>${escapeHtml(e.title)} ${typeBadge(e.exerciseType)}</td>
-      <td class="num">${e.attempts}</td>
-      <td class="num">${e.uniqueStudents}</td>
-      <td class="num">${e.correctCount}/${e.totalCount}</td>
-      <td>${pctBadge(e.pctCorrect)}</td>
-    </tr>`).join('');
+  const rows = exercises.map((e, idx) => {
+    const hasBreakdown = e.exerciseType === 'quiz' && Array.isArray(e.questions) && e.questions.length > 0;
+    const isExpanded = __qaState.expandedRow === e.slug;
+    const rowCls = hasBreakdown ? 'qa-row-expandable' + (isExpanded ? ' qa-row-expanded' : '') : '';
+    const dataAttr = hasBreakdown ? ` data-exercise-slug="${escapeHtml(e.slug)}"` : '';
+    const mainRow = `
+      <tr class="${rowCls}"${dataAttr}>
+        <td>${hasBreakdown ? '<span class="qa-chevron">▶</span>' : ''}${escapeHtml(e.title)} ${typeBadge(e.exerciseType)}</td>
+        <td class="num">${e.attempts}</td>
+        <td class="num">${e.uniqueStudents}</td>
+        <td class="num">${e.correctCount}/${e.totalCount}</td>
+        <td>${pctBadge(e.pctCorrect)}</td>
+      </tr>`;
+    const detailRow = isExpanded && hasBreakdown ? `
+      <tr class="qa-detail-row"><td colspan="5">
+        <div class="qa-q-list">
+          ${e.questions.map((q, qi) => `
+            <div class="qa-q-item">
+              <span class="qa-q-num">Q${qi + 1}</span>
+              ${q.type === 'predict_output' ? '<span class="qa-type-badge">Predict</span>' : q.type === 'multiple_choice' ? '<span class="qa-type-badge">MC</span>' : ''}
+              <span class="qa-q-text">${escapeHtml(q.text || '(no text)')}</span>
+              <span class="qa-q-stats">${q.correct}/${q.total}</span>
+              ${pctBadge(q.pctCorrect)}
+            </div>
+          `).join('')}
+        </div>
+      </td></tr>` : '';
+    return mainRow + detailRow;
+  }).join('');
   container.innerHTML = chartHtml + `
     <table class="qa-table">
       <thead><tr>
@@ -5312,6 +5333,18 @@ function renderQaExercises(container, exercises) {
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
+
+  // Wire expand/collapse click handler
+  container.querySelectorAll('.qa-row-expandable').forEach((tr) => {
+    tr.addEventListener('click', (ev) => {
+      // Ignore clicks inside detail row
+      if (ev.target.closest('.qa-detail-row')) return;
+      const slug = tr.dataset.exerciseSlug;
+      if (!slug) return;
+      __qaState.expandedRow = (__qaState.expandedRow === slug) ? null : slug;
+      renderQaExercises(container, exercises);
+    });
+  });
   destroyQaChart();
   const ctx = document.getElementById('qaExerciseChart');
   if (!ctx) return;
