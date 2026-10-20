@@ -5565,3 +5565,263 @@ h1, h2, h3 {
 .mc-feedback { margin: 0; font-size: 13px; }
 .mc-feedback.correct { color: var(--success); }
 .mc-feedback.wrong { color: var(--danger); }
+/* MC editor */
+.mc-editor-options { display: flex; flex-direction: column; gap: 8px; }
+.mc-editor-option { display: flex; gap: 8px; align-items: center; }
+.mc-editor-option input[type="text"] { padding: 6px 8px; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--bg-card); color: var(--text-primary); }
+.mc-editor-option .mc-opt-remove { padding: 2px 8px; }
+
+
+
+/* Style the MC Panel to look like a quiz card */
+#mcPanel {
+  padding: 24px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  margin-bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+#mcQuestion {
+  font-size: 1.1rem;
+  margin-bottom: 8px;
+  color: var(--text-primary);
+}
+
+.mc-option {
+  transition: all 0.15s ease;
+}
+
+.mc-option:hover {
+  background: var(--bg-hover) !important;
+}
+
+#mcSubmit {
+  align-self: flex-start;
+  margin-top: 8px;
+}
+
+
+/* Force the panel to the top of the main content area if possible */
+
+/* Hide the code editor column completely, but leave the layout intact */
+
+/* Make options look clickable */
+.mc-option {
+  background: var(--bg-dark, #1e1e1e) !important;
+  border: 1px solid var(--border-strong) !important;
+  color: var(--text-primary) !important;
+  padding: 12px 16px !important;
+  border-radius: 6px !important;
+  margin-bottom: 8px !important;
+  width: 100% !important;
+  text-align: left !important;
+  cursor: pointer !important;
+  transition: background 0.2s !important;
+}
+.mc-option:hover {
+  background: var(--bg-hover, #2a2a2a) !important;
+}
+
+/* Force MC Panel to be visible and centered when active */
+
+/* Style the option buttons clearly */
+.mc-option {
+  background: #333 !important;
+  color: #fff !important;
+  border: 1px solid #555 !important;
+  padding: 12px !important;
+  border-radius: 6px !important;
+  cursor: pointer !important;
+  margin-bottom: 8px !important;
+  width: 100% !important;
+  text-align: left !important;
+  font-size: 15px !important;
+}
+.mc-option:hover {
+  background: #444 !important;
+  border-color: #888 !important;
+}
+.mc-option.selected {
+  border-color: var(--accent, #7b5cff) !important;
+  background: rgba(123, 92, 255, 0.2) !important;
+}
+
+
+
+
+
+
+
+
+
+/* Make the options clickable buttons */
+.mc-option {
+  display: block !important;
+  width: 100% !important;
+  padding: 14px 20px !important;
+  margin-bottom: 12px !important;
+  background: #2b2b36 !important;
+  border: 1px solid #444 !important;
+  border-radius: 8px !important;
+  color: #fff !important;
+  font-size: 16px !important;
+  text-align: left !important;
+  cursor: pointer !important;
+  transition: all 0.2s !important;
+}
+.mc-option:hover {
+  background: #3a3a48 !important;
+  border-color: #7b5cff !important;
+}
+.mc-option.selected {
+  background: rgba(123, 92, 255, 0.2) !important;
+  border-color: #7b5cff !important;
+}
+
+
+/* Make sure the background is dimmed if the modal isn't */
+
+/* Optional: Add a backdrop to the MC modal */
+/* Hide the code editor ONLY, not the whole column */
+
+/* Fix the MC panel so it sits nicely in the left column */
+
+/* Hint bar should be flush with the top of the Tutor column */
+
+
+
+/* 2. Ensure the left column (Toolbar + MC Panel) stays on the left */
+#tutorToolbar,
+#mcPanel,
+#editorPane,
+.code-editor-wrap,
+#beforeYouRun {
+  grid-column: 1 !important; /* Force into left column */
+}
+
+/* 3. Ensure the Hint/Tutor chat stays on the right */
+.tutor-column-right,
+.tutor-chat-pane,
+#hintLevelBar,
+.tutor-pane {
+  grid-column: 2 !important; /* Force into right column */
+}
+
+/* 4. Hide the code editor when MC is active, but keep MC Panel visible */
+
+
+
+/* Force the mcPanel into the left column */
+
+/* Force the Tutor panel into the right column */
+
+/* Ensure the toolbar (Exercise dropdown, etc.) stays visible on the left */
+#tutorToolbar {
+  grid-column: 1 !important;
+}
+
+/* ============================================================
+
+/* 2. Force the FIRST child (Run panel) into column 1 */
+.tutor-layout > :nth-child(1) {
+  grid-column: 1 !important;
+  height: 100% !important;
+  overflow-y: auto !important;
+}
+
+/* 3. Force the SECOND child (Editor) into column 2 */
+.tutor-layout > :nth-child(2) {
+  grid-column: 2 !important;
+  height: 100% !important;
+  overflow-y: auto !important;
+}
+
+/* 4. Force the THIRD child (Tutor/Hint) into column 3 */
+.tutor-layout > :nth-child(3) {
+  grid-column: 3 !important;
+  height: 100% !important;
+  overflow-y: auto !important;
+}
+
+/* 5. When in MC mode, hide code editor contents only */
+
+/* 6. Show the MC panel as a modal overlay so it can never be hidden by grid */
+
+/* 7. Dim the background behind the MC modal */
+
+/* 8. Style MC options */
+.mc-option {
+  display: block !important;
+  width: 100% !important;
+  padding: 12px 16px !important;
+  margin-bottom: 8px !important;
+  background: #2b2b36 !important;
+  border: 1px solid #444 !important;
+  border-radius: 6px !important;
+  color: #fff !important;
+  text-align: left !important;
+  cursor: pointer !important;
+  font-size: 15px !important;
+}
+.mc-option:hover {
+  background: #3a3a48 !important;
+  border-color: #666 !important;
+}
+
+/* When MC mode is active, fully hide the run panel */
+
+/* Widen the middle column to fill the space */
+/* ============================================================
+   Phase 3.4a: MC Panel as a centered modal (ignores grid entirely)
+   ============================================================ */
+body.mc-mode #mcPanel {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  position: fixed !important;
+  top: 120px !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  width: 90% !important;
+  max-width: 650px !important;
+  padding: 32px !important;
+  background: #1e1e24 !important;
+  border: 2px solid #7b5cff !important;
+  border-radius: 12px !important;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.9) !important;
+  z-index: 99999 !important;
+}
+
+body.mc-mode::before {
+  content: '' !important;
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  background: rgba(0,0,0,0.75) !important;
+  z-index: 99998 !important;
+  pointer-events: none !important;
+}
+
+.mc-option {
+  display: block !important;
+  width: 100% !important;
+  padding: 14px 20px !important;
+  margin-bottom: 10px !important;
+  background: #2b2b36 !important;
+  border: 1px solid #444 !important;
+  border-radius: 8px !important;
+  color: #fff !important;
+  text-align: left !important;
+  cursor: pointer !important;
+  font-size: 16px !important;
+}
+.mc-option:hover {
+  background: #3a3a48 !important;
+  border-color: #7b5cff !important;
+}

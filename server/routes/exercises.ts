@@ -102,12 +102,38 @@ router.post('/', requireInstructor, async (req, res) => {
     learningObjectives,
     expectedOutput,
     struggleMinutes,
+    exerciseType,
+    options,
   } = req.body ?? {};
 
   if (typeof title !== 'string' || title.trim().length < 2) {
     return res.status(400).json({ error: 'Title must be at least 2 characters.' });
   }
   const lang = VALID_LANGUAGES.includes(language) ? language : 'javascript';
+
+  // Phase 3.4a: exercise type + options (canonical: multiple_choice + object array)
+  const CANONICAL_TYPES = ['code', 'multiple_choice'] as const;
+  const exType = CANONICAL_TYPES.includes(exerciseType) ? exerciseType : 'code';
+  let optionsJson: string | null = null;
+  if (exType === 'multiple_choice') {
+    const clean = Array.isArray(options)
+      ? options
+          .filter((o: any) => o && typeof o.text === 'string' && o.text.trim().length > 0)
+          .map((o: any, i: number) => ({
+            id: typeof o.id === 'string' && o.id.length ? o.id : String.fromCharCode(97 + i),
+            text: o.text.trim(),
+            ...(o.correct === true ? { correct: true } : {}),
+          }))
+      : [];
+    if (clean.length < 2) {
+      return res.status(400).json({ error: 'Multiple-choice requires at least 2 options.' });
+    }
+    if (!clean.some((o) => o.correct === true)) {
+      return res.status(400).json({ error: 'Multiple-choice requires at least one correct option.' });
+    }
+    optionsJson = JSON.stringify(clean);
+  }
+
 
   const baseSlug = slugify(title.trim());
   const slug = await uniqueSlug(baseSlug, async (candidate) => {
@@ -131,6 +157,8 @@ router.post('/', requireInstructor, async (req, res) => {
         : 0,
     cohortId: cohort.id,
     createdBy: req.user?.id ?? null,
+    exerciseType: exType,
+    options: optionsJson,
   });
 
   db.audit.record({
@@ -168,6 +196,8 @@ router.put('/:slug', requireInstructor, async (req, res) => {
     learningObjectives,
     expectedOutput,
     struggleMinutes,
+    exerciseType,
+    options,
   } = req.body ?? {};
 
   const patch: Record<string, any> = {};
@@ -186,6 +216,30 @@ router.put('/:slug', requireInstructor, async (req, res) => {
   if (typeof expectedOutput === 'string') patch.expectedOutput = expectedOutput;
   if (typeof struggleMinutes === 'number' && struggleMinutes >= 0) {
     patch.struggleMinutes = Math.min(60, struggleMinutes);
+  }
+  // Phase 3.4a: exercise type + options (canonical: multiple_choice + object array)
+  if (exerciseType === 'code' || exerciseType === 'multiple_choice') {
+    patch.exerciseType = exerciseType;
+    if (exerciseType === 'multiple_choice') {
+      const clean = Array.isArray(options)
+        ? options
+            .filter((o: any) => o && typeof o.text === 'string' && o.text.trim().length > 0)
+            .map((o: any, i: number) => ({
+              id: typeof o.id === 'string' && o.id.length ? o.id : String.fromCharCode(97 + i),
+              text: o.text.trim(),
+              ...(o.correct === true ? { correct: true } : {}),
+            }))
+        : [];
+      if (clean.length < 2) {
+        return res.status(400).json({ error: 'Multiple-choice requires at least 2 options.' });
+      }
+      if (!clean.some((o) => o.correct === true)) {
+        return res.status(400).json({ error: 'Multiple-choice requires at least one correct option.' });
+      }
+      patch.options = JSON.stringify(clean);
+    } else {
+      patch.options = null;
+    }
   }
 
   await db.exercises.update(existing.id, patch);

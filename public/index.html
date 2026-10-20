@@ -189,6 +189,7 @@
         <div class="toolbar-expanded">
           <div class="toolbar-exercise">
             <label for="exerciseId">Exercise</label>
+            <input type="text" id="exerciseSearch" placeholder="Search exercises..." style="width:100%; margin-bottom:6px; padding:6px 8px; border-radius:4px; border:1px solid var(--border-strong); background:var(--bg-card); color:var(--text-primary); font-size:13px;" />
             <select id="exerciseId" class="exercise-select">
               <option value="ex-1">Loading...</option>
             </select>
@@ -467,6 +468,21 @@ for (let i = 0; i < arr.length; i++) {
               <input id="exStruggle" type="number" value="0" min="0" max="60" />
               <p class="field-hint">0 disables the timer. Otherwise, students must work this long before their first hint unlocks.</p>
             </div>
+          </div>
+
+          <div class="field">
+            <label for="exType">Exercise type</label>
+            <select id="exType">
+              <option value="code">Code (student runs in sandbox)</option>
+              <option value="multiple_choice">Multiple choice</option>
+            </select>
+            <p class="field-hint">Multiple choice skips the code editor — students pick an option instead.</p>
+          </div>
+
+          <div id="exOptionsWrap" class="field" hidden>
+            <label>Options (select the correct one)</label>
+            <div id="exOptionsList" class="mc-editor-options"></div>
+            <button type="button" id="exOptionsAdd" class="ghost small" style="margin-top:8px;">+ Add option</button>
           </div>
 
           <div class="field">

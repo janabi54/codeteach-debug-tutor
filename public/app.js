@@ -2919,6 +2919,63 @@ document.addEventListener('click', (e) => {
   else if (t.id === 'deleteExerciseBtn') deleteExercise(exercisesState.currentSlug);
 });
 
+// ─── MC editor helpers ───
+function renderEditorOptions(opts) {
+  const list = document.getElementById('exOptionsList');
+  if (!list) return;
+  list.innerHTML = '';
+  (opts || []).forEach((o) => addOptionRow(o));
+  if (list.children.length === 0) {
+    addOptionRow({ id: 'a', text: '', correct: true });
+    addOptionRow({ id: 'b', text: '', correct: false });
+  }
+}
+
+function addOptionRow(opt) {
+  const list = document.getElementById('exOptionsList');
+  if (!list) return;
+  const id = opt.id || String.fromCharCode(97 + list.children.length);
+  const row = document.createElement('div');
+  row.className = 'mc-editor-option';
+  row.innerHTML =
+    '<input type="radio" name="exCorrectOption" ' + (opt.correct ? 'checked' : '') + ' />' +
+    '<input type="text" class="mc-opt-id" value="' + (id) + '" style="width:40px;" />' +
+    '<input type="text" class="mc-opt-text" placeholder="Option text" value="' + (opt.text || '') + '" style="flex:1;" />' +
+    '<button type="button" class="ghost small mc-opt-remove">×</button>';
+  row.querySelector('.mc-opt-remove').addEventListener('click', () => row.remove());
+  list.appendChild(row);
+}
+
+function readEditorOptions() {
+  const list = document.getElementById('exOptionsList');
+  if (!list) return [];
+  return Array.from(list.children).map((row) => ({
+    id: row.querySelector('.mc-opt-id').value.trim() || 'x',
+    text: row.querySelector('.mc-opt-text').value.trim(),
+    correct: row.querySelector('input[type="radio"]').checked,
+  })).filter((o) => o.text.length > 0);
+}
+
+function updateEditorTypeVisibility() {
+  const type = document.getElementById('exType')?.value || 'code';
+  const wrap = document.getElementById('exOptionsWrap');
+  const starterField = document.getElementById('exStarterCode')?.closest('.field');
+  const expectedField = document.getElementById('exExpectedOutput')?.closest('.field');
+  const langField = document.getElementById('exLanguage')?.closest('.field');
+  if (wrap) wrap.hidden = type !== 'multiple_choice';
+  // In MC mode, hide starter code + expected output + language (not needed)
+  if (starterField) starterField.style.display = type === 'code' ? '' : 'none';
+  if (expectedField) expectedField.style.display = type === 'code' ? '' : 'none';
+  if (langField) langField.style.display = type === 'code' ? '' : 'none';
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const sel = document.getElementById('exType');
+  if (sel) sel.addEventListener('change', updateEditorTypeVisibility);
+  const add = document.getElementById('exOptionsAdd');
+  if (add) add.addEventListener('click', () => addOptionRow({}));
+});
+
 async function openExerciseEditor(slug) {
   exercisesState.currentSlug = slug;
 
@@ -2930,6 +2987,9 @@ async function openExerciseEditor(slug) {
   $('exStruggle').value = '0';
   $('exSlugHint').textContent = '';
   $('deleteExerciseBtn').hidden = true;
+  $('exType').value = 'code';
+  renderEditorOptions([]);
+  updateEditorTypeVisibility();
   $('editorTitle').textContent = slug ? 'Edit exercise' : 'New exercise';
   $('editorSubtitle').textContent = slug
     ? 'Changes save on the server when you click Save.'
@@ -2942,6 +3002,9 @@ async function openExerciseEditor(slug) {
   if (slug) {
     const ex = exercisesState.list.find((e) => e.slug === slug);
     if (ex) {
+      $('exType').value = ex.exerciseType || 'code';
+      renderEditorOptions(ex.options || []);
+      updateEditorTypeVisibility();
       $('exTitle').value = ex.title;
       $('exDescription').value = ex.description;
       $('exLanguage').value = ex.language;
@@ -3097,7 +3160,7 @@ function refreshPreview() {
 
 // Live preview wiring — attached once, on load.
 document.addEventListener('DOMContentLoaded', () => {
-  const ids = ['exTitle', 'exDescription', 'exStarterCode', 'exStruggle', 'exLanguage'];
+  const ids = ['exTitle', 'exDescription', 'exStarterCode', 'exStruggle', 'exLanguage', 'exType'];
   ids.forEach((id) => {
     const el = $(id);
     if (!el) return;
@@ -3110,6 +3173,15 @@ document.addEventListener('DOMContentLoaded', () => {
       refreshPreview();
     });
   });
+
+  // Patch 4c: refresh preview when type or MC options change
+  const __exTypeEl = document.getElementById('exType');
+  if (__exTypeEl) __exTypeEl.addEventListener('change', refreshPreview);
+  const __mcOptionsEl = document.getElementById('mcOptions');
+  if (__mcOptionsEl) {
+    __mcOptionsEl.addEventListener('input', refreshPreview);
+    __mcOptionsEl.addEventListener('change', refreshPreview);
+  }
 
   // Sync scroll between the code input and the Prism highlight overlay
   const input = $('exStarterCode');
@@ -3130,6 +3202,34 @@ async function saveExercise() {
     return;
   }
 
+  // --- Patch 4c: include exercise type + options (Phase 3.4a canonical) ---
+  const exTypeRaw = ($('exType') && $('exType').value) || 'code';
+  const exerciseType = exTypeRaw === 'multiple_choice' ? 'multiple_choice' : 'code';
+  let optionsPayload = null;
+  if (exerciseType === 'multiple_choice') {
+    const rows = document.querySelectorAll('#mcOptions .mc-editor-option');
+    const opts = [];
+    rows.forEach((row, i) => {
+      const inp = row.querySelector('input[type="text"]');
+      if (!inp) return;
+      const text = inp.value.trim();
+      if (!text) return;
+      const cb = row.querySelector('input[type="checkbox"], input[type="radio"]');
+      const opt = { id: String.fromCharCode(97 + i), text };
+      if (cb && cb.checked) opt.correct = true;
+      opts.push(opt);
+    });
+    if (opts.length < 2) {
+      alert('Multiple-choice needs at least 2 non-empty options.');
+      return;
+    }
+    if (!opts.some((o) => o.correct)) {
+      alert('Mark at least one option as correct.');
+      return;
+    }
+    optionsPayload = opts;
+  }
+
   const body = {
     title,
     description: $('exDescription').value,
@@ -3140,6 +3240,8 @@ async function saveExercise() {
     requiredConcepts: getTagValues(exercisesState.requiredConceptsTagify),
     learningObjectives: getTagValues(exercisesState.objectivesTagify),
     struggleMinutes: Math.max(0, Math.min(60, parseInt($('exStruggle').value, 10) || 0)),
+    exerciseType,
+    options: optionsPayload,
     ...(selectedCohortId && !exercisesState.currentSlug ? { cohortId: selectedCohortId } : {}),
   };
 
@@ -7850,3 +7952,139 @@ document.addEventListener('DOMContentLoaded', () => {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(load, 500));
   else setTimeout(load, 500);
 })();
+
+// ============================================================
+// Phase 3.4a: Multiple Choice + Search
+// ============================================================
+function applyExerciseTypeUI(ex) {
+  if (!ex) return;
+  const isMC = ex.exerciseType === 'multiple_choice';
+  const mcPanel = document.getElementById('mcPanel');
+
+  document.body.classList.toggle('mc-mode', isMC);
+  if (mcPanel) mcPanel.hidden = !isMC;
+
+  if (!isMC) return;
+
+  const q = document.getElementById('mcQuestion');
+  if (q) q.textContent = ex.description || ex.title || 'Select an option:';
+
+  const optsWrap = document.getElementById('mcOptions');
+  const feedback = document.getElementById('mcFeedback');
+  const submitBtn = document.getElementById('mcSubmit');
+  if (!optsWrap || !submitBtn) return;
+
+  optsWrap.innerHTML = '';
+  if (feedback) { feedback.hidden = true; feedback.textContent = ''; }
+  submitBtn.disabled = true;
+  delete submitBtn.dataset.optionId;
+
+  const opts = Array.isArray(ex.options) ? ex.options : [];
+  opts.forEach((opt) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'mc-option';
+    btn.textContent = opt.text || '';
+    btn.dataset.optionId = opt.id;
+    btn.onclick = () => {
+      optsWrap.querySelectorAll('.mc-option').forEach((b) => {
+        b.style.borderColor = '#444';
+        b.style.background = '#2b2b36';
+      });
+      btn.style.borderColor = '#7b5cff';
+      btn.style.background = 'rgba(123,92,255,0.2)';
+      submitBtn.disabled = false;
+      submitBtn.dataset.optionId = opt.id;
+    };
+    optsWrap.appendChild(btn);
+  });
+
+  
+  // Add close button to MC panel
+  let closeBtn = document.getElementById('mcClose');
+  if (!closeBtn) {
+    closeBtn = document.createElement('button');
+    closeBtn.id = 'mcClose';
+    closeBtn.innerHTML = '✕';
+    closeBtn.style.cssText = 'position:absolute; right:10px; top:10px; background:transparent; border:none; color:#fff; font-size:24px; cursor:pointer; padding:0 8px; line-height:1; z-index:100;';
+    closeBtn.onclick = () => {
+      const panel = document.getElementById('mcPanel');
+      if (panel) panel.hidden = true;
+      document.body.classList.remove('mc-mode');
+      document.getElementById('exerciseId').value = '';
+    };
+  }
+  
+  if (mcPanel && !mcPanel.contains(closeBtn)) {
+    mcPanel.style.position = 'relative';
+    mcPanel.appendChild(closeBtn);
+  }
+  
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const search = document.getElementById('exerciseSearch');
+  const sel = document.getElementById('exerciseId');
+  const mcSubmit = document.getElementById('mcSubmit');
+  if (!sel) return;
+
+  if (search) {
+    search.addEventListener('input', () => {
+      const q = search.value.trim().toLowerCase();
+      let firstVisible = null;
+      Array.from(sel.options).forEach(opt => {
+        const match = !q || opt.textContent.toLowerCase().includes(q);
+        opt.hidden = !match;
+        opt.style.display = match ? '' : 'none';
+        if (match && !firstVisible) firstVisible = opt;
+      });
+      if (firstVisible && firstVisible.value !== sel.value) {
+        sel.value = firstVisible.value;
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    });
+  }
+
+  sel.addEventListener('change', function() {
+    const slug = this.value;
+    if (!slug) return;
+    let ex = null;
+    if (typeof __exercisesBySlug !== 'undefined' && __exercisesBySlug && __exercisesBySlug.get) {
+      ex = __exercisesBySlug.get(slug);
+    }
+    if (ex) applyExerciseTypeUI(ex);
+  });
+
+  if (mcSubmit) {
+    mcSubmit.addEventListener('click', async () => {
+      const optionId = mcSubmit.dataset.optionId;
+      const exerciseSlug = sel.value;
+      if (!optionId || !exerciseSlug) return;
+
+      mcSubmit.disabled = true;
+      mcSubmit.textContent = 'Submitting...';
+
+      try {
+        const res = await fetch('/api/debug-tutor/answer', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ exerciseId: exerciseSlug, optionId })
+        });
+        const data = await res.json();
+
+        const feedback = document.getElementById('mcFeedback');
+        if (feedback) {
+          feedback.hidden = false;
+          feedback.textContent = data.feedback || (data.correct ? 'Correct!' : 'Try again.');
+          feedback.style.color = data.correct ? '#4ade80' : '#f87171';
+        }
+      } catch (err) {
+        alert('Failed to submit answer.');
+      } finally {
+        mcSubmit.textContent = 'Submit answer';
+        mcSubmit.disabled = false;
+      }
+    });
+  }
+});

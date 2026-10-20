@@ -706,8 +706,8 @@ const stmt = {
     `INSERT INTO exercises
       (id, slug, title, description, language, starter_code,
        expected_concepts, required_concepts, learning_objectives, expected_output,
-       struggle_minutes, cohort_id, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       struggle_minutes, cohort_id, created_by, exercise_type, options_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ),
   findExerciseById: sqlite.prepare(
     'SELECT * FROM exercises WHERE id = ?'
@@ -722,7 +722,8 @@ const stmt = {
     `UPDATE exercises SET
        title = ?, description = ?, language = ?, starter_code = ?,
        expected_concepts = ?, required_concepts = ?, learning_objectives = ?, expected_output = ?,
-       struggle_minutes = ?, updated_at = datetime('now')
+       struggle_minutes = ?, exercise_type = ?, options_json = ?,
+       updated_at = datetime('now')
      WHERE id = ?`
   ),
   deleteExercise: sqlite.prepare(
@@ -2771,6 +2772,8 @@ export const db = {
       struggleMinutes: number;
       cohortId: string | null;
       createdBy: string | null;
+      exerciseType?: string;
+      options?: string | null;
     }): Promise<Exercise> {
       const id = crypto.randomUUID();
       stmt.insertExercise.run(
@@ -2786,7 +2789,9 @@ export const db = {
         data.expectedOutput ?? '',
         data.struggleMinutes,
         data.cohortId,
-        data.createdBy
+        data.createdBy,
+        data.exerciseType ?? 'code',
+        data.options ?? null
       );
       const row = stmt.findExerciseById.get(id) as any;
       return rowToExercise(row);
@@ -2801,6 +2806,8 @@ export const db = {
       learningObjectives: string[];
       expectedOutput: string;
       struggleMinutes: number;
+      exerciseType: string;
+      options: string | null;
     }>): Promise<void> {
       const current = await db.exercises.findById(id);
       if (!current) return;
@@ -2815,6 +2822,8 @@ export const db = {
         JSON.stringify(merged.learningObjectives),
         merged.expectedOutput ?? '',
         merged.struggleMinutes,
+        (merged as any).exerciseType ?? 'code',
+        (merged as any).options ?? null,
         id
       );
     },
@@ -2874,6 +2883,8 @@ export const db = {
       title: string;
       description: string;
       language: string;
+      exerciseType: string;
+      options: Array<{ id: string; text: string; correct?: boolean }>;
       starterCode: string;
       expectedConcepts: string[];
       expectedOutput: string;
@@ -2901,6 +2912,8 @@ export const db = {
           title: row.title,
           description: row.description || '',
           language: row.language,
+          exerciseType: row.exerciseType || 'code',
+          options: (() => { try { return JSON.parse(row.optionsJson || '[]'); } catch { return []; } })(),
           starterCode: row.starterCode || '',
           expectedConcepts: (() => {
             if (!row.expectedConcepts) return [];

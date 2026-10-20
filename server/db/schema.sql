@@ -136,6 +136,8 @@ CREATE TABLE IF NOT EXISTS exercises (
   learning_objectives TEXT NOT NULL DEFAULT '[]',
   expected_output TEXT NOT NULL DEFAULT '',
   struggle_minutes INTEGER NOT NULL DEFAULT 0,
+  exercise_type TEXT NOT NULL DEFAULT 'code',
+  options_json TEXT NOT NULL DEFAULT '[]',
   cohort_id TEXT,
   created_by TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
