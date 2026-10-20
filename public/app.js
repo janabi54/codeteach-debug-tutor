@@ -8237,12 +8237,215 @@ function unwrapOptions(ex) {
   return [];
 }
 
+// ─── Phase 3.5c: student paginated quiz modal ───
+let __quizState = { questions: [], answers: {}, index: 0, exerciseId: '', submitting: false };
+
+function openQuizModal(ex) {
+  const qs = (ex.options && Array.isArray(ex.options.questions)) ? ex.options.questions : [];
+  if (qs.length < 2) return false;
+  __quizState = { questions: qs, answers: {}, index: 0, exerciseId: ex.slug, submitting: false };
+  const modal = document.getElementById('quizModal');
+  if (modal) modal.hidden = false;
+  document.body.classList.add('mc-mode');
+  renderQuizQuestion();
+  return true;
+}
+
+function closeQuizModal() {
+  const modal = document.getElementById('quizModal');
+  if (modal) modal.hidden = true;
+  document.body.classList.remove('mc-mode');
+  const banner = document.getElementById('quizResultBanner');
+  if (banner) { banner.hidden = true; banner.textContent = ''; }
+  __quizState = { questions: [], answers: {}, index: 0, exerciseId: '', submitting: false };
+}
+
+function renderQuizQuestion() {
+  const { questions, answers, index } = __quizState;
+  if (!questions.length) return;
+  const q = questions[index];
+  const progress = document.getElementById('quizProgress');
+  if (progress) progress.textContent = 'Question ' + (index + 1) + ' of ' + questions.length;
+
+  const body = document.getElementById('quizBody');
+  if (!body) return;
+  body.innerHTML = '';
+
+  // Question text
+  const textEl = document.createElement('div');
+  textEl.className = 'quiz-question-text';
+  textEl.textContent = q.text || 'Question ' + (index + 1);
+  body.appendChild(textEl);
+
+  if (q.type === 'multiple_choice') {
+    const optsWrap = document.createElement('div');
+    optsWrap.className = 'quiz-student-options';
+    (q.options || []).forEach((opt) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'mc-option';
+      btn.textContent = opt.text || '';
+      btn.dataset.optionId = opt.id;
+      if (answers[q.id] && answers[q.id].selectedOptionId === opt.id) {
+        btn.classList.add('selected');
+      }
+      btn.onclick = () => {
+        optsWrap.querySelectorAll('.mc-option').forEach(b => {
+          b.classList.remove('selected');
+        });
+        btn.classList.add('selected');
+        __quizState.answers[q.id] = { questionId: q.id, selectedOptionId: opt.id };
+        updateQuizNav();
+      };
+      optsWrap.appendChild(btn);
+    });
+    body.appendChild(optsWrap);
+  } else if (q.type === 'predict_output') {
+    const inputWrap = document.createElement('div');
+    inputWrap.className = 'quiz-predict-wrap';
+    const label = document.createElement('label');
+    label.textContent = 'Your prediction:';
+    label.style.cssText = 'display:block; margin-bottom:8px; color:#aaa; font-size:14px;';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.id = 'quizPredictInput';
+    input.placeholder = 'Type what the code prints…';
+    input.value = (answers[q.id] && answers[q.id].answer) || '';
+    input.style.cssText = 'width:100%; padding:12px 16px; background:#2b2b36; border:1px solid #444; border-radius:6px; color:#fff; font-size:15px; outline:none;';
+    input.addEventListener('input', () => {
+      __quizState.answers[q.id] = { questionId: q.id, answer: input.value };
+      updateQuizNav();
+    });
+    inputWrap.appendChild(label);
+    inputWrap.appendChild(input);
+    body.appendChild(inputWrap);
+  }
+
+  updateQuizNav();
+}
+
+function updateQuizNav() {
+  const { questions, answers, index } = __quizState;
+  const prevBtn = document.getElementById('quizPrevBtn');
+  const nextBtn = document.getElementById('quizNextBtn');
+  const submitBtn = document.getElementById('quizSubmitBtn');
+
+  if (prevBtn) prevBtn.disabled = index === 0;
+  const isLast = index === questions.length - 1;
+  if (nextBtn) nextBtn.hidden = isLast;
+  if (submitBtn) submitBtn.hidden = !isLast;
+
+  // Disable next/submit if current question unanswered
+  const q = questions[index];
+  const answered = answers[q.id] && (answers[q.id].selectedOptionId || (answers[q.id].answer && answers[q.id].answer.trim().length > 0));
+  if (nextBtn && !isLast) nextBtn.disabled = !answered;
+  if (submitBtn && isLast) submitBtn.disabled = !answered;
+}
+
+function quizPrev() {
+  if (__quizState.index <= 0) return;
+  __quizState.index--;
+  renderQuizQuestion();
+}
+
+function quizNext() {
+  if (__quizState.index >= __quizState.questions.length - 1) return;
+  __quizState.index++;
+  renderQuizQuestion();
+}
+
+async function quizSubmit() {
+  if (__quizState.submitting) return;
+  const { questions, answers, exerciseId } = __quizState;
+  const answerList = questions.map(q => answers[q.id]).filter(Boolean);
+  if (answerList.length < questions.length) {
+    alert('Answer all questions before submitting.');
+    return;
+  }
+  __quizState.submitting = true;
+  const submitBtn = document.getElementById('quizSubmitBtn');
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Submitting…'; }
+
+  try {
+    const res = await fetch('/api/debug-tutor/quiz', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ exerciseId, answers: answerList }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || 'Submission failed.');
+      return;
+    }
+    const banner = document.getElementById('quizResultBanner');
+    if (banner) {
+      banner.hidden = false;
+      const perfect = data.score === data.total;
+      if (perfect) {
+        banner.innerHTML = '<strong>' + data.score + ' / ' + data.total + '</strong> correct. Perfect score! ' +
+          '<button type="button" id="quizCloseResultBtn" class="ghost small" style="margin-left:12px;">Close</button>';
+        const closeBtn = document.getElementById('quizCloseResultBtn');
+        if (closeBtn) closeBtn.onclick = () => closeQuizModal();
+      } else {
+        banner.innerHTML = '<strong>' + data.score + ' / ' + data.total + '</strong> correct. ' +
+          'Review the explanations and try again when ready. ' +
+          '<button type="button" id="quizRetryBtn" class="ghost small" style="margin-left:12px;">Retry</button>';
+        const retry = document.getElementById('quizRetryBtn');
+        if (retry) retry.onclick = () => {
+          __quizState.index = 0;
+          __quizState.answers = {};
+          __quizState.submitting = false;
+          if (banner) { banner.hidden = true; banner.innerHTML = ''; }
+          renderQuizQuestion();
+        };
+      }
+    }
+    // Re-render to reapply selection highlight (still visible after submit)
+    renderQuizQuestion();
+    if (submitBtn) { submitBtn.textContent = 'Submit Quiz'; }
+  } catch (err) {
+    alert('Failed to submit quiz: ' + err.message);
+  } finally {
+    __quizState.submitting = false;
+    if (submitBtn) submitBtn.disabled = false;
+  }
+}
+
+// Wire buttons once on load
+document.addEventListener('DOMContentLoaded', () => {
+  const prevBtn = document.getElementById('quizPrevBtn');
+  const nextBtn = document.getElementById('quizNextBtn');
+  const submitBtn = document.getElementById('quizSubmitBtn');
+  const closeBtn = document.getElementById('quizClose');
+  if (prevBtn) prevBtn.addEventListener('click', quizPrev);
+  if (nextBtn) nextBtn.addEventListener('click', quizNext);
+  if (submitBtn) submitBtn.addEventListener('click', quizSubmit);
+  if (closeBtn) closeBtn.addEventListener('click', closeQuizModal);
+});
+
 function applyExerciseTypeUI(ex) {
   if (!ex) return;
+
+  // Phase 3.5c: multi-question quiz → paginated modal, bail from single-question flow
+  const qsCount = (ex.options && Array.isArray(ex.options.questions)) ? ex.options.questions.length : 0;
+  if (qsCount > 1) {
+    const mcPanel0 = document.getElementById('mcPanel');
+    const predictPanel0 = document.getElementById('predictPanel');
+    if (mcPanel0) mcPanel0.hidden = true;
+    if (predictPanel0) predictPanel0.hidden = true;
+    openQuizModal(ex);
+    return;
+  }
+
   const isMC = ex.exerciseType === 'multiple_choice';
   const isPredict = ex.exerciseType === 'predict_output';
   const mcPanel = document.getElementById('mcPanel');
   const predictPanel = document.getElementById('predictPanel');
+
+  // If we get here for a single-question exercise, ensure quiz modal is closed
+  const quizModal0 = document.getElementById('quizModal');
+  if (quizModal0 && !quizModal0.hidden) closeQuizModal();
 
   document.body.classList.toggle('mc-mode', isMC || isPredict);
   if (mcPanel) mcPanel.hidden = !isMC;

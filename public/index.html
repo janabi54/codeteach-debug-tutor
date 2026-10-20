@@ -246,6 +246,20 @@
         </div>
       </div>
 
+      <div id="quizModal" class="quiz-modal" hidden>
+        <div class="quiz-modal-header">
+          <span id="quizProgress" class="quiz-progress">Question 1 of 1</span>
+          <button type="button" id="quizClose" class="quiz-close-btn" title="Close">✕</button>
+        </div>
+        <div id="quizBody" class="quiz-body"></div>
+        <div class="quiz-modal-footer">
+          <button type="button" id="quizPrevBtn" class="ghost small" disabled>← Back</button>
+          <button type="button" id="quizNextBtn" class="primary small">Next →</button>
+          <button type="button" id="quizSubmitBtn" class="primary small" hidden>Submit Quiz</button>
+        </div>
+        <div id="quizResultBanner" class="quiz-result-banner" hidden></div>
+      </div>
+
             <textarea id="code" spellcheck="false" placeholder="Paste your code here...">const arr = [1, 2, 3];
 for (let i = 0; i < arr.length; i++) {
   console.log(arr[i]);
