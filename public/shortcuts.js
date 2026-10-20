@@ -14,7 +14,7 @@
   const G_PREFIX_TIMEOUT = 1500;   // ms before the "g" prefix expires
   const TAB_MAP = {
     t: 'tutor',
-    a: 'analytics',
+    a: 'class',
     s: 'students',
     e: 'exercises',
     h: 'health',

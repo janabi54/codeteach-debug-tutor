@@ -202,6 +202,7 @@ router.post('/login', async (req, res) => {
       displayName: user.displayName,
       role: user.role,
       isAdmin: user.isAdmin === true,
+      hasSeenTour: user.hasSeenTour === true,
     },
   });
 });
@@ -343,6 +344,11 @@ router.delete('/me/account', requireAuth, async (req, res) => {
   clearSessionCookie(res);
 
   res.json({ ok: true, removed: counts });
+});
+
+router.post('/seen-tour', requireAuth, async (req, res) => {
+  await db.users.setHasSeenTour(req.user!.id, true);
+  res.json({ ok: true });
 });
 
 router.get('/me', async (req, res) => {

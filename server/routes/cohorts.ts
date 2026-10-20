@@ -179,8 +179,12 @@ router.get('/mine', requireAuth, async (req, res) => {
 // instead of typing an arbitrary exercise ID.
 // ─────────────────────────────────────────────────────────────
 router.get('/my-exercises', requireAuth, async (req, res) => {
-  const rows = await db.exercises.listForUserCohorts(req.user!.id);
-  res.json(rows);
+  const [cohortRows, practiceRows] = await Promise.all([
+    db.exercises.listForUserCohorts(req.user!.id),
+    db.exercises.listPracticeExercises(),
+  ]);
+  // Practice first, then class exercises.
+  res.json([...practiceRows, ...cohortRows]);
 });
 
 export default router;
