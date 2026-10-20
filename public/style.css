@@ -5872,3 +5872,19 @@ body.mc-mode #mcPanel[hidden] {
 body.mc-mode #predictPanel[hidden] {
   display: none !important;
 }
+
+/* ─── Phase 3.5b: Quiz accordion editor ─── */
+.quiz-accordion { display: flex; flex-direction: column; gap: 10px; }
+.quiz-q { border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg-card); overflow: hidden; }
+.quiz-q-header { display: flex; align-items: center; gap: 8px; padding: 10px 12px; cursor: pointer; }
+.quiz-q-header:hover { background: var(--bg-hover, rgba(255,255,255,0.03)); }
+.quiz-q-caret { font-size: 10px; color: var(--text-secondary); width: 12px; text-align: center; }
+.quiz-q-title { flex: 1; font-size: 14px; color: var(--text-primary); }
+.quiz-q-header button { padding: 2px 8px; font-size: 14px; line-height: 1; }
+.quiz-q-header button:disabled { opacity: 0.3; cursor: not-allowed; }
+.quiz-q-del { color: #f87171; }
+.quiz-q-body { padding: 12px; border-top: 1px solid var(--border-strong); }
+.quiz-q-body .field { margin-bottom: 12px; }
+.quiz-q-body .field:last-child { margin-bottom: 0; }
+.quiz-q-body input[type="text"],
+.quiz-q-body select { width: 100%; padding: 8px 10px; background: var(--bg-darker, #1a1a1f); border: 1px solid var(--border-strong); border-radius: 4px; color: var(--text-primary); font-size: 13px; }

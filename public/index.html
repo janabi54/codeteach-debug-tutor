@@ -488,6 +488,7 @@ for (let i = 0; i < arr.length; i++) {
               <option value="code">Code (student runs in sandbox)</option>
               <option value="multiple_choice">Multiple choice</option>
               <option value="predict_output">Predict output</option>
+              <option value="quiz">Quiz (multiple questions)</option>
             </select>
             <p class="field-hint">Multiple choice skips the code editor — students pick an option instead.</p>
           </div>
@@ -502,6 +503,13 @@ for (let i = 0; i < arr.length; i++) {
             <label for="exPredictAnswer">Expected answer (hidden from students)</label>
             <input id="exPredictAnswer" type="text" spellcheck="false" placeholder="e.g. 0, 1, 2" />
             <p class="field-hint">Case-insensitive. Whitespace is trimmed.</p>
+          </div>
+
+          <div id="exQuizWrap" class="field" hidden>
+            <label>Questions</label>
+            <p class="field-hint" id="exQuizCount">0 questions</p>
+            <div id="exQuizList" class="quiz-accordion"></div>
+            <button type="button" id="exQuizAdd" class="ghost small" style="margin-top:8px;">+ Add question</button>
           </div>
 
           <div class="field">

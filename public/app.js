@@ -2921,6 +2921,8 @@ document.addEventListener('click', (e) => {
 
 // ─── MC editor helpers ───
 function renderEditorOptions(opts) {
+  // Phase 3.5b: guard against non-array (quiz type passes {questions:[...]})
+  if (!Array.isArray(opts)) opts = [];
   const list = document.getElementById('exOptionsList');
   if (!list) return;
   list.innerHTML = '';
@@ -2960,11 +2962,13 @@ function updateEditorTypeVisibility() {
   const type = document.getElementById('exType')?.value || 'code';
   const wrap = document.getElementById('exOptionsWrap');
   const pWrap = document.getElementById('exPredictWrap');
+  const qWrap = document.getElementById('exQuizWrap');
   const starterField = document.getElementById('exStarterCode')?.closest('.field');
   const expectedField = document.getElementById('exExpectedOutput')?.closest('.field');
   const langField = document.getElementById('exLanguage')?.closest('.field');
   if (wrap) wrap.hidden = type !== 'multiple_choice';
   if (pWrap) pWrap.hidden = type !== 'predict_output';
+  if (qWrap) qWrap.hidden = type !== 'quiz';
   // In MC mode, hide starter code + expected output + language (not needed)
   if (starterField) starterField.style.display = type === 'code' ? '' : 'none';
   if (expectedField) expectedField.style.display = type === 'code' ? '' : 'none';
@@ -3005,6 +3009,22 @@ async function openExerciseEditor(slug) {
     const ex = exercisesState.list.find((e) => e.slug === slug);
     if (ex) {
       $('exType').value = ex.exerciseType || 'code';
+      // Phase 3.5b: hydrate quiz accordion if this is a quiz
+      if (ex.exerciseType === 'quiz') {
+        const qs = (ex.options && Array.isArray(ex.options.questions)) ? ex.options.questions : [];
+        renderQuizEditor(qs);
+        // Force correct visibility — the change handler may have run before this
+        const qWrap = document.getElementById('exQuizWrap');
+        if (qWrap) qWrap.hidden = false;
+        const oWrap = document.getElementById('exOptionsWrap');
+        if (oWrap) oWrap.hidden = true;
+        const pWrap = document.getElementById('exPredictWrap');
+        if (pWrap) pWrap.hidden = true;
+      } else {
+        __quizQuestions = [];
+        __expandedQuestionId = null;
+        paintQuizEditor();
+      }
       renderEditorOptions(ex.options || []);
       updateEditorTypeVisibility();
       $('exTitle').value = ex.title;
@@ -3196,6 +3216,211 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
+// ─── Phase 3.5b: Quiz accordion editor ───
+// Local state: array of question objects (same shape as backend expects)
+let __quizQuestions = [];
+let __expandedQuestionId = null;
+
+function renderQuizEditor(questions) {
+  __quizQuestions = Array.isArray(questions) ? JSON.parse(JSON.stringify(questions)) : [];
+  __expandedQuestionId = __quizQuestions.length > 0 ? __quizQuestions[0].id : null;
+  paintQuizEditor();
+}
+
+function paintQuizEditor() {
+  const list = document.getElementById('exQuizList');
+  const countEl = document.getElementById('exQuizCount');
+  if (!list) return;
+  list.innerHTML = '';
+  if (countEl) countEl.textContent = __quizQuestions.length + ' question' + (__quizQuestions.length === 1 ? '' : 's');
+
+  __quizQuestions.forEach((q, idx) => {
+    const isExpanded = q.id === __expandedQuestionId;
+    const card = document.createElement('div');
+    card.className = 'quiz-q';
+    card.dataset.qid = q.id;
+
+    // Header
+    const header = document.createElement('div');
+    header.className = 'quiz-q-header';
+    const typeBadge = q.type === 'predict_output' ? 'Predict' : 'MC';
+    const previewText = (q.text || '').slice(0, 40) || '(no text)';
+    header.innerHTML = `
+      <span class="quiz-q-caret">${isExpanded ? '\u25BC' : '\u25B6'}</span>
+      <span class="quiz-q-title">Q${idx + 1} · ${typeBadge} · ${escapeHtml(previewText)}</span>
+      <button type="button" class="ghost small quiz-q-up" title="Move up" ${idx === 0 ? 'disabled' : ''}>&uarr;</button>
+      <button type="button" class="ghost small quiz-q-down" title="Move down" ${idx === __quizQuestions.length - 1 ? 'disabled' : ''}>&darr;</button>
+      <button type="button" class="ghost small quiz-q-del" title="Delete">&times;</button>
+    `;
+    header.addEventListener('click', (e) => {
+      if (e.target.closest('.quiz-q-up')) { moveQuizQuestion(q.id, -1); return; }
+      if (e.target.closest('.quiz-q-down')) { moveQuizQuestion(q.id, 1); return; }
+      if (e.target.closest('.quiz-q-del')) { removeQuizQuestion(q.id); return; }
+      __expandedQuestionId = isExpanded ? null : q.id;
+      paintQuizEditor();
+    });
+    card.appendChild(header);
+
+    // Body (only when expanded)
+    if (isExpanded) {
+      const body = document.createElement('div');
+      body.className = 'quiz-q-body';
+
+      // Type selector
+      const typeRow = document.createElement('div');
+      typeRow.className = 'field';
+      typeRow.innerHTML = `
+        <label>Question type</label>
+        <select class="quiz-q-type">
+          <option value="multiple_choice" ${q.type === 'multiple_choice' ? 'selected' : ''}>Multiple choice</option>
+          <option value="predict_output" ${q.type === 'predict_output' ? 'selected' : ''}>Predict output</option>
+        </select>
+      `;
+      typeRow.querySelector('select').addEventListener('change', (e) => {
+        const newType = e.target.value;
+        const target = __quizQuestions.find(x => x.id === q.id);
+        if (!target) return;
+        target.type = newType;
+        if (newType === 'multiple_choice') {
+          if (!Array.isArray(target.options) || target.options.length === 0) {
+            target.options = [
+              { id: 'a', text: '' },
+              { id: 'b', text: '', correct: true },
+            ];
+          }
+          delete target.answer;
+        } else {
+          if (typeof target.answer !== 'string') target.answer = '';
+          delete target.options;
+        }
+        paintQuizEditor();
+      });
+      body.appendChild(typeRow);
+
+      // Question text
+      const textRow = document.createElement('div');
+      textRow.className = 'field';
+      textRow.innerHTML = `
+        <label>Question text</label>
+        <input type="text" class="quiz-q-text" value="${escapeHtml(q.text || '')}" placeholder="What does range(3) print?" />
+      `;
+      textRow.querySelector('input').addEventListener('input', (e) => {
+        const target = __quizQuestions.find(x => x.id === q.id);
+        if (target) target.text = e.target.value;
+      });
+      body.appendChild(textRow);
+
+      // Type-specific fields
+      if (q.type === 'multiple_choice') {
+        const optsWrap = document.createElement('div');
+        optsWrap.className = 'field';
+        optsWrap.innerHTML = `<label>Options (select the correct one)</label>`;
+        const optsList = document.createElement('div');
+        optsList.className = 'mc-editor-options';
+        (q.options || []).forEach((opt) => {
+          const row = document.createElement('div');
+          row.className = 'mc-editor-option';
+          row.innerHTML = `
+            <input type="radio" name="correct_${q.id}" ${opt.correct ? 'checked' : ''} title="Correct option" />
+            <span style="font-size:12px;color:#888;min-width:16px;text-align:center;">${escapeHtml(opt.id)}</span>
+            <input type="text" value="${escapeHtml(opt.text || '')}" placeholder="Option text" />
+            <button type="button" class="ghost small quiz-opt-del" title="Remove option">&times;</button>
+          `;
+          row.querySelector('input[type="radio"]').addEventListener('change', () => {
+            const target = __quizQuestions.find(x => x.id === q.id);
+            if (!target) return;
+            target.options.forEach(o => { o.correct = (o.id === opt.id); });
+          });
+          row.querySelector('input[type="text"]').addEventListener('input', (e) => {
+            const target = __quizQuestions.find(x => x.id === q.id);
+            const o = target && target.options && target.options.find(x => x.id === opt.id);
+            if (o) o.text = e.target.value;
+          });
+          row.querySelector('.quiz-opt-del').addEventListener('click', () => {
+            const target = __quizQuestions.find(x => x.id === q.id);
+            if (!target || target.options.length <= 2) {
+              alert('Keep at least 2 options.');
+              return;
+            }
+            target.options = target.options.filter(o => o.id !== opt.id);
+            paintQuizEditor();
+          });
+          optsList.appendChild(row);
+        });
+        optsWrap.appendChild(optsList);
+        const addOpt = document.createElement('button');
+        addOpt.type = 'button';
+        addOpt.className = 'ghost small';
+        addOpt.style.marginTop = '8px';
+        addOpt.textContent = '+ Add option';
+        addOpt.addEventListener('click', () => {
+          const target = __quizQuestions.find(x => x.id === q.id);
+          if (!target) return;
+          const nextLetter = String.fromCharCode(97 + target.options.length);
+          target.options.push({ id: nextLetter, text: '' });
+          paintQuizEditor();
+        });
+        optsWrap.appendChild(addOpt);
+        body.appendChild(optsWrap);
+      } else if (q.type === 'predict_output') {
+        const ansRow = document.createElement('div');
+        ansRow.className = 'field';
+        ansRow.innerHTML = `
+          <label>Expected answer (hidden from students)</label>
+          <input type="text" class="quiz-q-answer" value="${escapeHtml(q.answer || '')}" placeholder="e.g. 0, 1, 2" />
+        `;
+        ansRow.querySelector('input').addEventListener('input', (e) => {
+          const target = __quizQuestions.find(x => x.id === q.id);
+          if (target) target.answer = e.target.value;
+        });
+        body.appendChild(ansRow);
+      }
+
+      card.appendChild(body);
+    }
+
+    list.appendChild(card);
+  });
+}
+
+function addQuizQuestion() {
+  const nextIdx = __quizQuestions.length + 1;
+  const newQ = {
+    id: 'q' + nextIdx + '_' + Math.random().toString(36).slice(2, 6),
+    type: 'multiple_choice',
+    text: '',
+    options: [
+      { id: 'a', text: '' },
+      { id: 'b', text: '', correct: true },
+    ],
+  };
+  __quizQuestions.push(newQ);
+  __expandedQuestionId = newQ.id;
+  paintQuizEditor();
+}
+
+function removeQuizQuestion(id) {
+  if (!confirm('Delete this question?')) return;
+  __quizQuestions = __quizQuestions.filter(q => q.id !== id);
+  if (__expandedQuestionId === id) __expandedQuestionId = null;
+  paintQuizEditor();
+}
+
+function moveQuizQuestion(id, dir) {
+  const idx = __quizQuestions.findIndex(q => q.id === id);
+  if (idx < 0) return;
+  const target = idx + dir;
+  if (target < 0 || target >= __quizQuestions.length) return;
+  const [item] = __quizQuestions.splice(idx, 1);
+  __quizQuestions.splice(target, 0, item);
+  paintQuizEditor();
+}
+
+function readQuizQuestionsFromEditor() {
+  // Return deep-cloned current state for save
+  return JSON.parse(JSON.stringify(__quizQuestions));
+}
+
 async function saveExercise() {
   const btn = $('saveExerciseBtn');
   const title = $('exTitle').value.trim();
@@ -3206,10 +3431,40 @@ async function saveExercise() {
 
   // --- Patch 4c: include exercise type + options (Phase 3.4a canonical) ---
   const exTypeRaw = ($('exType') && $('exType').value) || 'code';
-  const exerciseType = (exTypeRaw === 'multiple_choice' || exTypeRaw === 'predict_output') ? exTypeRaw : 'code';
+  const exerciseType = (exTypeRaw === 'multiple_choice' || exTypeRaw === 'predict_output' || exTypeRaw === 'quiz') ? exTypeRaw : 'code';
   let optionsPayload = null;
   let answerPayload = null;
-  if (exerciseType === 'predict_output') {
+  let questionsPayload = null;
+  if (exerciseType === 'quiz') {
+    const qs = readQuizQuestionsFromEditor();
+    if (!qs || qs.length === 0) {
+      alert('A quiz needs at least one question.');
+      return;
+    }
+    for (let i = 0; i < qs.length; i++) {
+      const q = qs[i];
+      if (!q.text || !q.text.trim()) {
+        alert('Question ' + (i + 1) + ' is missing text.');
+        return;
+      }
+      if (q.type === 'multiple_choice') {
+        if (!Array.isArray(q.options) || q.options.length < 2) {
+          alert('Question ' + (i + 1) + ' needs at least 2 options.');
+          return;
+        }
+        if (!q.options.some(o => o.correct)) {
+          alert('Question ' + (i + 1) + ' needs a correct option.');
+          return;
+        }
+      } else if (q.type === 'predict_output') {
+        if (typeof q.answer !== 'string' || !q.answer.trim()) {
+          alert('Question ' + (i + 1) + ' needs an expected answer.');
+          return;
+        }
+      }
+    }
+    questionsPayload = qs;
+  } else if (exerciseType === 'predict_output') {
     const ansEl = document.getElementById('exPredictAnswer');
     const ans = ansEl ? ansEl.value.trim() : '';
     if (!ans) {
@@ -3254,6 +3509,7 @@ async function saveExercise() {
     exerciseType,
     options: optionsPayload,
     answer: answerPayload,
+    questions: questionsPayload,
     ...(selectedCohortId && !exercisesState.currentSlug ? { cohortId: selectedCohortId } : {}),
   };
 
@@ -8077,6 +8333,9 @@ function applyExerciseTypeUI(ex) {
 
 document.addEventListener('DOMContentLoaded', () => {
   const search = document.getElementById('exerciseSearch');
+  // Phase 3.5b: quiz accordion add button
+  const quizAdd = document.getElementById('exQuizAdd');
+  if (quizAdd) quizAdd.addEventListener('click', addQuizQuestion);
   const sel = document.getElementById('exerciseId');
   const mcSubmit = document.getElementById('mcSubmit');
   if (!sel) return;
