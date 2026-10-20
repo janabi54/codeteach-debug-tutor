@@ -118,10 +118,16 @@ export function getCohortOpportunities(cohortId: string): Opportunity[] {
     thisWeekHints / lastWeekHints >= HINT_SPIKE_FACTOR
   ) {
     const pct = Math.round(((thisWeekHints - lastWeekHints) / lastWeekHints) * 100);
+    // Small baselines make percentages misleading (e.g. 2 -> 17 = "750%").
+    // Show absolute counts when lastWeek < 5.
+    const usePercent = lastWeekHints >= 5;
+    const title = usePercent
+      ? 'Hint usage up ' + pct + '% from last week'
+      : 'Hint usage up from ' + lastWeekHints + ' to ' + thisWeekHints + ' this week';
     opportunities.push({
       kind: 'hint-spike',
       severity: 'medium',
-      title: 'Hint usage up ' + pct + '% from last week',
+      title: title,
       detail:
         thisWeekHints + ' hints served this week vs ' + lastWeekHints + ' last week. ' +
         'Students may be stuck on a specific concept.',

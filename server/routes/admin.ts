@@ -67,6 +67,75 @@ router.get('/analytics/quiz/:cohortId', requireInstructor, async (req, res) => {
   }
 });
 
+// GET /api/admin/analytics/quiz/:cohortId/export/exercises.csv
+router.get('/analytics/quiz/:cohortId/export/exercises.csv', requireInstructor, async (req, res) => {
+  const { cohortId } = req.params;
+  const daysRaw = req.query.days;
+  const days = daysRaw === undefined ? 30 : Math.max(0, parseInt(String(daysRaw), 10) || 0);
+  const includeInstructor = String(req.query.includeInstructor || '0') === '1';
+  const cohort = await db.cohorts.findById(cohortId);
+  if (!cohort) return res.status(404).json({ error: 'Cohort not found.' });
+  if (cohort.instructorId !== req.user!.id) {
+    return res.status(403).json({ error: 'You do not teach this cohort.' });
+  }
+  try {
+    const data = getQuizAnalytics(cohortId, days, includeInstructor);
+    const esc = (v: any) => {
+      const s = String(v ?? '');
+      return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    };
+    const lines: string[] = ['exercise_slug,title,type,attempts,unique_students,correct,total,pct_correct'];
+    for (const e of data.byExercise) {
+      lines.push([e.slug, e.title, e.exerciseType, e.attempts, e.uniqueStudents, e.correctCount, e.totalCount, e.pctCorrect].map(esc).join(','));
+    }
+    // Second CSV: per-question breakdown
+    lines.push('');
+    lines.push('# Per-question breakdown');
+    lines.push('exercise_slug,question_id,question_text,question_type,correct,total,pct_correct');
+    for (const e of data.byExercise) {
+      for (const q of e.questions) {
+        lines.push([e.slug, q.questionId, q.text, q.type, q.correct, q.total, q.pctCorrect].map(esc).join(','));
+      }
+    }
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="exercises-${cohortId}-${days}d.csv"`);
+    res.send(lines.join('\n'));
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Could not export.' });
+  }
+});
+
+// GET /api/admin/analytics/quiz/:cohortId/export/students.csv
+router.get('/analytics/quiz/:cohortId/export/students.csv', requireInstructor, async (req, res) => {
+  const { cohortId } = req.params;
+  const daysRaw = req.query.days;
+  const days = daysRaw === undefined ? 30 : Math.max(0, parseInt(String(daysRaw), 10) || 0);
+  const includeInstructor = String(req.query.includeInstructor || '0') === '1';
+  const cohort = await db.cohorts.findById(cohortId);
+  if (!cohort) return res.status(404).json({ error: 'Cohort not found.' });
+  if (cohort.instructorId !== req.user!.id) {
+    return res.status(403).json({ error: 'You do not teach this cohort.' });
+  }
+  try {
+    const data = getQuizAnalytics(cohortId, days, includeInstructor);
+    const esc = (v: any) => {
+      const s = String(v ?? '');
+      return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    };
+    const lines: string[] = ['student_id,email,attempts,unique_exercises,avg_quiz_score_pct,correct_answers,total_answers,pct_correct,last_attempt'];
+    for (const s of data.byStudent) {
+      lines.push([s.studentId, s.email, s.attempts, s.uniqueExercises,
+        s.avgScore === null ? '' : Math.round(s.avgScore * 100),
+        s.correctAnswers, s.totalAnswers, s.pctCorrect, s.lastAttempt || ''].map(esc).join(','));
+    }
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="students-${cohortId}-${days}d.csv"`);
+    res.send(lines.join('\n'));
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Could not export.' });
+  }
+});
+
 // ── Invite codes ──
 
 router.post('/invite-codes', requireAdmin, async (req, res) => {

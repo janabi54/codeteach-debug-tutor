@@ -5291,7 +5291,10 @@ function typeBadge(t) {
 
 function renderQaExercises(container, exercises) {
   if (!exercises || exercises.length === 0) {
-    container.innerHTML = '<p class="empty-state">No quiz activity in this range.</p>';
+    container.innerHTML = '<div class="empty-state qa-empty">' +
+      '<p>📊 No quiz activity yet in this range.</p>' +
+      '<p class="qa-empty-hint">Try widening the time range above, or check that students have answered exercises in this cohort.</p>' +
+      '</div>';
     return;
   }
   const chartHtml = '<div class="qa-chart-wrap"><canvas id="qaExerciseChart"></canvas></div>';
@@ -5360,7 +5363,7 @@ function renderQaExercises(container, exercises) {
     data: {
       labels: sorted.map((e) => e.title),
       datasets: [{
-        label: '% correct',
+        label: 'Accuracy',
         data: sorted.map((e) => e.pctCorrect),
         backgroundColor: sorted.map((e) => e.pctCorrect >= 80 ? 'rgba(74,222,128,0.7)' : e.pctCorrect >= 50 ? 'rgba(250,204,21,0.7)' : 'rgba(248,113,113,0.7)'),
         borderColor: sorted.map((e) => e.pctCorrect >= 80 ? '#4ade80' : e.pctCorrect >= 50 ? '#facc15' : '#f87171'),
@@ -5371,15 +5374,40 @@ function renderQaExercises(container, exercises) {
       indexAxis: 'y',
       responsive: true,
       maintainAspectRatio: false,
-      scales: { x: { min: 0, max: 100, ticks: { callback: (v) => v + '%' } } },
-      plugins: { legend: { display: false } },
+      scales: {
+        x: {
+          min: 0,
+          max: 100,
+          title: { display: true, text: 'Correct answers (%)', color: '#a0a0a8', font: { size: 11 } },
+          ticks: { callback: (v) => v + '%', color: '#a0a0a8' },
+          grid: { color: 'rgba(255,255,255,0.05)' },
+        },
+        y: {
+          ticks: { color: '#e0e0e0', font: { size: 12 } },
+          grid: { display: false },
+        },
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const e = sorted[ctx.dataIndex];
+              return `${e.pctCorrect.toFixed(1)}% (${e.correctCount}/${e.totalCount} correct, ${e.uniqueStudents} student${e.uniqueStudents === 1 ? '' : 's'})`;
+            },
+          },
+        },
+      },
     },
   });
 }
 
 function renderQaStudents(container, students) {
   if (!students || students.length === 0) {
-    container.innerHTML = '<p class="empty-state">No student activity in this range.</p>';
+    container.innerHTML = '<div class="empty-state qa-empty">' +
+      '<p>👥 No student activity yet in this range.</p>' +
+      '<p class="qa-empty-hint">Students need to answer at least one exercise before they appear here.</p>' +
+      '</div>';
     return;
   }
   const rows = students.map((s) => `
@@ -5415,7 +5443,7 @@ function renderQaStudents(container, students) {
     data: {
       labels: sorted.map((s) => s.email),
       datasets: [{
-        label: '% correct',
+        label: 'Accuracy',
         data: sorted.map((s) => s.pctCorrect),
         backgroundColor: 'rgba(123,92,255,0.6)',
         borderColor: '#7b5cff',
@@ -5425,8 +5453,30 @@ function renderQaStudents(container, students) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      scales: { y: { min: 0, max: 100, ticks: { callback: (v) => v + '%' } }, x: { ticks: { autoSkip: true, maxRotation: 45 } } },
-      plugins: { legend: { display: false } },
+      scales: {
+        y: {
+          min: 0,
+          max: 100,
+          title: { display: true, text: 'Correct answers (%)', color: '#a0a0a8', font: { size: 11 } },
+          ticks: { callback: (v) => v + '%', color: '#a0a0a8' },
+          grid: { color: 'rgba(255,255,255,0.05)' },
+        },
+        x: {
+          ticks: { autoSkip: true, maxRotation: 45, color: '#e0e0e0', font: { size: 12 } },
+          grid: { display: false },
+        },
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const s = sorted[ctx.dataIndex];
+              return `${s.pctCorrect.toFixed(1)}% (${s.correctAnswers}/${s.totalAnswers} correct)`;
+            },
+          },
+        },
+      },
     },
   });
 }
@@ -5447,6 +5497,26 @@ document.addEventListener('DOMContentLoaded', () => {
     const cohortId = document.getElementById('analyticsCohort')?.value;
     if (cohortId) loadQuizAnalytics(cohortId);
   });
+  const exportBtn = document.getElementById('qaExportExercises');
+  if (exportBtn) {
+    exportBtn.addEventListener('click', () => {
+      const cohortId = document.getElementById('analyticsCohort')?.value;
+      if (!cohortId) return;
+      const days = parseInt(document.getElementById('qaRange')?.value || '30', 10);
+      const includeInstructor = document.getElementById('qaIncludeInstructor')?.checked ? '1' : '0';
+      const view = __qaState.view;
+      const endpoint = view === 'student' ? 'students.csv' : 'exercises.csv';
+      const url = `/api/admin/analytics/quiz/${encodeURIComponent(cohortId)}/export/${endpoint}?days=${days}&includeInstructor=${includeInstructor}`;
+      // Trigger download via anchor
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = '';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    });
+  }
+
   const instructorToggle = document.getElementById('qaIncludeInstructor');
   if (instructorToggle) {
     // Restore saved preference
