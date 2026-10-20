@@ -6068,3 +6068,13 @@ body.mc-mode .quiz-modal:not([hidden]) {
 .qa-toggle:hover span {
   color: var(--text-primary);
 }
+
+/* Polish: dark-mode search input on /tutor */
+#exerciseSearch {
+  background: #1e1e24 !important;
+  color: #e0e0e0 !important;
+  border-color: #3a3a48 !important;
+}
+#exerciseSearch::placeholder {
+  color: #888 !important;
+}
