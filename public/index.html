@@ -247,6 +247,15 @@
         </div>
       </div>
 
+      <div id="fillPanel" class="mc-panel" hidden>
+        <h3 class="mc-question" id="fillQuestion" style="position:relative; padding-right:30px;"></h3>
+        <pre id="fillCodeBlock" class="fill-code-block"></pre>
+        <div class="mc-actions">
+          <button class="primary small" id="fillSubmit">Submit</button>
+          <p id="fillFeedback" class="mc-feedback" hidden></p>
+        </div>
+      </div>
+
       <div id="quizModal" class="quiz-modal" hidden>
         <div class="quiz-modal-header">
           <span id="quizProgress" class="quiz-progress">Question 1 of 1</span>
@@ -531,6 +540,7 @@ for (let i = 0; i < arr.length; i++) {
               <option value="multiple_choice">Multiple choice</option>
               <option value="predict_output">Predict output</option>
               <option value="quiz">Quiz (multiple questions)</option>
+              <option value="fill_in_blank">Fill in the blank</option>
             </select>
             <p class="field-hint">Multiple choice skips the code editor — students pick an option instead.</p>
           </div>
@@ -552,6 +562,27 @@ for (let i = 0; i < arr.length; i++) {
             <p class="field-hint" id="exQuizCount">0 questions</p>
             <div id="exQuizList" class="quiz-accordion"></div>
             <button type="button" id="exQuizAdd" class="ghost small" style="margin-top:8px;">+ Add question</button>
+          </div>
+
+          <div id="exFillWrap" class="field" hidden>
+            <label>Fill-in-blank exercises</label>
+            <p class="field-hint">
+              Use <code>___</code> (three underscores) to mark blanks. Each blank gets a text input.
+              Up to 3 blanks recommended.
+            </p>
+            <div class="field">
+              <label for="exFillText">Question / prompt</label>
+              <input id="exFillText" type="text" placeholder="Complete the loop to print every element:" />
+            </div>
+            <div class="field">
+              <label for="exFillCode">Code with ___ markers</label>
+              <textarea id="exFillCode" rows="6" spellcheck="false" style="font-family: monospace;" placeholder="for i in ___(len(arr)):&#10;    print(arr[___])"></textarea>
+              <p class="field-hint" id="exFillBlankCount">0 blanks detected</p>
+            </div>
+            <div class="field">
+              <label>Answers (one per blank, in order)</label>
+              <div id="exFillAnswers"></div>
+            </div>
           </div>
 
           <div class="field">

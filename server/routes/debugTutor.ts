@@ -355,6 +355,24 @@ router.post('/quiz', requireAuth, async (req, res) => {
       const norm = (s: string) => s.replace(/\s*,\s*/g, ',').trim().toLowerCase();
       correct = norm(submittedText) === norm(q.answer || '');
       selectedId = 'predict:' + submittedText.trim().toLowerCase();
+    } else if (q.type === 'fill_in_blank') {
+      // submitted.blanks is an array of strings, one per blank in order
+      const blanks = Array.isArray(submitted?.blanks) ? submitted.blanks : [];
+      const expected = Array.isArray(q.blanks) ? q.blanks : [];
+      if (blanks.length !== expected.length || expected.length === 0) {
+        correct = false;
+      } else {
+        // All blanks must match (trimmed, case-sensitive). Alternates accepted.
+        correct = expected.every((exp: any, i: number) => {
+          const typed = String(blanks[i] ?? '').trim();
+          if (typed === String(exp.correct ?? '').trim()) return true;
+          if (Array.isArray(exp.alternates)) {
+            return exp.alternates.some((alt: any) => String(alt ?? '').trim() === typed);
+          }
+          return false;
+        });
+      }
+      selectedId = 'fill:' + blanks.map((b: any) => String(b ?? '').trim()).join('|');
     }
 
     if (correct) score++;

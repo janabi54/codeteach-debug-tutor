@@ -6186,3 +6186,53 @@ body.mc-mode .quiz-modal:not([hidden]) {
   line-height: 1.5;
   color: var(--text-primary, #e0e0e0);
 }
+
+/* Phase 3.8: fill-in-blank student + instructor UI */
+#fillPanel {
+  /* inherits .mc-panel styling */
+}
+.fill-code-block {
+  background: #14141a;
+  border: 1px solid var(--border-strong, #3a3a48);
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin: 16px 0;
+  font-family: 'SF Mono', Monaco, Consolas, monospace;
+  font-size: 14px;
+  line-height: 1.7;
+  color: #e0e0e0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+}
+.fill-blank-input {
+  display: inline-block;
+  min-width: 80px;
+  max-width: 160px;
+  padding: 2px 8px;
+  margin: 0 2px;
+  background: rgba(123, 92, 255, 0.15);
+  border: 1px solid rgba(123, 92, 255, 0.5);
+  border-radius: 4px;
+  color: #e0e0e0;
+  font-family: inherit;
+  font-size: inherit;
+  text-align: center;
+  outline: none;
+}
+.fill-blank-input:focus {
+  background: rgba(123, 92, 255, 0.25);
+  border-color: #7b5cff;
+  box-shadow: 0 0 0 2px rgba(123, 92, 255, 0.2);
+}
+#exFillAnswers {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+
+/* Phase 3.8: hide the mc-mode backdrop when only the fill modal is open */
+body.fill-mode-active::before {
+  display: none !important;
+}

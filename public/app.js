@@ -2963,12 +2963,14 @@ function updateEditorTypeVisibility() {
   const wrap = document.getElementById('exOptionsWrap');
   const pWrap = document.getElementById('exPredictWrap');
   const qWrap = document.getElementById('exQuizWrap');
+  const fWrap = document.getElementById('exFillWrap');
   const starterField = document.getElementById('exStarterCode')?.closest('.field');
   const expectedField = document.getElementById('exExpectedOutput')?.closest('.field');
   const langField = document.getElementById('exLanguage')?.closest('.field');
   if (wrap) wrap.hidden = type !== 'multiple_choice';
   if (pWrap) pWrap.hidden = type !== 'predict_output';
   if (qWrap) qWrap.hidden = type !== 'quiz';
+  if (fWrap) fWrap.hidden = type !== 'fill_in_blank';
   // In MC mode, hide starter code + expected output + language (not needed)
   if (starterField) starterField.style.display = type === 'code' ? '' : 'none';
   if (expectedField) expectedField.style.display = type === 'code' ? '' : 'none';
@@ -3421,6 +3423,77 @@ function readQuizQuestionsFromEditor() {
   return JSON.parse(JSON.stringify(__quizQuestions));
 }
 
+// ─── Phase 3.8: instructor fill-in-blank editor ───
+let __fillBlanks = [];
+
+function renderFillEditor(question) {
+  const textEl = document.getElementById('exFillText');
+  const codeEl = document.getElementById('exFillCode');
+  if (textEl) textEl.value = (question && question.text) || '';
+  if (codeEl) codeEl.value = (question && question.code) || '';
+  __fillBlanks = (question && Array.isArray(question.blanks))
+    ? question.blanks.map((b) => ({ correct: b.correct || '', alternates: b.alternates || [] }))
+    : [];
+  syncFillBlanksFromCode();
+}
+
+function syncFillBlanksFromCode() {
+  const codeEl = document.getElementById('exFillCode');
+  const countEl = document.getElementById('exFillBlankCount');
+  const listEl = document.getElementById('exFillAnswers');
+  if (!codeEl || !listEl) return;
+  const code = codeEl.value || '';
+  const blankCount = (code.match(/___/g) || []).length;
+
+  // Adjust __fillBlanks length to match blank count
+  while (__fillBlanks.length < blankCount) __fillBlanks.push({ correct: '', alternates: [] });
+  while (__fillBlanks.length > blankCount) __fillBlanks.pop();
+
+  if (countEl) {
+    countEl.textContent = blankCount === 0
+      ? '⚠ No ___ markers found in code.'
+      : blankCount + ' blank' + (blankCount === 1 ? '' : 's') + ' detected';
+  }
+
+  listEl.innerHTML = '';
+  __fillBlanks.forEach((blank, i) => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:6px;';
+    row.innerHTML = `
+      <span style="font-size:12px;color:#888;min-width:24px;">#${i + 1}</span>
+      <input type="text" class="fill-blank-correct" data-idx="${i}" value="${escapeHtml(blank.correct || '')}" placeholder="Correct answer" style="flex:1;padding:6px 8px;background:#1e1e24;border:1px solid #3a3a48;border-radius:4px;color:#e0e0e0;font-family:monospace;" />
+      <input type="text" class="fill-blank-alt" data-idx="${i}" value="${(blank.alternates || []).join(', ')}" placeholder="Alternates (comma-separated)" style="flex:1;padding:6px 8px;background:#1e1e24;border:1px solid #3a3a48;border-radius:4px;color:#e0e0e0;font-family:monospace;" />
+    `;
+    listEl.appendChild(row);
+  });
+
+  // Wire inputs
+  listEl.querySelectorAll('.fill-blank-correct').forEach((inp) => {
+    inp.addEventListener('input', (e) => {
+      const idx = parseInt(e.target.dataset.idx, 10);
+      __fillBlanks[idx].correct = e.target.value;
+    });
+  });
+  listEl.querySelectorAll('.fill-blank-alt').forEach((inp) => {
+    inp.addEventListener('input', (e) => {
+      const idx = parseInt(e.target.dataset.idx, 10);
+      __fillBlanks[idx].alternates = e.target.value.split(',').map((s) => s.trim()).filter(Boolean);
+    });
+  });
+}
+
+function readFillQuestionFromEditor() {
+  const textEl = document.getElementById('exFillText');
+  const codeEl = document.getElementById('exFillCode');
+  return {
+    id: 'q1',  // single question per exercise for fill-in-blank
+    type: 'fill_in_blank',
+    text: (textEl?.value || '').trim(),
+    code: codeEl?.value || '',
+    blanks: JSON.parse(JSON.stringify(__fillBlanks)),
+  };
+}
+
 async function saveExercise() {
   const btn = $('saveExerciseBtn');
   const title = $('exTitle').value.trim();
@@ -3431,11 +3504,33 @@ async function saveExercise() {
 
   // --- Patch 4c: include exercise type + options (Phase 3.4a canonical) ---
   const exTypeRaw = ($('exType') && $('exType').value) || 'code';
-  const exerciseType = (exTypeRaw === 'multiple_choice' || exTypeRaw === 'predict_output' || exTypeRaw === 'quiz') ? exTypeRaw : 'code';
+  const exerciseType = (exTypeRaw === 'multiple_choice' || exTypeRaw === 'predict_output' || exTypeRaw === 'quiz' || exTypeRaw === 'fill_in_blank') ? exTypeRaw : 'code';
   let optionsPayload = null;
   let answerPayload = null;
   let questionsPayload = null;
-  if (exerciseType === 'quiz') {
+  if (exerciseType === 'fill_in_blank') {
+    const fq = readFillQuestionFromEditor();
+    if (!fq.code || !fq.code.trim()) {
+      alert('Fill-in-blank needs a code block.');
+      return;
+    }
+    const blankCount = (fq.code.match(/___/g) || []).length;
+    if (blankCount === 0) {
+      alert('Code must contain at least one ___ marker.');
+      return;
+    }
+    if (fq.blanks.length !== blankCount) {
+      alert('Blank count mismatch.');
+      return;
+    }
+    for (let i = 0; i < fq.blanks.length; i++) {
+      if (!fq.blanks[i].correct || !fq.blanks[i].correct.trim()) {
+        alert('Blank #' + (i + 1) + ' needs a correct answer.');
+        return;
+      }
+    }
+    questionsPayload = [fq];
+  } else if (exerciseType === 'quiz') {
     const qs = readQuizQuestionsFromEditor();
     if (!qs || qs.length === 0) {
       alert('A quiz needs at least one question.');
@@ -8784,11 +8879,131 @@ document.addEventListener('DOMContentLoaded', () => {
   if (closeBtn) closeBtn.addEventListener('click', closeQuizModal);
 });
 
+// ─── Phase 3.8: student fill-in-blank modal ───
+let __fillState = { exerciseId: '', question: null };
+
+function openFillModal(ex, question) {
+  __fillState = { exerciseId: ex.slug, question: question };
+  const panel = document.getElementById('fillPanel');
+  if (!panel) return;
+  panel.hidden = false;
+  document.body.classList.add('mc-mode');
+  document.body.classList.add('fill-mode-active');
+
+  const qEl = document.getElementById('fillQuestion');
+  if (qEl) qEl.textContent = question.text || 'Fill in the blanks:';
+
+  // Render code with inline inputs
+  const codeEl = document.getElementById('fillCodeBlock');
+  if (!codeEl) return;
+  codeEl.innerHTML = '';
+  const parts = String(question.code || '').split('___');
+  parts.forEach((part, i) => {
+    codeEl.appendChild(document.createTextNode(part));
+    if (i < parts.length - 1) {
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.className = 'fill-blank-input';
+      inp.dataset.idx = String(i);
+      inp.autocomplete = 'off';
+      inp.spellcheck = false;
+      inp.placeholder = '…';
+      codeEl.appendChild(inp);
+    }
+  });
+
+  const feedback = document.getElementById('fillFeedback');
+  if (feedback) { feedback.hidden = true; feedback.textContent = ''; }
+  const submit = document.getElementById('fillSubmit');
+  if (submit) submit.disabled = false;
+
+  // Close button (idempotent)
+  let closeBtn = panel.querySelector('#fillClose');
+  if (!closeBtn) {
+    closeBtn = document.createElement('button');
+    closeBtn.id = 'fillClose';
+    closeBtn.innerHTML = '✕';
+    closeBtn.style.cssText = 'position:absolute;right:10px;top:10px;background:transparent;border:none;color:#fff;font-size:24px;cursor:pointer;padding:0 8px;line-height:1;z-index:100;';
+    closeBtn.onclick = () => closeFillModal();
+    panel.style.position = 'relative';
+    panel.appendChild(closeBtn);
+  }
+}
+
+function closeFillModal() {
+  const panel = document.getElementById('fillPanel');
+  if (panel) panel.hidden = true;
+  document.body.classList.remove('mc-mode');
+  document.body.classList.remove('fill-mode-active');
+  __fillState = { exerciseId: '', question: null };
+}
+
+async function submitFillAnswer() {
+  if (!__fillState.exerciseId || !__fillState.question) return;
+  const codeEl = document.getElementById('fillCodeBlock');
+  const inputs = codeEl.querySelectorAll('.fill-blank-input');
+  const blanks = Array.from(inputs).map((i) => i.value);
+  if (blanks.some((b) => !b.trim())) {
+    alert('Fill in all blanks before submitting.');
+    return;
+  }
+  const submitBtn = document.getElementById('fillSubmit');
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Submitting…'; }
+
+  try {
+    const res = await fetch('/api/debug-tutor/quiz', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        exerciseId: __fillState.exerciseId,
+        answers: [{ questionId: __fillState.question.id, blanks: blanks }],
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || 'Submit failed.');
+      return;
+    }
+    const feedback = document.getElementById('fillFeedback');
+    const result = (data.results || [])[0] || { correct: false };
+    if (feedback) {
+      feedback.hidden = false;
+      feedback.textContent = result.correct
+        ? 'Correct! Nice work.'
+        : 'Not quite. Review the blanks and try again.';
+      feedback.style.color = result.correct ? '#4ade80' : '#f87171';
+    }
+  } catch (err) {
+    alert('Submit failed: ' + err.message);
+  } finally {
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Submit'; }
+  }
+}
+
+// Wire student fill modal buttons once
+document.addEventListener('DOMContentLoaded', () => {
+  const sub = document.getElementById('fillSubmit');
+  if (sub) sub.addEventListener('click', submitFillAnswer);
+});
+
 function applyExerciseTypeUI(ex) {
   if (!ex) return;
 
   // Phase 3.5c: multi-question quiz → paginated modal, bail from single-question flow
   const qsCount = (ex.options && Array.isArray(ex.options.questions)) ? ex.options.questions.length : 0;
+  // Phase 3.8: single-question fill_in_blank → dedicated modal
+  // Ensure any prior fill-mode is cleared before dispatching
+  document.body.classList.remove('fill-mode-active');
+
+  if (ex.exerciseType === 'fill_in_blank') {
+    const qs = (ex.options && Array.isArray(ex.options.questions)) ? ex.options.questions : [];
+    if (qs.length > 0) {
+      openFillModal(ex, qs[0]);
+      return;
+    }
+  }
+
   if (qsCount > 1) {
     const mcPanel0 = document.getElementById('mcPanel');
     const predictPanel0 = document.getElementById('predictPanel');
@@ -8899,6 +9114,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // Phase 3.5b: quiz accordion add button
   const quizAdd = document.getElementById('exQuizAdd');
   if (quizAdd) quizAdd.addEventListener('click', addQuizQuestion);
+  // Phase 3.8: fill-in-blank editor wiring
+  const fillCodeEl = document.getElementById('exFillCode');
+  if (fillCodeEl) fillCodeEl.addEventListener('input', syncFillBlanksFromCode);
   const sel = document.getElementById('exerciseId');
   const mcSubmit = document.getElementById('mcSubmit');
   if (!sel) return;
