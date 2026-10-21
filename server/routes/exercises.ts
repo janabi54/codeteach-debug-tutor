@@ -112,7 +112,7 @@ router.post('/', requireInstructor, async (req, res) => {
   const lang = VALID_LANGUAGES.includes(language) ? language : 'javascript';
 
   // Phase 3.4a: exercise type + options (canonical: multiple_choice + object array)
-  const CANONICAL_TYPES = ['code', 'multiple_choice', 'predict_output', 'quiz', 'fill_in_blank'] as const;
+  const CANONICAL_TYPES = ['code', 'multiple_choice', 'predict_output', 'quiz', 'fill_in_blank', 'trace_execution'] as const;
   const exType = CANONICAL_TYPES.includes(exerciseType) ? exerciseType : 'code';
   let optionsJson: string | null = null;
   if (exType === 'multiple_choice') {
@@ -188,6 +188,41 @@ router.post('/', requireInstructor, async (req, res) => {
       for (const b of q.blanks) {
         if (!b || typeof b.correct !== 'string' || !b.correct.trim()) {
           return res.status(400).json({ error: 'Each blank needs a correct answer.' });
+        }
+      }
+    }
+    optionsJson = JSON.stringify({ questions: qs });
+  } else if (exType === 'trace_execution') {
+    const qs = Array.isArray(req.body.questions) ? req.body.questions : null;
+    if (!qs || qs.length === 0) {
+      return res.status(400).json({ error: 'Trace-execution requires at least one question.' });
+    }
+    for (const q of qs) {
+      if (!q || typeof q !== 'object' || !q.id || typeof q.id !== 'string') {
+        return res.status(400).json({ error: 'Each question needs an id.' });
+      }
+      if (typeof q.code !== 'string' || !q.code.trim()) {
+        return res.status(400).json({ error: 'Trace-execution questions need code.' });
+      }
+      if (!Array.isArray(q.variables) || q.variables.length === 0) {
+        return res.status(400).json({ error: 'Trace-execution questions need variables.' });
+      }
+      if (!Array.isArray(q.steps) || q.steps.length === 0) {
+        return res.status(400).json({ error: 'Trace-execution questions need steps.' });
+      }
+      for (const v of q.variables) {
+        if (!v || typeof v.name !== 'string' || !v.name.trim()) {
+          return res.status(400).json({ error: 'Each variable needs a name.' });
+        }
+      }
+      for (const s of q.steps) {
+        if (!s || !s.values || typeof s.values !== 'object') {
+          return res.status(400).json({ error: 'Each step needs values.' });
+        }
+        for (const v of q.variables) {
+          if (typeof s.values[v.name] !== 'string') {
+            return res.status(400).json({ error: 'Step missing value for ' + v.name });
+          }
         }
       }
     }
@@ -278,7 +313,7 @@ router.put('/:slug', requireInstructor, async (req, res) => {
     patch.struggleMinutes = Math.min(60, struggleMinutes);
   }
   // Phase 3.4a: exercise type + options (canonical: multiple_choice + object array)
-  if (exerciseType === 'code' || exerciseType === 'multiple_choice' || exerciseType === 'predict_output' || exerciseType === 'quiz' || exerciseType === 'fill_in_blank') {
+  if (exerciseType === 'code' || exerciseType === 'multiple_choice' || exerciseType === 'predict_output' || exerciseType === 'quiz' || exerciseType === 'fill_in_blank' || exerciseType === 'trace_execution') {
     patch.exerciseType = exerciseType;
     if (exerciseType === 'quiz') {
       const qs = Array.isArray(req.body.questions) ? req.body.questions : null;
@@ -324,6 +359,41 @@ router.put('/:slug', requireInstructor, async (req, res) => {
         for (const b of q.blanks) {
           if (!b || typeof b.correct !== 'string' || !b.correct.trim()) {
             return res.status(400).json({ error: 'Each blank needs a correct answer.' });
+          }
+        }
+      }
+      patch.options = JSON.stringify({ questions: qs });
+    } else if (exerciseType === 'trace_execution') {
+      const qs = Array.isArray(req.body.questions) ? req.body.questions : null;
+      if (!qs || qs.length === 0) {
+        return res.status(400).json({ error: 'Trace-execution requires at least one question.' });
+      }
+      for (const q of qs) {
+        if (!q || typeof q !== 'object' || !q.id) {
+          return res.status(400).json({ error: 'Each question needs an id.' });
+        }
+        if (typeof q.code !== 'string' || !q.code.trim()) {
+          return res.status(400).json({ error: 'Trace-execution questions need code.' });
+        }
+        if (!Array.isArray(q.variables) || q.variables.length === 0) {
+          return res.status(400).json({ error: 'Trace-execution questions need variables.' });
+        }
+        if (!Array.isArray(q.steps) || q.steps.length === 0) {
+          return res.status(400).json({ error: 'Trace-execution questions need steps.' });
+        }
+        for (const v of q.variables) {
+          if (!v || typeof v.name !== 'string' || !v.name.trim()) {
+            return res.status(400).json({ error: 'Each variable needs a name.' });
+          }
+        }
+        for (const s of q.steps) {
+          if (!s || !s.values || typeof s.values !== 'object') {
+            return res.status(400).json({ error: 'Each step needs values.' });
+          }
+          for (const v of q.variables) {
+            if (typeof s.values[v.name] !== 'string') {
+              return res.status(400).json({ error: 'Step missing value for ' + v.name });
+            }
           }
         }
       }

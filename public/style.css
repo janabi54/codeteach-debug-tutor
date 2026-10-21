@@ -6236,3 +6236,52 @@ body.mc-mode .quiz-modal:not([hidden]) {
 body.fill-mode-active::before {
   display: none !important;
 }
+
+/* Phase 3.9: trace_execution table */
+.trace-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+  font-size: 14px;
+  background: #14141a;
+  border: 1px solid var(--border-strong, #3a3a48);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.trace-table th {
+  text-align: left;
+  padding: 10px 14px;
+  background: #1e1e24;
+  color: #a0a0a8;
+  font-weight: 500;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid #3a3a48;
+}
+.trace-table td {
+  padding: 8px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  color: #e0e0e0;
+  font-family: 'SF Mono', Monaco, Consolas, monospace;
+  font-size: 13px;
+}
+.trace-table tr:last-child td { border-bottom: none; }
+.trace-given { color: #888; font-style: italic; }
+.trace-input {
+  width: 100%;
+  padding: 6px 10px;
+  background: rgba(123, 92, 255, 0.15);
+  border: 1px solid rgba(123, 92, 255, 0.5);
+  border-radius: 4px;
+  color: #e0e0e0;
+  font-family: inherit;
+  font-size: 13px;
+  text-align: center;
+  outline: none;
+}
+.trace-input:focus {
+  background: rgba(123, 92, 255, 0.25);
+  border-color: #7b5cff;
+  box-shadow: 0 0 0 2px rgba(123, 92, 255, 0.2);
+}

@@ -373,6 +373,23 @@ router.post('/quiz', requireAuth, async (req, res) => {
         });
       }
       selectedId = 'fill:' + blanks.map((b: any) => String(b ?? '').trim()).join('|');
+    } else if (q.type === 'trace_execution') {
+      const subSteps = Array.isArray(submitted?.stepValues) ? submitted.stepValues : [];
+      const expectedSteps = Array.isArray(q.steps) ? q.steps : [];
+      const inputVars = (q.variables || []).filter((v: any) => !v.given);
+      if (subSteps.length !== expectedSteps.length || expectedSteps.length === 0) {
+        correct = false;
+      } else {
+        correct = expectedSteps.every((expStep: any, si: number) => {
+          const sub = subSteps[si] || {};
+          return inputVars.every((v: any) => {
+            const typed = String(sub[v.name] ?? '').trim();
+            const want = String(expStep.values[v.name] ?? '').trim();
+            return typed === want;
+          });
+        });
+      }
+      selectedId = 'trace:' + JSON.stringify(subSteps);
     }
 
     if (correct) score++;

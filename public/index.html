@@ -256,6 +256,16 @@
         </div>
       </div>
 
+      <div id="tracePanel" class="mc-panel" hidden>
+        <h3 class="mc-question" id="traceQuestion" style="position:relative; padding-right:30px;"></h3>
+        <pre id="traceCodeBlock" class="fill-code-block"></pre>
+        <div id="traceTableWrap"></div>
+        <div class="mc-actions">
+          <button class="primary small" id="traceSubmit">Submit</button>
+          <p id="traceFeedback" class="mc-feedback" hidden></p>
+        </div>
+      </div>
+
       <div id="quizModal" class="quiz-modal" hidden>
         <div class="quiz-modal-header">
           <span id="quizProgress" class="quiz-progress">Question 1 of 1</span>
@@ -541,6 +551,7 @@ for (let i = 0; i < arr.length; i++) {
               <option value="predict_output">Predict output</option>
               <option value="quiz">Quiz (multiple questions)</option>
               <option value="fill_in_blank">Fill in the blank</option>
+              <option value="trace_execution">Trace execution</option>
             </select>
             <p class="field-hint">Multiple choice skips the code editor — students pick an option instead.</p>
           </div>
@@ -582,6 +593,32 @@ for (let i = 0; i < arr.length; i++) {
             <div class="field">
               <label>Answers (one per blank, in order)</label>
               <div id="exFillAnswers"></div>
+            </div>
+          </div>
+
+          <div id="exTraceWrap" class="field" hidden>
+            <label>Trace-execution exercise</label>
+            <p class="field-hint">
+              Write the code, list variables (mark each "given" with ~ to prefill for the student),
+              and add one row per step with expected values.
+            </p>
+            <div class="field">
+              <label for="exTraceText">Question / prompt</label>
+              <input id="exTraceText" type="text" placeholder="Trace the loop. What is total after each iteration?" />
+            </div>
+            <div class="field">
+              <label for="exTraceCode">Code</label>
+              <textarea id="exTraceCode" rows="6" spellcheck="false" style="font-family:monospace;" placeholder="total = 0&#10;for i in range(3):&#10;    total += i"></textarea>
+            </div>
+            <div class="field">
+              <label for="exTraceVars">Variables (comma-separated; prefix with ~ for given/prefilled)</label>
+              <input id="exTraceVars" type="text" placeholder="~i, total" />
+              <p class="field-hint">Example: <code>~i, total</code> — i is prefilled, total is student input.</p>
+            </div>
+            <div class="field">
+              <label>Steps</label>
+              <div id="exTraceSteps"></div>
+              <button type="button" id="exTraceAddStep" class="ghost small" style="margin-top:8px;">+ Add step</button>
             </div>
           </div>
 

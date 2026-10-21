@@ -2964,6 +2964,7 @@ function updateEditorTypeVisibility() {
   const pWrap = document.getElementById('exPredictWrap');
   const qWrap = document.getElementById('exQuizWrap');
   const fWrap = document.getElementById('exFillWrap');
+  const tWrap = document.getElementById('exTraceWrap');
   const starterField = document.getElementById('exStarterCode')?.closest('.field');
   const expectedField = document.getElementById('exExpectedOutput')?.closest('.field');
   const langField = document.getElementById('exLanguage')?.closest('.field');
@@ -2971,6 +2972,7 @@ function updateEditorTypeVisibility() {
   if (pWrap) pWrap.hidden = type !== 'predict_output';
   if (qWrap) qWrap.hidden = type !== 'quiz';
   if (fWrap) fWrap.hidden = type !== 'fill_in_blank';
+  if (tWrap) tWrap.hidden = type !== 'trace_execution';
   // In MC mode, hide starter code + expected output + language (not needed)
   if (starterField) starterField.style.display = type === 'code' ? '' : 'none';
   if (expectedField) expectedField.style.display = type === 'code' ? '' : 'none';
@@ -3011,7 +3013,7 @@ async function openExerciseEditor(slug) {
     const ex = exercisesState.list.find((e) => e.slug === slug);
     if (ex) {
       $('exType').value = ex.exerciseType || 'code';
-      // Phase 3.5b: hydrate quiz accordion if this is a quiz
+      // Phase 3.5b + 3.8 + 3.9: hydrate the correct editor per type
       if (ex.exerciseType === 'quiz') {
         const qs = (ex.options && Array.isArray(ex.options.questions)) ? ex.options.questions : [];
         renderQuizEditor(qs);
@@ -3022,10 +3024,36 @@ async function openExerciseEditor(slug) {
         if (oWrap) oWrap.hidden = true;
         const pWrap = document.getElementById('exPredictWrap');
         if (pWrap) pWrap.hidden = true;
+        const fWrap = document.getElementById('exFillWrap');
+        if (fWrap) fWrap.hidden = true;
+        const tWrap = document.getElementById('exTraceWrap');
+        if (tWrap) tWrap.hidden = true;
+      } else if (ex.exerciseType === 'fill_in_blank') {
+        const qs = (ex.options && Array.isArray(ex.options.questions)) ? ex.options.questions : [];
+        if (qs.length > 0 && typeof renderFillEditor === 'function') renderFillEditor(qs[0]);
+        const fWrap = document.getElementById('exFillWrap');
+        if (fWrap) fWrap.hidden = false;
+        const qWrap = document.getElementById('exQuizWrap');
+        if (qWrap) qWrap.hidden = true;
+        const tWrap = document.getElementById('exTraceWrap');
+        if (tWrap) tWrap.hidden = true;
+      } else if (ex.exerciseType === 'trace_execution') {
+        const qs = (ex.options && Array.isArray(ex.options.questions)) ? ex.options.questions : [];
+        if (qs.length > 0 && typeof renderTraceEditor === 'function') renderTraceEditor(qs[0]);
+        const tWrap = document.getElementById('exTraceWrap');
+        if (tWrap) tWrap.hidden = false;
+        const qWrap = document.getElementById('exQuizWrap');
+        if (qWrap) qWrap.hidden = true;
+        const fWrap = document.getElementById('exFillWrap');
+        if (fWrap) fWrap.hidden = true;
       } else {
         __quizQuestions = [];
         __expandedQuestionId = null;
         paintQuizEditor();
+        const fWrap = document.getElementById('exFillWrap');
+        if (fWrap) fWrap.hidden = true;
+        const tWrap = document.getElementById('exTraceWrap');
+        if (tWrap) tWrap.hidden = true;
       }
       renderEditorOptions(ex.options || []);
       updateEditorTypeVisibility();
@@ -3494,6 +3522,101 @@ function readFillQuestionFromEditor() {
   };
 }
 
+// ─── Phase 3.9: instructor trace_execution editor ───
+let __traceVariables = [];
+let __traceSteps = [];
+
+function parseVars(input) {
+  return String(input || '').split(',').map((s) => s.trim()).filter(Boolean).map((tok) => {
+    const given = tok.startsWith('~');
+    const name = given ? tok.slice(1).trim() : tok;
+    return { name, given };
+  }).filter((v) => v.name);
+}
+
+function renderTraceEditor(question) {
+  const textEl = document.getElementById('exTraceText');
+  const codeEl = document.getElementById('exTraceCode');
+  const varsEl = document.getElementById('exTraceVars');
+  if (textEl) textEl.value = (question && question.text) || '';
+  if (codeEl) codeEl.value = (question && question.code) || '';
+  if (varsEl) varsEl.value = (question && Array.isArray(question.variables))
+    ? question.variables.map((v) => (v.given ? '~' : '') + v.name).join(', ')
+    : '';
+  __traceVariables = (question && Array.isArray(question.variables))
+    ? JSON.parse(JSON.stringify(question.variables)) : [];
+  __traceSteps = (question && Array.isArray(question.steps))
+    ? JSON.parse(JSON.stringify(question.steps)) : [];
+  paintTraceEditor();
+}
+
+function syncTraceVariablesFromInput() {
+  const varsEl = document.getElementById('exTraceVars');
+  if (!varsEl) return;
+  __traceVariables = parseVars(varsEl.value);
+  paintTraceEditor();
+}
+
+function paintTraceEditor() {
+  const listEl = document.getElementById('exTraceSteps');
+  if (!listEl) return;
+  listEl.innerHTML = '';
+  __traceSteps.forEach((step, si) => {
+    const card = document.createElement('div');
+    card.style.cssText = 'border:1px solid #3a3a48;border-radius:6px;padding:10px;margin-bottom:8px;background:#1e1e24;';
+    const header = document.createElement('div');
+    header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;';
+    header.innerHTML = `<span style="font-size:13px;font-weight:600;">Step ${si + 1}</span><button type="button" class="ghost small" data-remove-step="${si}">×</button>`;
+    header.querySelector('[data-remove-step]').addEventListener('click', () => {
+      __traceSteps.splice(si, 1); paintTraceEditor();
+    });
+    card.appendChild(header);
+    const labelRow = document.createElement('div');
+    labelRow.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:6px;';
+    labelRow.innerHTML = '<label style="font-size:12px;min-width:60px;color:#888;">Label</label>' +
+      `<input type="text" data-label="${si}" value="${escapeHtml(step.label || '')}" placeholder="After i = 0" style="flex:1;padding:4px 6px;background:#14141a;border:1px solid #3a3a48;border-radius:3px;color:#e0e0e0;font-size:12px;" />`;
+    card.appendChild(labelRow);
+    __traceVariables.forEach((v) => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:4px;';
+      const val = (step.values && step.values[v.name]) || '';
+      row.innerHTML = `<label style="font-size:12px;min-width:60px;color:#888;">${escapeHtml(v.name)}${v.given ? ' (given)' : ''}</label>` +
+        `<input type="text" data-var="${escapeHtml(v.name)}" data-step="${si}" value="${escapeHtml(val)}" style="flex:1;padding:4px 6px;background:#14141a;border:1px solid #3a3a48;border-radius:3px;color:#e0e0e0;font-family:monospace;font-size:12px;" />`;
+      card.appendChild(row);
+    });
+    listEl.appendChild(card);
+  });
+  listEl.querySelectorAll('[data-label]').forEach((inp) => {
+    inp.addEventListener('input', (e) => {
+      const si = parseInt(e.target.dataset.label, 10);
+      if (__traceSteps[si]) __traceSteps[si].label = e.target.value;
+    });
+  });
+  listEl.querySelectorAll('[data-var]').forEach((inp) => {
+    inp.addEventListener('input', (e) => {
+      const si = parseInt(e.target.dataset.step, 10);
+      const varName = e.target.dataset.var;
+      if (__traceSteps[si]) {
+        if (!__traceSteps[si].values) __traceSteps[si].values = {};
+        __traceSteps[si].values[varName] = e.target.value;
+      }
+    });
+  });
+}
+
+function readTraceQuestionFromEditor() {
+  const textEl = document.getElementById('exTraceText');
+  const codeEl = document.getElementById('exTraceCode');
+  return {
+    id: 'q1',
+    type: 'trace_execution',
+    text: (textEl?.value || '').trim(),
+    code: codeEl?.value || '',
+    variables: JSON.parse(JSON.stringify(__traceVariables)),
+    steps: JSON.parse(JSON.stringify(__traceSteps)),
+  };
+}
+
 async function saveExercise() {
   const btn = $('saveExerciseBtn');
   const title = $('exTitle').value.trim();
@@ -3504,11 +3627,24 @@ async function saveExercise() {
 
   // --- Patch 4c: include exercise type + options (Phase 3.4a canonical) ---
   const exTypeRaw = ($('exType') && $('exType').value) || 'code';
-  const exerciseType = (exTypeRaw === 'multiple_choice' || exTypeRaw === 'predict_output' || exTypeRaw === 'quiz' || exTypeRaw === 'fill_in_blank') ? exTypeRaw : 'code';
+  const exerciseType = (exTypeRaw === 'multiple_choice' || exTypeRaw === 'predict_output' || exTypeRaw === 'quiz' || exTypeRaw === 'fill_in_blank' || exTypeRaw === 'trace_execution') ? exTypeRaw : 'code';
   let optionsPayload = null;
   let answerPayload = null;
   let questionsPayload = null;
-  if (exerciseType === 'fill_in_blank') {
+  if (exerciseType === 'trace_execution') {
+    const tq = readTraceQuestionFromEditor();
+    if (!tq.code || !tq.code.trim()) { alert('Trace-execution needs a code block.'); return; }
+    if (tq.variables.length === 0) { alert('Enter at least one variable.'); return; }
+    if (tq.steps.length === 0) { alert('Add at least one step.'); return; }
+    for (let si = 0; si < tq.steps.length; si++) {
+      for (const v of tq.variables) {
+        if (typeof tq.steps[si].values[v.name] !== 'string') {
+          alert('Step ' + (si + 1) + ' missing value for ' + v.name); return;
+        }
+      }
+    }
+    questionsPayload = [tq];
+  } else if (exerciseType === 'fill_in_blank') {
     const fq = readFillQuestionFromEditor();
     if (!fq.code || !fq.code.trim()) {
       alert('Fill-in-blank needs a code block.');
@@ -8987,6 +9123,119 @@ document.addEventListener('DOMContentLoaded', () => {
   if (sub) sub.addEventListener('click', submitFillAnswer);
 });
 
+// ─── Phase 3.9: student trace_execution modal ───
+let __traceState = { exerciseId: '', question: null };
+
+function openTraceModal(ex, question) {
+  __traceState = { exerciseId: ex.slug, question: question };
+  const panel = document.getElementById('tracePanel');
+  if (!panel) return;
+  panel.hidden = false;
+  document.body.classList.add('mc-mode');
+  document.body.classList.add('fill-mode-active');
+  const qEl = document.getElementById('traceQuestion');
+  if (qEl) qEl.textContent = question.text || 'Trace the execution:';
+  const codeEl = document.getElementById('traceCodeBlock');
+  if (codeEl) codeEl.textContent = question.code || '';
+  const tableWrap = document.getElementById('traceTableWrap');
+  if (tableWrap) {
+    tableWrap.innerHTML = '';
+    const vars = Array.isArray(question.variables) ? question.variables : [];
+    const steps = Array.isArray(question.steps) ? question.steps : [];
+    if (vars.length && steps.length) {
+      const table = document.createElement('table');
+      table.className = 'trace-table';
+      const thead = document.createElement('thead');
+      thead.innerHTML = '<tr><th>Step</th>' + vars.map((v) => '<th>' + escapeHtml(v.name) + '</th>').join('') + '</tr>';
+      table.appendChild(thead);
+      const tbody = document.createElement('tbody');
+      steps.forEach((step, si) => {
+        const tr = document.createElement('tr');
+        let html = '<td>' + escapeHtml(step.label || ('Step ' + (si + 1))) + '</td>';
+        vars.forEach((v) => {
+          if (v.given) {
+            html += '<td class="trace-given">' + escapeHtml((step.values && step.values[v.name]) || '') + '</td>';
+          } else {
+            html += '<td><input type="text" class="trace-input" data-step="' + si + '" data-var="' + escapeHtml(v.name) + '" /></td>';
+          }
+        });
+        tr.innerHTML = html;
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      tableWrap.appendChild(table);
+    }
+  }
+  const feedback = document.getElementById('traceFeedback');
+  if (feedback) { feedback.hidden = true; feedback.textContent = ''; }
+  const submit = document.getElementById('traceSubmit');
+  if (submit) submit.disabled = false;
+  let closeBtn = panel.querySelector('#traceClose');
+  if (!closeBtn) {
+    closeBtn = document.createElement('button');
+    closeBtn.id = 'traceClose';
+    closeBtn.innerHTML = '\u2715';
+    closeBtn.style.cssText = 'position:absolute;right:10px;top:10px;background:transparent;border:none;color:#fff;font-size:24px;cursor:pointer;padding:0 8px;line-height:1;z-index:100;';
+    closeBtn.onclick = () => closeTraceModal();
+    panel.style.position = 'relative';
+    panel.appendChild(closeBtn);
+  }
+}
+
+function closeTraceModal() {
+  const panel = document.getElementById('tracePanel');
+  if (panel) panel.hidden = true;
+  document.body.classList.remove('mc-mode');
+  document.body.classList.remove('fill-mode-active');
+  __traceState = { exerciseId: '', question: null };
+}
+
+async function submitTraceAnswer() {
+  if (!__traceState.exerciseId || !__traceState.question) return;
+  const q = __traceState.question;
+  const steps = Array.isArray(q.steps) ? q.steps : [];
+  const inputs = document.querySelectorAll('#traceTableWrap .trace-input');
+  const stepValues = steps.map(() => ({}));
+  for (const inp of inputs) {
+    const si = parseInt(inp.dataset.step, 10);
+    const varName = inp.dataset.var;
+    const val = inp.value.trim();
+    if (!val) { alert('Fill in all blanks before submitting.'); return; }
+    stepValues[si][varName] = val;
+  }
+  const submitBtn = document.getElementById('traceSubmit');
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Submitting…'; }
+  try {
+    const res = await fetch('/api/debug-tutor/quiz', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        exerciseId: __traceState.exerciseId,
+        answers: [{ questionId: q.id, stepValues: stepValues }],
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) { alert(data.error || 'Submit failed.'); return; }
+    const feedback = document.getElementById('traceFeedback');
+    const result = (data.results || [])[0] || { correct: false };
+    if (feedback) {
+      feedback.hidden = false;
+      feedback.textContent = result.correct ? 'Correct! Nice trace.' : 'Not quite. Rerun the trace in your head and try again.';
+      feedback.style.color = result.correct ? '#4ade80' : '#f87171';
+    }
+  } catch (err) {
+    alert('Submit failed: ' + err.message);
+  } finally {
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Submit'; }
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const sub = document.getElementById('traceSubmit');
+  if (sub) sub.addEventListener('click', submitTraceAnswer);
+});
+
 function applyExerciseTypeUI(ex) {
   if (!ex) return;
 
@@ -8995,6 +9244,11 @@ function applyExerciseTypeUI(ex) {
   // Phase 3.8: single-question fill_in_blank → dedicated modal
   // Ensure any prior fill-mode is cleared before dispatching
   document.body.classList.remove('fill-mode-active');
+
+  if (ex.exerciseType === 'trace_execution') {
+    const qs = (ex.options && Array.isArray(ex.options.questions)) ? ex.options.questions : [];
+    if (qs.length > 0) { openTraceModal(ex, qs[0]); return; }
+  }
 
   if (ex.exerciseType === 'fill_in_blank') {
     const qs = (ex.options && Array.isArray(ex.options.questions)) ? ex.options.questions : [];
@@ -9117,6 +9371,14 @@ document.addEventListener('DOMContentLoaded', () => {
   // Phase 3.8: fill-in-blank editor wiring
   const fillCodeEl = document.getElementById('exFillCode');
   if (fillCodeEl) fillCodeEl.addEventListener('input', syncFillBlanksFromCode);
+  // Phase 3.9: trace editor wiring
+  const traceVarsEl = document.getElementById('exTraceVars');
+  if (traceVarsEl) traceVarsEl.addEventListener('input', syncTraceVariablesFromInput);
+  const traceAddBtn = document.getElementById('exTraceAddStep');
+  if (traceAddBtn) traceAddBtn.addEventListener('click', () => {
+    __traceSteps.push({ label: 'Step ' + (__traceSteps.length + 1), values: {} });
+    paintTraceEditor();
+  });
   const sel = document.getElementById('exerciseId');
   const mcSubmit = document.getElementById('mcSubmit');
   if (!sel) return;
