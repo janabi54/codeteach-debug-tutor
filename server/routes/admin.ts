@@ -2,7 +2,7 @@ import express from 'express';
 import { getDebugTutorHealth } from '../admin/healthService.js';
 import { getClassFingerprint } from '../admin/classFingerprint.js';
 import { getCohortAnalytics } from '../admin/cohortAnalytics.js';
-import { getQuizAnalytics } from '../admin/quizAnalytics.js';
+import { getQuizAnalytics, getQuizTrends } from '../admin/quizAnalytics.js';
 import { requireInstructor } from '../middleware/requireAuth.js';
 import { requireAdmin } from '../middleware/requireAdmin.js';
 import { generateInviteCode } from '../auth/inviteCodes.js';
@@ -64,6 +64,25 @@ router.get('/analytics/quiz/:cohortId', requireInstructor, async (req, res) => {
     res.json(data);
   } catch (err: any) {
     res.status(500).json({ error: err?.message || 'Could not compute quiz analytics.' });
+  }
+});
+
+// GET /api/admin/analytics/quiz/:cohortId/trends?weeks=N
+router.get('/analytics/quiz/:cohortId/trends', requireInstructor, async (req, res) => {
+  const { cohortId } = req.params;
+  const weeksRaw = req.query.weeks;
+  const weeks = weeksRaw === undefined ? 12 : Math.max(2, Math.min(52, parseInt(String(weeksRaw), 10) || 12));
+  const includeInstructor = String(req.query.includeInstructor || '0') === '1';
+  const cohort = await db.cohorts.findById(cohortId);
+  if (!cohort) return res.status(404).json({ error: 'Cohort not found.' });
+  if (cohort.instructorId !== req.user!.id) {
+    return res.status(403).json({ error: 'You do not teach this cohort.' });
+  }
+  try {
+    const data = getQuizTrends(cohortId, weeks, includeInstructor);
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Could not compute trends.' });
   }
 });
 

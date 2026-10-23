@@ -6375,3 +6375,12 @@ body.fill-mode-active::before {
   align-self: flex-start;
   margin-top: 4px;
 }
+
+/* Phase 4.1: Trends view */
+.qa-chart-wrap canvas {
+  max-height: 280px;
+}
+.qa-table td[style*="monospace"] {
+  font-size: 14px;
+  letter-spacing: 1px;
+}

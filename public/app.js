@@ -5515,11 +5515,162 @@ async function loadQuizAnalytics(cohortId) {
   }
 }
 
+// ─── Phase 4.1: Trends view ───
+let __qaTrendsData = null;
+let __qaTrendsSubView = 'exercise';  // exercise | question | student
+
+async function loadQuizTrends(cohortId) {
+  const body = document.getElementById('qaBody');
+  if (!body || !cohortId) return;
+  body.innerHTML = '<p class="empty-state">Loading trends...</p>';
+  const days = parseInt(document.getElementById('qaRange')?.value || '30', 10);
+  const weeks = days === 0 ? 12 : Math.min(12, Math.ceil(days / 7));
+  const includeInstructor = document.getElementById('qaIncludeInstructor')?.checked ? '1' : '0';
+  try {
+    const res = await fetch('/api/admin/analytics/quiz/' + encodeURIComponent(cohortId) + '/trends?weeks=' + weeks + '&includeInstructor=' + includeInstructor, { credentials: 'same-origin' });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      body.innerHTML = '<p class="empty-state">' + escapeHtml(err.error || 'Could not load trends.') + '</p>';
+      return;
+    }
+    __qaTrendsData = await res.json();
+    renderTrendsView();
+  } catch (err) {
+    body.innerHTML = '<p class="empty-state">Failed: ' + escapeHtml(err.message) + '</p>';
+  }
+}
+
+function trendArrow(direction) {
+  if (direction === 'up') return '<span style="color:#4ade80">↑</span>';
+  if (direction === 'down') return '<span style="color:#f87171">↓</span>';
+  return '<span style="color:#888">→</span>';
+}
+
+function renderTrendsView() {
+  const body = document.getElementById('qaBody');
+  if (!body || !__qaTrendsData) return;
+
+  const subtabs = `
+    <div style="margin-bottom:16px;display:flex;gap:6px;">
+      <button class="ghost small ${__qaTrendsSubView === 'exercise' ? 'active' : ''}" data-trend-view="exercise">By exercise</button>
+      <button class="ghost small ${__qaTrendsSubView === 'question' ? 'active' : ''}" data-trend-view="question">By question</button>
+      <button class="ghost small ${__qaTrendsSubView === 'student' ? 'active' : ''}" data-trend-view="student">By student</button>
+    </div>
+    <div class="qa-chart-wrap"><canvas id="qaTrendChart"></canvas></div>
+    <div id="qaTrendTable"></div>
+  `;
+  body.innerHTML = subtabs;
+
+  body.querySelectorAll('[data-trend-view]').forEach((b) => {
+    b.addEventListener('click', () => {
+      __qaTrendsSubView = b.dataset.trendView;
+      renderTrendsView();
+    });
+  });
+
+  const data = __qaTrendsData;
+  let rows = [];
+  let labelKey = 'title';
+  let subtitleKey = null;
+
+  if (__qaTrendsSubView === 'exercise') {
+    rows = data.byExercise || [];
+    labelKey = 'title';
+  } else if (__qaTrendsSubView === 'question') {
+    rows = data.byQuestion || [];
+    labelKey = 'text';
+    subtitleKey = 'exerciseTitle';
+  } else {
+    rows = data.byStudent || [];
+    labelKey = 'email';
+  }
+
+  // Filter out zero-attempt rows (nothing to trend)
+  rows = rows.filter((r) => r.totalAttempts > 0);
+  if (!rows.length) {
+    document.getElementById('qaTrendTable').innerHTML = '<p class="empty-state">No activity in this range.</p>';
+    return;
+  }
+
+  // Top 5 rows by total attempts (for chart)
+  const top5 = rows.slice(0, 5);
+  const weekLabels = top5[0].weeklyData.map((w) => w.week);
+
+  // Chart.js line chart
+  destroyQaChart();
+  const ctx = document.getElementById('qaTrendChart');
+  if (ctx && typeof Chart !== 'undefined') {
+    const colors = ['#4ade80', '#7b5cff', '#facc15', '#f87171', '#06b6d4'];
+    __qaChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: weekLabels,
+        datasets: top5.map((row, i) => ({
+          label: (row[labelKey] || '').slice(0, 40),
+          data: row.weeklyData.map((w) => w.attempts > 0 ? w.pctCorrect : null),
+          borderColor: colors[i % colors.length],
+          backgroundColor: colors[i % colors.length] + '33',
+          tension: 0.3,
+          spanGaps: true,
+          pointRadius: 3,
+        })),
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: { min: 0, max: 100, ticks: { callback: (v) => v + '%', color: '#a0a0a8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+          x: { ticks: { color: '#e0e0e0' }, grid: { display: false } },
+        },
+        plugins: { legend: { labels: { color: '#e0e0e0' } } },
+      },
+    });
+  }
+
+  // Table below chart with sparkline column
+  const tableRows = rows.map((row) => {
+    const spark = row.weeklyData.map((w) => {
+      if (w.attempts === 0) return '·';
+      const h = Math.round(w.pctCorrect / 10);
+      return ['▁','▂','▃','▄','▅','▆','▇','█'][h] || '▁';
+    }).join('');
+    const deltaStr = row.deltaPct > 0 ? '+' + row.deltaPct + '%' : row.deltaPct + '%';
+    return `
+      <tr>
+        <td>${escapeHtml(row[labelKey] || '(no label)')} ${subtitleKey ? '<span style="color:#888;font-size:11px;">· ' + escapeHtml(row[subtitleKey] || '') + '</span>' : ''}</td>
+        <td class="num">${row.totalAttempts}</td>
+        <td style="font-family:monospace;color:#a09bff;">${spark}</td>
+        <td>${trendArrow(row.direction)} ${deltaStr}</td>
+      </tr>
+    `;
+  }).join('');
+
+  document.getElementById('qaTrendTable').innerHTML = `
+    <table class="qa-table">
+      <thead><tr>
+        <th>${__qaTrendsSubView === 'exercise' ? 'Exercise' : __qaTrendsSubView === 'question' ? 'Question' : 'Student'}</th>
+        <th class="num">Attempts</th>
+        <th>Weekly trend</th>
+        <th>Direction</th>
+      </tr></thead>
+      <tbody>${tableRows}</tbody>
+    </table>
+  `;
+}
+
 function renderQuizAnalytics() {
   const body = document.getElementById('qaBody');
   if (!body || !__qaState.data) return;
   const { byExercise, byStudent } = __qaState.data;
   if (__qaState.view === 'exercise') renderQaExercises(body, byExercise);
+  else if (__qaState.view === 'trend') {
+    if (!__qaTrendsData) {
+      loadQuizTrends(__qaState.data?.cohortId);
+      body.innerHTML = '<p class="empty-state">Loading trends...</p>';
+    } else {
+      renderTrendsView();
+    }
+  }
   else renderQaStudents(body, byStudent);
 }
 
@@ -5733,6 +5884,10 @@ document.addEventListener('DOMContentLoaded', () => {
       panel.querySelectorAll('.qa-subtab').forEach((b) => b.classList.remove('active'));
       btn.classList.add('active');
       __qaState.view = btn.dataset.qaView;
+      if (__qaState.view === 'trend') {
+        const cohortId = document.getElementById('analyticsCohort')?.value;
+        if (cohortId) { loadQuizTrends(cohortId); return; }
+      }
       renderQuizAnalytics();
     });
   });
