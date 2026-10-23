@@ -18,6 +18,7 @@ import nudgeRoutes from './routes/nudges.js';
 import meRoutes from './routes/me.js';
 import runRoutes from './routes/run.js';
 import meExercisesRoutes from './routes/meExercises.js';
+import publicExercisesRoutes from './routes/publicExercises.js';
 import { pathToFileURL } from 'node:url';
 import { startDispatcher } from './webhooks/outbound/dispatcher.js';
 import inboundWebhookRouter from './webhooks/inbound/router.js';
@@ -50,6 +51,7 @@ app.use('/api', nudgeRoutes);
 app.use('/api', meRoutes);
 app.use('/api', runRoutes);
 app.use('/api/me/exercises', meExercisesRoutes);
+app.use('/api/exercises', publicExercisesRoutes);
 
 const PORT = Number(process.env.PORT ?? 3001);
 

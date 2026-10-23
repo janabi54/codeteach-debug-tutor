@@ -6285,3 +6285,93 @@ body.fill-mode-active::before {
   border-color: #7b5cff;
   box-shadow: 0 0 0 2px rgba(123, 92, 255, 0.2);
 }
+
+/* Phase 4.0: Public exercise library */
+.field-inline-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  margin-right: 12px;
+  user-select: none;
+}
+.field-inline-toggle input[type="checkbox"] {
+  cursor: pointer;
+  accent-color: #7b5cff;
+}
+.library-toolbar {
+  display: flex;
+  gap: 10px;
+  margin: 16px 0;
+  align-items: center;
+}
+.library-toolbar input[type="text"] {
+  flex: 1;
+  padding: 8px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 14px;
+}
+.library-toolbar select {
+  padding: 8px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 14px;
+  min-width: 180px;
+}
+.library-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+.library-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: border-color 0.15s ease;
+}
+.library-card:hover {
+  border-color: rgba(123, 92, 255, 0.5);
+}
+.library-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+.library-card-header h3 {
+  font-size: 15px;
+  margin: 0;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.library-card-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0;
+  flex: 1;
+  min-height: 40px;
+}
+.library-card-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.library-card button {
+  align-self: flex-start;
+  margin-top: 4px;
+}

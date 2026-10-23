@@ -1,5 +1,7 @@
 import express from 'express';
+import crypto from 'crypto';
 import { db } from '../db.js';
+import { sqlite } from '../db.js';
 import { requireInstructor } from '../middleware/requireAuth.js';
 import { slugify, uniqueSlug } from '../util/slug.js';
 
@@ -466,5 +468,97 @@ router.delete('/:slug', requireInstructor, async (req, res) => {
   });
   res.json({ ok: true });
 });
+
+
+// ─────────────────────────────────────────────────────────────
+// Phase 4.0: Public exercise library
+// ─────────────────────────────────────────────────────────────
+
+// POST /api/admin/exercises/:slug/publish — mark as public
+router.post('/:slug/publish', requireInstructor, async (req, res) => {
+  const { slug } = req.params;
+  const ex = await db.exercises.findBySlug(slug);
+  if (!ex) return res.status(404).json({ error: 'Exercise not found.' });
+  try {
+    sqlite.prepare('UPDATE exercises SET is_public = 1, updated_at = datetime(\'now\') WHERE slug = ?').run(slug);
+    res.json({ ok: true, slug, isPublic: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Could not publish.' });
+  }
+});
+
+// POST /api/admin/exercises/:slug/unpublish — remove from public library
+router.post('/:slug/unpublish', requireInstructor, async (req, res) => {
+  const { slug } = req.params;
+  const ex = await db.exercises.findBySlug(slug);
+  if (!ex) return res.status(404).json({ error: 'Exercise not found.' });
+  try {
+    sqlite.prepare('UPDATE exercises SET is_public = 0, updated_at = datetime(\'now\') WHERE slug = ?').run(slug);
+    res.json({ ok: true, slug, isPublic: false });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Could not unpublish.' });
+  }
+});
+
+// POST /api/admin/exercises/:slug/import — copy a public exercise into caller's cohort
+router.post('/:slug/import', requireInstructor, async (req, res) => {
+  const { slug } = req.params;
+  const original = await db.exercises.findBySlug(slug);
+  if (!original) return res.status(404).json({ error: 'Exercise not found.' });
+  // Phase 4.0: query DB directly since rowToExercise doesn't return isPublic
+  const srcRow = sqlite.prepare('SELECT is_public FROM exercises WHERE slug = ?').get(slug) as { is_public: number } | undefined;
+  if (!srcRow || !srcRow.is_public) {
+    return res.status(403).json({ error: 'Only public exercises can be imported.' });
+  }
+  try {
+    const cohort = await getInstructorCohort(req);
+    if (!cohort) return res.status(500).json({ error: 'No cohort found.' });
+
+    // Unique slug
+    let baseSlug = original.slug + '-copy';
+    let candidate = baseSlug;
+    let i = 1;
+    while (await db.exercises.findBySlug(candidate)) {
+      candidate = baseSlug + '-' + i;
+      i++;
+    }
+
+    // Build new exercise record (copy fields, set new cohort/creator)
+    const row = sqlite.prepare('SELECT * FROM exercises WHERE slug = ?').get(slug) as any;
+    if (!row) return res.status(404).json({ error: 'Source not found.' });
+    const newId = crypto.randomUUID();
+    sqlite.prepare(`
+      INSERT INTO exercises (
+        id, slug, title, description, language, starter_code,
+        expected_concepts, required_concepts, learning_objectives, expected_output,
+        struggle_minutes, exercise_type, options_json, is_public,
+        cohort_id, created_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+    `).run(
+      newId,
+      candidate,
+      row.title,
+      row.description,
+      row.language,
+      row.starter_code,
+      row.expected_concepts,
+      row.required_concepts,
+      row.learning_objectives,
+      row.expected_output,
+      row.struggle_minutes,
+      row.exercise_type,
+      row.options_json,
+      cohort.id,
+      req.user!.id
+    );
+
+    const imported = await db.exercises.findBySlug(candidate);
+    if (!imported) return res.status(500).json({ error: 'Import failed (row missing).' });
+    res.json({ ok: true, importedSlug: candidate, imported: exerciseShape(imported) });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Could not import.' });
+  }
+});
+
 
 export default router;

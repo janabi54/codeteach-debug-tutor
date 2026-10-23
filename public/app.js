@@ -3013,6 +3013,8 @@ async function openExerciseEditor(slug) {
     const ex = exercisesState.list.find((e) => e.slug === slug);
     if (ex) {
       $('exType').value = ex.exerciseType || 'code';
+      const isPublicEl = document.getElementById('exIsPublic');
+      if (isPublicEl) isPublicEl.checked = !!(ex && ex.isPublic);
       // Phase 3.5b + 3.8 + 3.9: hydrate the correct editor per type
       if (ex.exerciseType === 'quiz') {
         const qs = (ex.options && Array.isArray(ex.options.questions)) ? ex.options.questions : [];
@@ -3738,6 +3740,7 @@ async function saveExercise() {
     learningObjectives: getTagValues(exercisesState.objectivesTagify),
     struggleMinutes: Math.max(0, Math.min(60, parseInt($('exStruggle').value, 10) || 0)),
     exerciseType,
+    isPublic: document.getElementById('exIsPublic')?.checked ? 1 : 0,
     options: optionsPayload,
     answer: answerPayload,
     questions: questionsPayload,
@@ -3763,6 +3766,16 @@ async function saveExercise() {
     if (!res.ok) {
       alert(data.error || 'Save failed.');
       return;
+    }
+    // Phase 4.0: sync public flag via publish/unpublish endpoint
+    try {
+      const shouldPublish = document.getElementById('exIsPublic')?.checked;
+      await fetch('/api/admin/exercises/' + encodeURIComponent(data.slug) + (shouldPublish ? '/publish' : '/unpublish'), {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+    } catch (pubErr) {
+      console.warn('[publish sync] failed:', pubErr);
     }
     exercisesState.currentSlug = data.slug;
     showExercisesList();
@@ -5763,6 +5776,90 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 });
+
+// ─── Phase 4.0: Public exercise library ───
+let __libraryCache = [];
+
+async function loadLibrary() {
+  const list = document.getElementById('libraryList');
+  if (!list) return;
+  list.innerHTML = '<p class="empty-state">Loading...</p>';
+  try {
+    const res = await fetch('/api/exercises/public', { credentials: 'same-origin' });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      list.innerHTML = '<p class="empty-state">' + escapeHtml(err.error || 'Could not load library.') + '</p>';
+      return;
+    }
+    __libraryCache = await res.json();
+    renderLibrary();
+  } catch (err) {
+    list.innerHTML = '<p class="empty-state">Failed: ' + escapeHtml(err.message) + '</p>';
+  }
+}
+
+function renderLibrary() {
+  const list = document.getElementById('libraryList');
+  if (!list) return;
+  const q = (document.getElementById('librarySearch')?.value || '').trim().toLowerCase();
+  const type = document.getElementById('libraryType')?.value || '';
+
+  const filtered = __libraryCache.filter((ex) => {
+    if (type && ex.exerciseType !== type) return false;
+    if (q) {
+      const hay = (ex.title + ' ' + (ex.description || '')).toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  if (!filtered.length) {
+    list.innerHTML = '<p class="empty-state">No public exercises match your filters.</p>';
+    return;
+  }
+
+  list.innerHTML = filtered.map((ex) => `
+    <div class="library-card">
+      <div class="library-card-header">
+        <h3>${escapeHtml(ex.title)}</h3>
+        <span class="qa-type-badge">${escapeHtml(ex.exerciseType || 'code')}</span>
+      </div>
+      <p class="library-card-desc">${escapeHtml(ex.description || 'No description')}</p>
+      <div class="library-card-meta">
+        <span>${escapeHtml(ex.language || 'js')}</span>
+        ${ex.creatorEmail ? '<span>by ' + escapeHtml(ex.creatorEmail.split('@')[0]) + '</span>' : ''}
+      </div>
+      ${currentUser && currentUser.role === 'instructor' ? `<button class="primary small" data-import-slug="${escapeHtml(ex.slug)}">Import to my class</button>` : ''}
+    </div>
+  `).join('');
+
+  list.querySelectorAll('[data-import-slug]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const slug = btn.dataset.importSlug;
+      btn.disabled = true;
+      btn.textContent = 'Importing...';
+      try {
+        const res = await fetch('/api/admin/exercises/' + encodeURIComponent(slug) + '/import', {
+          method: 'POST',
+          credentials: 'same-origin',
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          alert(data.error || 'Import failed.');
+          btn.disabled = false;
+          btn.textContent = 'Import to my class';
+          return;
+        }
+        btn.textContent = '✓ Imported';
+        setTimeout(() => { btn.disabled = false; btn.textContent = 'Import to my class'; }, 2000);
+      } catch (err) {
+        alert('Import failed: ' + err.message);
+        btn.disabled = false;
+        btn.textContent = 'Import to my class';
+      }
+    });
+  });
+}
 
 async function loadAnalytics() {
   const picker = $('analyticsCohort');
@@ -9365,6 +9462,15 @@ function applyExerciseTypeUI(ex) {
 
 document.addEventListener('DOMContentLoaded', () => {
   const search = document.getElementById('exerciseSearch');
+  // Phase 4.0: Library tab wiring
+  const libraryTab = document.querySelector('[data-tab="library"]');
+  if (libraryTab) libraryTab.addEventListener('click', () => {
+    setTimeout(() => loadLibrary(), 50);
+  });
+  const libSearch = document.getElementById('librarySearch');
+  if (libSearch) libSearch.addEventListener('input', renderLibrary);
+  const libType = document.getElementById('libraryType');
+  if (libType) libType.addEventListener('change', renderLibrary);
   // Phase 3.5b: quiz accordion add button
   const quizAdd = document.getElementById('exQuizAdd');
   if (quizAdd) quizAdd.addEventListener('click', addQuizQuestion);

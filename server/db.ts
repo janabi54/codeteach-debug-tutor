@@ -236,6 +236,13 @@ if (!hintSessionCols37.some((c) => c.name === 'question_id')) {
   console.log('[db] migrated: added hint_sessions.question_id');
 }
 
+// Phase 4.0: is_public column on exercises (public exercise library)
+const exerciseCols40 = sqlite.prepare('PRAGMA table_info(exercises)').all() as Array<{ name: string }>;
+if (!exerciseCols40.some((c) => c.name === 'is_public')) {
+  sqlite.exec('ALTER TABLE exercises ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0');
+  console.log('[db] migrated: added exercises.is_public');
+}
+
 // Phase 3.5a: quiz_attempts table + answers columns + backfill
 sqlite.exec(`
   CREATE TABLE IF NOT EXISTS quiz_attempts (

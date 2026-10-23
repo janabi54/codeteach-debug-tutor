@@ -58,6 +58,7 @@
     <button class="tab" data-tab="class">Analytics</button>
     <button class="tab" data-tab="students">Students</button>
     <button class="tab" data-tab="exercises">Exercises</button>
+    <button class="tab" data-tab="library">Public Library</button>
     <button class="tab" data-tab="webhooks">Webhooks</button>
   </nav>
     <div class="user-chip" id="userChip">
@@ -451,6 +452,32 @@ for (let i = 0; i < arr.length; i++) {
 </section>
 
 <!-- EXERCISES TAB (instructor only) -->
+<section id="tab-library" class="tab-panel">
+  <div class="panel-wrap panel-wrap-wide">
+    <div class="exercises-header">
+      <div>
+        <h1>Public Library</h1>
+        <p class="subtitle">Exercises shared by instructors across all cohorts. Import any exercise to add a copy to your class.</p>
+      </div>
+    </div>
+    <div class="library-toolbar">
+      <input type="text" id="librarySearch" placeholder="Search exercises..." />
+      <select id="libraryType">
+        <option value="">All types</option>
+        <option value="code">Code</option>
+        <option value="multiple_choice">Multiple choice</option>
+        <option value="predict_output">Predict output</option>
+        <option value="quiz">Quiz</option>
+        <option value="fill_in_blank">Fill in the blank</option>
+        <option value="trace_execution">Trace execution</option>
+      </select>
+    </div>
+    <div id="libraryList" class="library-grid">
+      <p class="empty-state">Loading...</p>
+    </div>
+  </div>
+</section>
+
 <section id="tab-exercises" class="tab-panel">
   <div class="panel-wrap panel-wrap-wide">
 
@@ -510,6 +537,10 @@ for (let i = 0; i < arr.length; i++) {
         </div>
         <div class="editor-actions-top">
           <button id="cancelExerciseBtn" class="ghost">Cancel</button>
+          <label class="field-inline-toggle">
+            <input type="checkbox" id="exIsPublic" />
+            <span>Make public (share to library)</span>
+          </label>
           <button id="saveExerciseBtn" class="primary">Save</button>
         </div>
       </div>
