@@ -5658,6 +5658,136 @@ function renderTrendsView() {
   `;
 }
 
+// ─── Phase 4.3: Cohort comparison view ───
+let __qaCompareData = null;
+let __qaCompareCohortA = '';
+let __qaCompareCohortB = '';
+
+async function loadAllCohorts() {
+  try {
+    const res = await fetch('/api/admin/cohorts', { credentials: 'same-origin' });
+    if (!res.ok) return [];
+    return await res.json();
+  } catch {
+    return [];
+  }
+}
+
+async function loadCompareView() {
+  const body = document.getElementById('qaBody');
+  if (!body) return;
+
+  const cohorts = await loadAllCohorts();
+  if (cohorts.length < 2) {
+    body.innerHTML = '<p class="empty-state">Comparison needs at least 2 cohorts. Create another class from the Exercises tab first.</p>';
+    return;
+  }
+
+  // Default selections
+  if (!__qaCompareCohortA) __qaCompareCohortA = cohorts[0].id;
+  if (!__qaCompareCohortB) __qaCompareCohortB = cohorts[1].id;
+
+  const optionsHtml = (selectedId) => cohorts.map((c) =>
+    `<option value="${escapeHtml(c.id)}" ${c.id === selectedId ? 'selected' : ''}>${escapeHtml(c.name)}</option>`
+  ).join('');
+
+  body.innerHTML = `
+    <div style="display:flex;gap:12px;align-items:end;margin-bottom:16px;flex-wrap:wrap;">
+      <div>
+        <label style="display:block;font-size:11px;text-transform:uppercase;color:#888;margin-bottom:4px;">Cohort A</label>
+        <select id="qaCompareA" style="padding:6px 10px;background:#1e1e24;border:1px solid #3a3a48;border-radius:4px;color:#e0e0e0;min-width:160px;">${optionsHtml(__qaCompareCohortA)}</select>
+      </div>
+      <div style="font-size:14px;color:#888;padding-bottom:8px;">vs</div>
+      <div>
+        <label style="display:block;font-size:11px;text-transform:uppercase;color:#888;margin-bottom:4px;">Cohort B</label>
+        <select id="qaCompareB" style="padding:6px 10px;background:#1e1e24;border:1px solid #3a3a48;border-radius:4px;color:#e0e0e0;min-width:160px;">${optionsHtml(__qaCompareCohortB)}</select>
+      </div>
+      <button type="button" id="qaCompareGo" class="primary small">Compare</button>
+    </div>
+    <div id="qaCompareResults"><p class="empty-state">Click Compare to load results.</p></div>
+  `;
+
+  document.getElementById('qaCompareA').addEventListener('change', (e) => { __qaCompareCohortA = e.target.value; });
+  document.getElementById('qaCompareB').addEventListener('change', (e) => { __qaCompareCohortB = e.target.value; });
+  document.getElementById('qaCompareGo').addEventListener('click', fetchCompareData);
+}
+
+async function fetchCompareData() {
+  const results = document.getElementById('qaCompareResults');
+  if (!results) return;
+  if (!__qaCompareCohortA || !__qaCompareCohortB) return;
+  if (__qaCompareCohortA === __qaCompareCohortB) {
+    results.innerHTML = '<p class="empty-state">Choose two different cohorts.</p>';
+    return;
+  }
+  results.innerHTML = '<p class="empty-state">Loading comparison...</p>';
+  const days = parseInt(document.getElementById('qaRange')?.value || '30', 10);
+  const includeInstructor = '0'; // comparisons exclude instructor by design
+  try {
+    const res = await fetch('/api/admin/analytics/quiz/compare?cohortA=' + encodeURIComponent(__qaCompareCohortA) + '&cohortB=' + encodeURIComponent(__qaCompareCohortB) + '&days=' + days, { credentials: 'same-origin' });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      results.innerHTML = '<p class="empty-state">' + escapeHtml(err.error || 'Could not load comparison.') + '</p>';
+      return;
+    }
+    __qaCompareData = await res.json();
+    renderComparison(results);
+  } catch (err) {
+    results.innerHTML = '<p class="empty-state">Failed: ' + escapeHtml(err.message) + '</p>';
+  }
+}
+
+function deltaBadge(delta) {
+  if (delta === null) return '<span style="color:#888;">—</span>';
+  if (Math.abs(delta) < 3) return `<span style="color:#888;">${delta > 0 ? '+' : ''}${delta.toFixed(1)}%</span>`;
+  if (delta > 0) return `<span style="color:#4ade80;font-weight:600;">+${delta.toFixed(1)}%</span>`;
+  return `<span style="color:#f87171;font-weight:600;">${delta.toFixed(1)}%</span>`;
+}
+
+function renderComparison(container) {
+  const data = __qaCompareData;
+  if (!data || !data.exercises || data.exercises.length === 0) {
+    container.innerHTML = '<p class="empty-state">No exercises found in either cohort.</p>';
+    return;
+  }
+
+  // Filter to only exercises with data on BOTH sides (default view)
+  const withData = data.exercises.filter((ex) => ex.a && ex.b);
+  const toRender = withData.length > 0 ? withData : data.exercises;
+  const headerNote = withData.length === 0 && data.exercises.length > 0
+    ? '<p style="color:#888;font-size:12px;margin:12px 0;">No exercises have data in BOTH cohorts yet. Showing all exercises below.</p>'
+    : '';
+
+  const rows = toRender.map((ex) => {
+    const aCell = ex.a ? `${ex.a.pctCorrect.toFixed(1)}% (${ex.a.correctCount}/${ex.a.totalCount})` : '<span style="color:#555;">—</span>';
+    const bCell = ex.b ? `${ex.b.pctCorrect.toFixed(1)}% (${ex.b.correctCount}/${ex.b.totalCount})` : '<span style="color:#555;">—</span>';
+    return `
+      <tr>
+        <td>${escapeHtml(ex.title)}</td>
+        <td class="num">${aCell}</td>
+        <td class="num">${bCell}</td>
+        <td class="num">${deltaBadge(ex.delta)}</td>
+      </tr>
+    `;
+  }).join('');
+
+  container.innerHTML = `
+    <div style="margin-bottom:12px;font-size:13px;color:#a0a0a8;">
+      Comparing: <strong>${escapeHtml(data.cohortA.name)}</strong> (${data.cohortA.studentCount} students) vs <strong>${escapeHtml(data.cohortB.name)}</strong> (${data.cohortB.studentCount} students)
+    </div>
+    ${headerNote}
+    <table class="qa-table">
+      <thead><tr>
+        <th>Exercise</th>
+        <th class="num">${escapeHtml(data.cohortA.name)}</th>
+        <th class="num">${escapeHtml(data.cohortB.name)}</th>
+        <th class="num">Δ (B − A)</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
 function renderQuizAnalytics() {
   const body = document.getElementById('qaBody');
   if (!body || !__qaState.data) return;
@@ -5670,6 +5800,9 @@ function renderQuizAnalytics() {
     } else {
       renderTrendsView();
     }
+  }
+  else if (__qaState.view === 'compare') {
+    loadCompareView();
   }
   else renderQaStudents(body, byStudent);
 }
@@ -5888,6 +6021,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const cohortId = document.getElementById('analyticsCohort')?.value;
         if (cohortId) { loadQuizTrends(cohortId); return; }
       }
+      if (__qaState.view === 'compare') {
+        loadCompareView();
+        return;
+      }
       renderQuizAnalytics();
     });
   });
@@ -5994,7 +6131,10 @@ function renderLibrary() {
       btn.disabled = true;
       btn.textContent = 'Importing...';
       try {
-        const res = await fetch('/api/admin/exercises/' + encodeURIComponent(slug) + '/import', {
+        const targetCohort = selectedCohortId || document.getElementById('classPicker')?.value || '';
+        const importUrl = '/api/admin/exercises/' + encodeURIComponent(slug) + '/import' +
+          (targetCohort ? '?cohortId=' + encodeURIComponent(targetCohort) : '');
+        const res = await fetch(importUrl, {
           method: 'POST',
           credentials: 'same-origin',
         });

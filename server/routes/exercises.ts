@@ -511,7 +511,18 @@ router.post('/:slug/import', requireInstructor, async (req, res) => {
     return res.status(403).json({ error: 'Only public exercises can be imported.' });
   }
   try {
-    const cohort = await getInstructorCohort(req);
+    // Phase 4.0 fix: honor ?cohortId from frontend (falls back to first cohort)
+    const cohortIdParam = String(req.query.cohortId || '');
+    let cohort;
+    if (cohortIdParam) {
+      cohort = await db.cohorts.findById(cohortIdParam);
+      if (!cohort) return res.status(404).json({ error: 'Cohort not found.' });
+      if (cohort.instructorId !== req.user!.id) {
+        return res.status(403).json({ error: 'You do not own that cohort.' });
+      }
+    } else {
+      cohort = await getInstructorCohort(req);
+    }
     if (!cohort) return res.status(500).json({ error: 'No cohort found.' });
 
     // Unique slug

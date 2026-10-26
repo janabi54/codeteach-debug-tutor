@@ -454,3 +454,121 @@ function aggregateIntoWeeks<T extends { weekKey: string; attempts: number; corre
   return out.sort((a, b) => b.totalAttempts - a.totalAttempts);
 }
 
+
+
+// ─────────────────────────────────────────────────────────────
+// Phase 4.3: Cohort comparison analytics
+// ─────────────────────────────────────────────────────────────
+
+export interface ExerciseCohortSide {
+  attempts: number;
+  uniqueStudents: number;
+  correctCount: number;
+  totalCount: number;
+  pctCorrect: number;
+}
+
+export interface ComparisonExercise {
+  slug: string;
+  title: string;
+  exerciseType: string;
+  a: ExerciseCohortSide | null;
+  b: ExerciseCohortSide | null;
+  delta: number | null;    // b.pct - a.pct
+}
+
+export interface ComparisonResult {
+  cohortA: { id: string; name: string; studentCount: number };
+  cohortB: { id: string; name: string; studentCount: number };
+  exercises: ComparisonExercise[];
+  generatedAt: string;
+}
+
+/**
+ * Compare two cohorts' accuracy per exercise, side by side.
+ * Exercise list is the union of both cohorts' exercises.
+ */
+export function getQuizComparison(cohortAId: string, cohortBId: string, days: number): ComparisonResult {
+  const daysClause = days > 0 ? `AND a.created_at >= datetime('now', '-${days} days')` : '';
+
+  // Metadata for both cohorts
+  const cohortARow = sqlite.prepare('SELECT id, name FROM cohorts WHERE id = ?').get(cohortAId) as { id: string; name: string } | undefined;
+  const cohortBRow = sqlite.prepare('SELECT id, name FROM cohorts WHERE id = ?').get(cohortBId) as { id: string; name: string } | undefined;
+  if (!cohortARow || !cohortBRow) {
+    throw new Error('One or both cohorts not found.');
+  }
+  const countA = (sqlite.prepare('SELECT COUNT(*) AS n FROM cohort_members WHERE cohort_id = ?').get(cohortAId) as { n: number }).n;
+  const countB = (sqlite.prepare('SELECT COUNT(*) AS n FROM cohort_members WHERE cohort_id = ?').get(cohortBId) as { n: number }).n;
+
+  // Union of exercise slugs across both cohorts
+  const exRows = sqlite.prepare(`
+    SELECT slug, title, exercise_type AS exerciseType, cohort_id AS cohortId
+    FROM exercises
+    WHERE cohort_id IN (?, ?)
+  `).all(cohortAId, cohortBId) as Array<{ slug: string; title: string; exerciseType: string; cohortId: string }>;
+
+  // Group by title (same title across cohorts = compared)
+  const bySlug = new Map<string, { title: string; exerciseType: string; hasA: boolean; hasB: boolean }>();
+  for (const r of exRows) {
+    if (!bySlug.has(r.slug)) {
+      bySlug.set(r.slug, { title: r.title, exerciseType: r.exerciseType, hasA: false, hasB: false });
+    }
+    if (r.cohortId === cohortAId) bySlug.get(r.slug)!.hasA = true;
+    if (r.cohortId === cohortBId) bySlug.get(r.slug)!.hasB = true;
+  }
+
+  // Get stats per (cohort, slug)
+  const statsFor = (cohortId: string, slug: string): ExerciseCohortSide | null => {
+    const row = sqlite.prepare(`
+      SELECT
+        COUNT(*) AS attempts,
+        COUNT(DISTINCT a.student_id) AS uniqueStudents,
+        SUM(a.correct) AS correctCount,
+        COUNT(a.id) AS totalCount
+      FROM answers a
+      JOIN exercises e ON e.slug = a.exercise_id
+      WHERE e.cohort_id = ?
+        AND a.exercise_id = ?
+        ${daysClause}
+    `).get(cohortId, slug) as { attempts: number; uniqueStudents: number; correctCount: number | null; totalCount: number } | undefined;
+    if (!row || row.totalCount === 0) return null;
+    return {
+      attempts: row.attempts,
+      uniqueStudents: row.uniqueStudents,
+      correctCount: row.correctCount || 0,
+      totalCount: row.totalCount,
+      pctCorrect: row.totalCount > 0 ? Math.round(((row.correctCount || 0) / row.totalCount) * 1000) / 10 : 0,
+    };
+  };
+
+  const exercises: ComparisonExercise[] = [];
+  for (const [slug, meta] of bySlug.entries()) {
+    const a = statsFor(cohortAId, slug);
+    const b = statsFor(cohortBId, slug);
+    const delta = (a && b) ? Math.round((b.pctCorrect - a.pctCorrect) * 10) / 10 : null;
+    exercises.push({
+      slug,
+      title: meta.title,
+      exerciseType: meta.exerciseType,
+      a,
+      b,
+      delta,
+    });
+  }
+
+  // Sort: exercises with both sides first, then by title
+  exercises.sort((x, y) => {
+    const bothX = x.a && x.b ? 1 : 0;
+    const bothY = y.a && y.b ? 1 : 0;
+    if (bothX !== bothY) return bothY - bothX;
+    return x.title.localeCompare(y.title);
+  });
+
+  return {
+    cohortA: { id: cohortARow.id, name: cohortARow.name, studentCount: countA },
+    cohortB: { id: cohortBRow.id, name: cohortBRow.name, studentCount: countB },
+    exercises,
+    generatedAt: new Date().toISOString(),
+  };
+}
+

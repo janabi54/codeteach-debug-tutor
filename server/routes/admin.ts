@@ -2,7 +2,7 @@ import express from 'express';
 import { getDebugTutorHealth } from '../admin/healthService.js';
 import { getClassFingerprint } from '../admin/classFingerprint.js';
 import { getCohortAnalytics } from '../admin/cohortAnalytics.js';
-import { getQuizAnalytics, getQuizTrends } from '../admin/quizAnalytics.js';
+import { getQuizAnalytics, getQuizTrends, getQuizComparison } from '../admin/quizAnalytics.js';
 import { requireInstructor } from '../middleware/requireAuth.js';
 import { requireAdmin } from '../middleware/requireAdmin.js';
 import { generateInviteCode } from '../auth/inviteCodes.js';
@@ -44,6 +44,33 @@ router.get('/analytics/:cohortId', requireInstructor, async (req, res) => {
     res.status(500).json({ error: err?.message || 'Could not compute analytics.' });
   }
 });
+// GET /api/admin/analytics/quiz/compare?cohortA=X&cohortB=Y&days=N
+router.get('/analytics/quiz/compare', requireInstructor, async (req, res) => {
+  const cohortAId = String(req.query.cohortA || '');
+  const cohortBId = String(req.query.cohortB || '');
+  if (!cohortAId || !cohortBId) {
+    return res.status(400).json({ error: 'cohortA and cohortB query params required.' });
+  }
+  if (cohortAId === cohortBId) {
+    return res.status(400).json({ error: 'Cannot compare a cohort with itself.' });
+  }
+  const daysRaw = req.query.days;
+  const days = daysRaw === undefined ? 30 : Math.max(0, parseInt(String(daysRaw), 10) || 0);
+  // Both cohorts must belong to this instructor
+  const cohortA = await db.cohorts.findById(cohortAId);
+  const cohortB = await db.cohorts.findById(cohortBId);
+  if (!cohortA || !cohortB) return res.status(404).json({ error: 'Cohort not found.' });
+  if (cohortA.instructorId !== req.user!.id || cohortB.instructorId !== req.user!.id) {
+    return res.status(403).json({ error: 'You do not teach one or both of these cohorts.' });
+  }
+  try {
+    const data = getQuizComparison(cohortAId, cohortBId, days);
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Could not compute comparison.' });
+  }
+});
+
 
 // ─────────────────────────────────────────────────────────────
 // GET /api/admin/analytics/quiz/:cohortId?days=N
